@@ -13,7 +13,8 @@ interface Saved {
   right: number;
 }
 
-const LEFT = { initial: 300, min: 200, collapseBelow: 140 };
+// The left sidebar's minimum fits its three tab labels.
+const LEFT = { initial: 300, min: 260, collapseBelow: 150 };
 const RIGHT = { initial: 220, min: 160, collapseBelow: 110 };
 
 export interface RightBar {
@@ -32,7 +33,10 @@ export class Layout {
       const s = JSON.parse(localStorage.getItem(KEY) ?? 'null');
       if (s) this.saved = { ...this.saved, ...s };
     } catch { /* storage unavailable */ }
-    this.leftRail.append(iconButton('right', 'Show the sidebar', () => this.setLeftCollapsed(false), { class: 'bar-toggle' }));
+    // Sizes saved under older limits.
+    this.saved.left = Math.max(LEFT.min, this.saved.left);
+    this.saved.right = Math.max(RIGHT.min, this.saved.right);
+    this.leftRail.append(iconButton('sidebar-show', 'Show the sidebar', () => this.setLeftCollapsed(false), { class: 'bar-toggle' }));
     // The handles belong to the app, not the bars, so a bar collapsing mid-drag doesn't end it.
     this.app.append(this.handle('left'), this.handle('right'));
     this.apply();
@@ -50,8 +54,8 @@ export class Layout {
     this.app.style.setProperty('--left-w', `${this.saved.left}px`);
     this.app.style.setProperty('--right-w', `${this.saved.right}px`);
     // Where the handles sit: the visible widths.
-    this.app.style.setProperty('--left-edge', this.saved.leftCollapsed ? '28px' : `${this.saved.left}px`);
-    this.app.style.setProperty('--right-edge', this.right.collapsed ? '44px' : `${this.saved.right}px`);
+    this.app.style.setProperty('--left-edge', this.saved.leftCollapsed ? '36px' : `${this.saved.left}px`);
+    this.app.style.setProperty('--right-edge', this.right.collapsed ? '48px' : `${this.saved.right}px`);
     this.left.hidden = this.saved.leftCollapsed;
     this.leftRail.hidden = !this.saved.leftCollapsed;
   }

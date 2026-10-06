@@ -256,8 +256,8 @@ export class Terminals {
     try { localStorage.setItem(COLLAPSED, collapsed ? '1' : '0'); } catch { /* storage unavailable */ }
     this.el.classList.toggle('collapsed', collapsed);
     this.collapseButton.replaceChildren(collapsed
-      ? iconButton('left', 'Show the agent bar', () => this.setCollapsed(false), { class: 'bar-toggle' })
-      : iconButton('right', 'Hide the agent bar', () => this.setCollapsed(true), { class: 'bar-toggle' }));
+      ? iconButton('agents-show', 'Show the agent bar', () => this.setCollapsed(false), { class: 'bar-toggle' })
+      : iconButton('agents-hide', 'Hide the agent bar', () => this.setCollapsed(true), { class: 'bar-toggle' }));
     this.onCollapse?.();
     this.render();
   }

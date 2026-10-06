@@ -106,8 +106,8 @@ export class DiffPanel {
         a.file ? iconButton('file', 'Open the whole file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
         a.file ? this.editors.button(() => this.spot(a.file!)) : null,
         this.modeSwitch(),
-        h('button', { onclick: a.prev, disabled: !a.prev, 'data-tip': 'Previous file (↑)' }, '↑'),
-        h('button', { onclick: a.next, disabled: !a.next, 'data-tip': 'Next file (↓)' }, '↓')),
+        iconButton('prev', 'Previous changed file (↑ in the sidebar)', () => a.prev?.(), { class: 'framed', disabled: !a.prev }),
+        iconButton('next', 'Next changed file (↓ in the sidebar)', () => a.next?.(), { class: 'framed', disabled: !a.next })),
     );
   }
 

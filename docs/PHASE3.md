@@ -50,3 +50,8 @@ image previews.
    command palette, so Gako now also looks inside the installed apps, and never falls back to the
    default app: with no editor found, it says so.
 3. **Large folders** list their first 5,000 entries, with a note that more exist.
+4. **Change markers** *(added after the user's trial, 2026-10-06)*: the viewer marks lines added,
+   changed or deleted since the last commit in its gutter, in VS Code's colours, so uncommitted
+   changes show whether staged or not. Clicking a marker shows the lines as they were, under the
+   lines as they are, with steps to the previous and next change. The changes come from Monaco's
+   own diff computation, run in a hidden diff editor; files without changes cost nothing.

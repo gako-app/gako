@@ -87,6 +87,7 @@ class App {
       (path) => this.t.request<FileContent>('fileRead', { path }),
       this.editors,
       (path) => this.relative(path),
+      (path) => this.baseline(path),
     );
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
     this.viewer.attachNavigation(this.nav);
@@ -226,6 +227,9 @@ class App {
       }
       this.log('statusRendered', { repos: changed });
       this.refreshOpenDiff(changed);
+      // A commit (or an agent's edit) changes what the open file's markers compare against.
+      const open = this.viewer.path;
+      if (this.mode === 'file' && open && changed.some((root) => this.repoOf(open)?.root === root)) this.viewer.refreshMarkers();
     });
   }
 
@@ -325,6 +329,29 @@ class App {
           .catch((e) => this.toast(String(e.message ?? e)));
       },
     }, pin);
+  }
+
+  /** The repo a path is in: the one with the longest root that contains it. */
+  private repoOf(path: string): Repo | undefined {
+    let best: Repo | undefined;
+    for (const r of this.repos) {
+      const inside = path === r.root || path.startsWith(r.root + '/') || path.startsWith(r.root + '\\');
+      if (inside && (!best || r.root.length > best.root.length)) best = r;
+    }
+    return best;
+  }
+
+  /** What the viewer's change markers compare a file against: the file at HEAD ('' if it's new
+   * or untracked), or null when it has no uncommitted changes. */
+  private async baseline(path: string): Promise<string | null> {
+    const r = this.repoOf(path);
+    if (!r?.status) return null;
+    const rel = path.slice(r.root.length + 1).replaceAll('\\', '/');
+    const e = r.status.entries.find((x) => x.path === rel);
+    if (!e || e.conflict) return null;
+    if (e.untracked || e.index === 'added') return '';
+    const head = await this.git.file(r.root, 'HEAD', e.origPath ?? rel);
+    return head && !head.binary ? head.text : null;
   }
 
   private join(root: string, rel: string): string {

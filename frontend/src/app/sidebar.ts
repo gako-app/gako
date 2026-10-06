@@ -137,7 +137,7 @@ export class Sidebar {
       tab('files', 'Files'),
       tab('search', 'Search', () => this.search?.focus()),
       h('span', { class: 'spacer' }),
-      iconButton('left', 'Hide the sidebar', () => this.hooks.collapse(), { class: 'bar-toggle' }),
+      iconButton('sidebar-hide', 'Hide the sidebar', () => this.hooks.collapse(), { class: 'bar-toggle' }),
     );
     this.items = [];
     if (this.view === 'repos') this.renderRepos(changed, clean);

@@ -7,6 +7,7 @@ import type { FileContent } from './model';
 import type { Reveal } from './search';
 import type { Navigator } from './navigate';
 import { type Editors, spotIn } from './editors';
+import { ChangeMarkers } from './changes';
 
 export class Viewer {
   readonly el = h('section', { class: 'diff' });
@@ -17,11 +18,14 @@ export class Viewer {
   path: string | null = null;
   private ticket = 0;
   private decorations: monaco.editor.IEditorDecorationsCollection | null = null;
+  private markers: ChangeMarkers;
 
   constructor(
     private read: (path: string) => Promise<FileContent>,
     private editors: Editors,
     private relative: (path: string) => string,
+    /** The file at the last commit ('' if it's new), or null if it has no changes to mark. */
+    private baseline: (path: string) => Promise<string | null>,
   ) {
     this.el.append(this.header, this.notice, this.host);
     this.editor = monaco.editor.create(this.host, {
@@ -31,7 +35,17 @@ export class Viewer {
       theme: 'vs-dark',
       fontSize: 12,
       scrollBeyondLastLine: false,
+      // Room in the gutter for the change markers, as in VS Code.
+      lineDecorationsWidth: 12,
     });
+    this.markers = new ChangeMarkers(this.editor);
+  }
+
+  /** Marks the open file's changes again (its repo's status changed). */
+  refreshMarkers(): void {
+    const path = this.path;
+    if (!path) return;
+    this.baseline(path).then((before) => { if (this.path === path) this.markers.show(before); }).catch(() => this.markers.clear());
   }
 
   /** Shows a file: at `reveal` if given, else where `saved` left it (a tab shown again). */
@@ -56,6 +70,7 @@ export class Viewer {
     this.editor.setModel(monaco.editor.createModel(content.binary ? '' : content.text, languageFor(path)));
     previous?.dispose();
     if (view) this.editor.restoreViewState(view);
+    if (!content.binary) this.refreshMarkers();
     this.decorations?.clear();
     if (reveal) {
       // Columns count UTF-16 units from the line's start, as Monaco does; if the file changed since
