@@ -7,9 +7,23 @@ import type { DiffTarget, FileContent, Side } from './model';
 import type { Git } from './git';
 import type { Navigator } from './navigate';
 import { type Editors, type Spot, spotIn } from './editors';
-import { iconButton } from './icons';
+import { icon, iconButton, type IconName } from './icons';
 
-const INLINE = 'gako.diffInline';
+const LAYOUT = 'gako.diffLayout';
+
+/** How diffs are laid out: side by side, inline, or side by side unless the diff is narrower than
+ * 900 px (Monaco's own rule, as in VS Code). */
+type Layout = 'auto' | 'side' | 'inline';
+const LAYOUTS: { layout: Layout; icon: IconName; tip: string }[] = [
+  { layout: 'auto', icon: 'layout-auto', tip: 'Automatic: side by side, or inline when the diff is narrow' },
+  { layout: 'side', icon: 'side-by-side', tip: 'Side by side' },
+  { layout: 'inline', icon: 'inline', tip: 'Inline' },
+];
+
+/** Monaco's options for a layout. */
+function layoutOptions(layout: Layout): monaco.editor.IDiffEditorOptions {
+  return { renderSideBySide: layout !== 'inline', useInlineViewWhenSpaceIsLimited: layout === 'auto' };
+}
 
 const KIND_LABEL: Record<DiffTarget['kind'], string> = {
   unstaged: 'Index ↔ working tree',
@@ -36,17 +50,20 @@ export class DiffPanel {
   private editor: monaco.editor.IStandaloneDiffEditor;
   target: DiffTarget | null = null;
   private loading = 0;
-  private inline = false;
+  private layout: Layout = 'auto';
 
   constructor(private git: Git, private editors: Editors, private openFile: (spot: Spot) => void) {
-    try { this.inline = localStorage.getItem(INLINE) === '1'; } catch { /* storage unavailable */ }
+    try {
+      const saved = localStorage.getItem(LAYOUT);
+      if (saved === 'side' || saved === 'inline' || saved === 'auto') this.layout = saved;
+    } catch { /* storage unavailable */ }
     this.el.append(this.header, this.notice, this.host);
     this.editor = monaco.editor.createDiffEditor(this.host, {
       readOnly: true,
       domReadOnly: true,
       originalEditable: false,
       automaticLayout: true,
-      renderSideBySide: !this.inline,
+      ...layoutOptions(this.layout),
       hideUnchangedRegions: { enabled: true },
       theme: 'vs-dark',
       fontSize: 12,
@@ -121,14 +138,13 @@ export class DiffPanel {
     return spotIn(this.editor.getModifiedEditor(), path);
   }
 
-  /** Side by side or inline, showing which one is on. */
+  /** Automatic, side by side or inline, showing which one is on. */
   private modeSwitch(): HTMLElement {
-    const option = (inline: boolean, label: string) => h('button', {
-      class: inline === this.inline ? 'on' : '', 'aria-pressed': String(inline === this.inline),
-      onclick: () => this.setInline(inline),
-    }, label);
-    return h('span', { class: 'segmented', role: 'group', 'data-tip': 'How the diff is laid out' },
-      option(false, 'Side by side'), option(true, 'Inline'));
+    return h('span', { class: 'segmented', role: 'group' }, LAYOUTS.map((l) => h('button', {
+      class: l.layout === this.layout ? 'on' : '', 'aria-pressed': String(l.layout === this.layout),
+      'data-layout': l.layout, 'data-tip': l.tip, 'aria-label': l.tip,
+      onclick: () => this.setLayout(l.layout),
+    }, icon(l.icon))));
   }
 
   /** Navigation on both sides; `abs` turns a repo-relative path into a full one. */
@@ -142,12 +158,12 @@ export class DiffPanel {
     nav.attach(this.editor.getModifiedEditor(), side('right'));
   }
 
-  private setInline(inline: boolean): void {
-    this.inline = inline;
-    try { localStorage.setItem(INLINE, inline ? '1' : '0'); } catch { /* storage unavailable */ }
-    this.editor.updateOptions({ renderSideBySide: !inline });
-    for (const b of this.header.querySelectorAll('.segmented button')) {
-      const on = (b.textContent === 'Inline') === inline;
+  private setLayout(layout: Layout): void {
+    this.layout = layout;
+    try { localStorage.setItem(LAYOUT, layout); } catch { /* storage unavailable */ }
+    this.editor.updateOptions(layoutOptions(layout));
+    for (const b of this.header.querySelectorAll<HTMLElement>('.segmented button')) {
+      const on = b.dataset.layout === layout;
       b.classList.toggle('on', on);
       b.setAttribute('aria-pressed', String(on));
     }

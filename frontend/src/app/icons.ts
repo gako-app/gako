@@ -2,8 +2,8 @@
 // are bundled.
 
 import {
-  ArrowDown, ArrowUp, ChevronDown, ChevronUp, createElement, FileText, History, type IconNode,
-  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, RefreshCw, SquareArrowOutUpRight,
+  ArrowDown, ArrowUp, ChevronDown, ChevronUp, Columns2, createElement, FileText, History, type IconNode, Proportions,
+  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, RefreshCw, Rows2, SquareArrowOutUpRight,
 } from 'lucide';
 import { h } from './dom';
 
@@ -21,6 +21,9 @@ const ICONS = {
   plus: Plus,
   prev: ChevronUp,
   next: ChevronDown,
+  'side-by-side': Columns2,
+  inline: Rows2,
+  'layout-auto': Proportions,
 } satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;
