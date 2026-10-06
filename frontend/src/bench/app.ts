@@ -28,6 +28,7 @@ export interface Config {
   rows: number;
   scrollback: number;
   renderer: Renderer;
+  maxCombining: number;
   env: Record<string, string>;
 }
 
@@ -54,6 +55,8 @@ export function config(hello: Hello, shell: string): Config {
     rows: num('GAKO_ROWS', 50),
     scrollback: num('GAKO_SCROLLBACK', 1000),
     renderer: env.GAKO_RENDERER === 'dom' ? 'dom' : 'webgl',
+    // The app's default (settings.terminalMaxCombining); GAKO_MAX_COMBINING=0 measures without it.
+    maxCombining: num('GAKO_MAX_COMBINING', 8),
     env,
   };
 }
@@ -139,12 +142,13 @@ export class App {
   }
 
   async openTerminal(title: string, opts: Partial<TermOptions> = {}): Promise<TerminalTab> {
-    const term = new TerminalTab(this.t, this.metrics, this.views, {
+    const term = new TerminalTab(this.t, (ev, data) => this.metrics.log(ev, data), this.views, {
       title,
       cols: this.cfg.cols,
       rows: this.cfg.rows,
       scrollback: this.cfg.scrollback,
       renderer: this.cfg.renderer,
+      maxCombining: this.cfg.maxCombining,
       cwd: this.fixture('workspace', 'platform'),
       ...opts,
     });

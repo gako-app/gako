@@ -8,6 +8,7 @@ import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
 import type { DiffTarget, Repo, RepoInfo, Status } from './model';
 import { type Item, Sidebar } from './sidebar';
+import { type Folder, Terminals } from './terminals';
 
 const LAST_BASE = 'gako.lastBase';
 
@@ -17,6 +18,9 @@ class App {
   private diff: DiffPanel;
   private history: HistoryPanel;
   private main = h('main', { class: 'main' });
+  private body = h('div', { class: 'main-body' });
+  private review = h('div', { class: 'review' });
+  private terminals: Terminals;
   private statusbar = h('footer', { class: 'statusbar' });
   private toasts = h('div', { class: 'toasts' });
   private repos: Repo[] = [];
@@ -28,7 +32,7 @@ class App {
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
-  constructor(t: Transport, env: Record<string, string>) {
+  constructor(private t: Transport, env: Record<string, string>) {
     this.git = new Git(t);
     this.log = env.GAKO_LOG
       ? (ev, data = {}) => t.send({ t: 'log', rec: { ev, epochMs: performance.timeOrigin + performance.now(), ...data } })
@@ -43,6 +47,9 @@ class App {
     });
     this.diff = new DiffPanel(this.git);
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
+    this.terminals = new Terminals(t, this.body, this.review, () => this.folders(), this.log, (m) => this.toast(m));
+    this.body.append(this.review);
+    this.main.append(this.terminals.bar, this.body);
     document.getElementById('app')!.replaceChildren(this.sidebar.el, this.main, this.statusbar, this.toasts);
     this.showWelcome();
     t.onEvent((ev) => {
@@ -59,7 +66,7 @@ class App {
     });
     document.addEventListener('keydown', (e) => {
       const typing = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
-      if (!typing && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && !(e.target as HTMLElement).closest('.monaco-editor')) {
+      if (!typing && this.terminals.reviewActive && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && !(e.target as HTMLElement).closest('.monaco-editor')) {
         e.preventDefault();
         this.sidebar.step(e.key === 'ArrowDown' ? 1 : -1);
       }
@@ -87,6 +94,8 @@ class App {
       this.showWelcome();
       this.sidebar.focus();
       this.log('workspaceOpened', { repos: this.repos.length });
+      const agents = await this.t.request<{ shell: string; agents: { name: string; command: string[]; path: string | null }[] }>('agents');
+      await this.terminals.configure(opened.settings, agents.shell, agents.agents);
     } catch (e) {
       this.showOpenForm(base, String((e as Error).message ?? e));
     }
@@ -161,10 +170,22 @@ class App {
   }
 
   private setMode(mode: App['mode']): void {
+    if (this.terminals && !this.terminals.reviewActive) this.terminals.select(null);
     if (this.mode === mode) return;
     this.mode = mode;
     const view = mode === 'diff' ? this.diff.el : mode === 'history' ? this.history.el : this.welcome();
-    this.main.replaceChildren(view);
+    this.review.replaceChildren(view);
+  }
+
+  /** Where a new terminal can run: the repo of the selected file first, then the base folder and the rest. */
+  private folders(): Folder[] {
+    const base = this.opened?.base;
+    const selected = this.diff.target?.repo;
+    const repos = this.repos.filter((r) => r.root !== base).map((r) => ({ path: r.root, name: this.name(r) }));
+    const all: Folder[] = [...(base ? [{ path: base, name: basename(base) }] : []), ...repos];
+    const i = all.findIndex((f) => f.path === selected);
+    if (i > 0) all.unshift(...all.splice(i, 1));
+    return all;
   }
 
   private showWelcome(): void {
@@ -204,6 +225,7 @@ class App {
     this.statusbar.replaceChildren(
       h('span', {}, this.opened?.base ?? ''),
       h('span', { class: 'dim' }, this.scanInfo),
+      this.terminals.strip,
       h('span', { class: 'spacer' }),
       h('button', { class: 'link', onclick: () => this.showOpenForm(this.opened?.base) }, 'Open folder…'),
     );
@@ -216,13 +238,14 @@ class App {
   }
 
   private showOpenForm(value?: string, error?: string): void {
+    if (!this.terminals.reviewActive) this.terminals.select(null);
     this.mode = 'welcome';
     const input = h('input', { type: 'text', class: 'path', value: value ?? '', placeholder: '/path/to/your/base/folder', spellcheck: false });
     const submit = (e: Event) => {
       e.preventDefault();
       if (input.value.trim()) this.open(input.value.trim());
     };
-    this.main.replaceChildren(h('form', { class: 'welcome', onsubmit: submit },
+    this.review.replaceChildren(h('form', { class: 'welcome', onsubmit: submit },
       h('h1', {}, 'Open a folder'),
       h('p', { class: 'dim' }, 'The base folder holding your repositories. Gako finds the repos inside it.'),
       input,

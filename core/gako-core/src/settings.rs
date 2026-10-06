@@ -27,6 +27,22 @@ pub struct Settings {
     pub untracked_limit: usize,
     /// Seconds before a `git` command is given up on.
     pub git_timeout_secs: u64,
+    /// Programs offered for new terminal tabs, besides the shell.
+    pub agents: Vec<Agent>,
+    /// Rows kept per terminal tab.
+    pub terminal_scrollback: usize,
+    /// `webgl` or `dom`.
+    pub terminal_renderer: String,
+    pub terminal_font_size: f64,
+    pub terminal_font_family: String,
+    /// Combining marks kept per character; longer runs are cut (0: no limit). See PHASE2.md.
+    pub terminal_max_combining: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Agent {
+    pub name: String,
+    pub command: Vec<String>,
 }
 
 impl Default for Settings {
@@ -40,6 +56,15 @@ impl Default for Settings {
             debounce_ms: 150,
             untracked_limit: 2000,
             git_timeout_secs: 30,
+            agents: vec![
+                Agent { name: "Claude Code".into(), command: vec!["claude".into()] },
+                Agent { name: "Codex".into(), command: vec!["codex".into()] },
+            ],
+            terminal_scrollback: 1000,
+            terminal_renderer: "webgl".into(),
+            terminal_font_size: if cfg!(target_os = "macos") { 12.0 } else { 14.0 },
+            terminal_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
+            terminal_max_combining: 8,
         }
     }
 }

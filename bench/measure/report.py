@@ -25,11 +25,16 @@ FLAT_MB = 10.0
 FLAT_FRACTION = 0.03
 
 
-def load_runs(platform: str, date: str) -> dict[tuple[str, str, str], dict]:
+def run_phase(r: dict) -> str:
+    return r.get("phase") or ("1" if r["scenario"].startswith("panel") else "0")
+
+
+def load_runs(platform: str, date: str, phase: str | None = None) -> dict[tuple[str, str, str], dict]:
+    """The day's latest run of each kind, for one phase (all phases if none is given)."""
     runs: dict[tuple[str, str, str], dict] = {}
     for f in sorted((OUT / "runs").glob(f"{platform}-*/result.json")):
         r = json.loads(f.read_text())
-        if r.get("date") != date:
+        if r.get("date") != date or (phase is not None and run_phase(r) != phase):
             continue
         runs[(r["app"], r["scenario"], r["settings"])] = r  # sorted by time: the latest wins
         if r["scenario"] == "lifecycle":
@@ -354,12 +359,22 @@ def main() -> None:
     if not runs:
         raise SystemExit(f"no runs for {args.platform} on {args.date}")
     RESULTS.mkdir(exist_ok=True)
-    phase1 = phase1_markdown(runs, args.platform, args.date)
+    phase1 = phase1_markdown(load_runs(args.platform, args.date, "1"), args.platform, args.date)
     if phase1:
         path = RESULTS / f"{args.platform}-phase1-{args.date}.md"
         path.write_text(phase1)
         print(path)
-    phase0 = {k: v for k, v in runs.items() if not k[1].startswith("panel-")}
+    # Later phases re-run phase 0's scenarios with newer code: same table, own file, against the
+    # phase 0 VS Code baseline.
+    phase0 = load_runs(args.platform, args.date, "0")
+    for phase in sorted({run_phase(r) for r in runs.values()} - {"0", "1"}):
+        later = load_runs(args.platform, args.date, phase)
+        for app in sorted({a for a, _, _ in later} - {"vscode"}):
+            rep = Report(app, {**{k: v for k, v in phase0.items() if k[0] == "vscode"}, **later}, args.platform, args.date)
+            rep.build()
+            path = RESULTS / f"{args.platform}-{app}-phase{phase}-{args.date}.md"
+            path.write_text(rep.markdown().replace("# Phase 0 results:", f"# Phase {phase} re-run of phase 0's table:", 1))
+            print(path)
     runs = phase0
     for app in sorted({a for a, _, _ in runs}):
         path = RESULTS / f"{args.platform}-{app}-{args.date}.md"

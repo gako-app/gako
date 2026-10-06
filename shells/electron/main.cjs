@@ -4,7 +4,7 @@
 // both to the frontend through the preload script. gako-core watches its stdin: when this process
 // exits, even by crashing, the pipe closes and the core exits too.
 
-const { app, BrowserWindow, ipcMain, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, protocol, net, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -93,6 +93,11 @@ app.whenReady().then(async () => {
       sandbox: true,
       nodeIntegration: false,
     },
+  });
+  // Links (from terminal output) open in the user's browser, never inside the app.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
   });
   // bench/ sets GAKO_SCENARIO to drive the phase 0 measurement harness instead of the app.
   win.loadURL(process.env.GAKO_SCENARIO ? 'app://gako/bench.html' : 'app://gako/index.html');

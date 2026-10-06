@@ -296,6 +296,23 @@ async fn request(
             let t = mine.get(&id).ok_or_else(|| anyhow::anyhow!("no terminal {id}"))?;
             Ok(serde_json::to_value(t.stats())?)
         }
+        "agents" => {
+            // The configured agents, and whether each is on the PATH.
+            let user = settings::user_file();
+            let s = match workspace {
+                Some(ws) => ws.settings.clone(),
+                None => settings::load(user.as_deref(), None)?,
+            };
+            let agents: Vec<Value> = s
+                .agents
+                .iter()
+                .map(|a| {
+                    let found = a.command.first().and_then(|p| crate::shellenv::which(p));
+                    json!({"name": a.name, "command": a.command, "path": found})
+                })
+                .collect();
+            Ok(json!({"shell": crate::pty::default_shell_name(), "agents": agents}))
+        }
         "workspaceOpen" => {
             let user = settings::user_file();
             let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;

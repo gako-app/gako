@@ -9,6 +9,7 @@ mod git;
 mod pty;
 mod server;
 mod settings;
+mod shellenv;
 mod workspace;
 
 use std::collections::BTreeMap;
@@ -47,6 +48,7 @@ fn main() -> Result<()> {
         .filter(|(k, _)| k.starts_with("GAKO_") && k != "GAKO_TOKEN")
         .collect();
 
+    shellenv::start();
     let state = Arc::new(State::new(root, token.clone(), &log_path, flow, env)?);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()

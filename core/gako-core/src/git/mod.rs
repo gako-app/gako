@@ -41,6 +41,8 @@ impl Git {
             .current_dir(dir)
             // Never prompt, and never take optional locks (status would otherwise refresh the
             // index and trigger our own file watcher).
+            // The login shell's PATH, so hooks find the tools they call.
+            .envs(crate::shellenv::get().get("PATH").map(|p| ("PATH", p.as_str())))
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0")
             .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })

@@ -135,4 +135,10 @@ export interface Settings {
   debounceMs: number;
   untrackedLimit: number;
   gitTimeoutSecs: number;
+  agents: { name: string; command: string[] }[];
+  terminalScrollback: number;
+  terminalRenderer: string;
+  terminalFontSize: number;
+  terminalFontFamily: string;
+  terminalMaxCombining: number;
 }

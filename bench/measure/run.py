@@ -358,6 +358,8 @@ class Run:
             "runId": self.id, "platform": PLATFORM, "app": app, "scenario": scenario, "settings": settings,
             "date": dt.date.today().isoformat(), "pinned": dict(PINNED), "versions": versions(app),
             "settle": args.settle, "window": args.window,
+            # Which phase's code and question this run belongs to; reported separately.
+            "phase": args.phase or ("1" if scenario == "panel" else "0"),
         }
         self.proc = None
 
@@ -801,6 +803,8 @@ def main() -> None:
                     help="Linux: sample memory without root (Chromium's sandboxed processes then go uncounted)")
     ap.add_argument("--cols", type=int, help="pin the terminal size instead of probing VS Code's")
     ap.add_argument("--rows", type=int)
+    ap.add_argument("--phase", help="the phase this run measures (default: 1 for panel, 0 otherwise); "
+                    "report.py writes each phase's results to its own file")
     ap.add_argument("--layout", choices=["work", "stress"], default="work", help="panel: which generated layout")
     ap.add_argument("--quit", choices=["term", "kill"], default="term", help="lifecycle: how to quit the app")
     args = ap.parse_args()

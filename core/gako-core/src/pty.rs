@@ -130,6 +130,15 @@ fn default_shell() -> CommandBuilder {
     }
 }
 
+/// The program a tab with no command runs, for display.
+pub fn default_shell_name() -> String {
+    match std::env::var("GAKO_SHELL") {
+        Ok(s) => s,
+        Err(_) if cfg!(windows) => "powershell.exe".into(),
+        Err(_) => std::env::var("SHELL").unwrap_or_else(|_| "sh".into()),
+    }
+}
+
 pub struct Terminal {
     pub pid: Option<u32>,
     master: Mutex<Option<Box<dyn MasterPty + Send>>>,
@@ -160,6 +169,9 @@ impl Terminal {
             _ => default_shell(),
         };
         cmd.cwd(req.cwd.as_deref().unwrap_or(default_cwd));
+        for (k, v) in crate::shellenv::get() {
+            cmd.env(k, v);
+        }
         cmd.env_remove("GAKO_TOKEN");
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");

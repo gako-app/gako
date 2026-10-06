@@ -3,6 +3,7 @@
 
 import type { App } from './app';
 import { checkSeqLines, checkTail, logicalLines, screenTail } from '../check';
+import { capCombining } from '../combining';
 import { frames, ms, sleep, summarize } from '../metrics';
 import type { TerminalTab } from '../terminal';
 
@@ -114,9 +115,12 @@ async function checkTui(app: App, term: TerminalTab, i: number) {
   return ok;
 }
 
-function checkDumpBuffer(term: TerminalTab, dump: Dump) {
+function checkDumpBuffer(app: App, term: TerminalTab, dump: Dump) {
   const lines = logicalLines(term.term);
-  return dump.kind === 'log' ? checkSeqLines(lines, 9, dump.lastSeq, dump.trailer) : checkTail(lines, dump.tail, dump.trailer);
+  // The terminal caps runs of combining marks, so the expected text is capped the same way.
+  return dump.kind === 'log'
+    ? checkSeqLines(lines, 9, dump.lastSeq, dump.trailer)
+    : checkTail(lines, capCombining(dump.tail, app.cfg.maxCombining), dump.trailer);
 }
 
 // --- scenarios ----------------------------------------------------------------------------------
@@ -214,7 +218,7 @@ async function load(app: App): Promise<void> {
   dumping = false;
   await hiddenEcho;
   const r = await readJson<DumpReport>(app, report);
-  const buffer = checkDumpBuffer(dumpTab, m.load);
+  const buffer = checkDumpBuffer(app, dumpTab, m.load);
   const transport = dumpTab.transportCheck(exit.stats);
   app.metrics.log('dumpDone', { kind: 'load', elapsedMs: r?.elapsedMs, wallMs, buffer, transport });
   app.metrics.log('integrity', { what: 'dump-load', ok: buffer.ok && transport.ok === true, buffer, transport });
@@ -280,7 +284,7 @@ async function dump(app: App): Promise<void> {
     const d = m[kind];
     const r = await waitForJson<DumpReport>(app, app.out(`dump-${kind}.json`));
     await shell.waitQuiet(1000);
-    const buffer = checkDumpBuffer(shell, d);
+    const buffer = checkDumpBuffer(app, shell, d);
     const transport = shell.transportCheck(await shell.stats());
     app.metrics.log('dumpDone', { kind, ...r, buffer, transport });
     app.metrics.log('integrity', { what: `dump-${kind}`, ok: buffer.ok && transport.ok === true, buffer, transport });
