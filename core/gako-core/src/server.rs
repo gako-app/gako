@@ -457,7 +457,8 @@ async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Resul
     }
 }
 
-/// Requests against the open workspace's repos. Mutations refresh the repo's status before
+/// Requests against the open workspace's repos: reading them, and fetch, pull and push (staging
+/// and committing are left to the agents). A fetch, pull or push refreshes the repo's status before
 /// replying, so the frontend sees the new status no later than the reply.
 async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result<Value> {
     let repo = ws.repo(&param::<String>(&params, "repo")?)?;
@@ -482,31 +483,10 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
             let hash: String = param(&params, "hash")?;
             Ok(serde_json::to_value(git::show_commit(g, &repo.root, &hash).await?)?)
         }
-        "gitStage" | "gitUnstage" => {
-            let paths: Vec<String> = param(&params, "paths")?;
-            if method == "gitStage" {
-                git::stage(g, &repo.root, &paths).await?;
-            } else {
-                let unborn = g.run(&repo.root, &["rev-parse", "--verify", "-q", "HEAD"]).await.is_err();
-                git::unstage(g, &repo.root, &paths, unborn).await?;
-            }
-            ws.refresh(&repo.root).await;
-            Ok(Value::Null)
-        }
         "gitFetch" | "gitPull" | "gitPush" => {
             git::remote(&repo.root, &method[3..].to_lowercase()).await?;
             ws.refresh(&repo.root).await;
             Ok(Value::Null)
-        }
-        "gitCommit" => {
-            let message: String = param(&params, "message")?;
-            let amend = params["amend"].as_bool().unwrap_or(false);
-            if message.trim().is_empty() {
-                anyhow::bail!("the commit message is empty");
-            }
-            let hash = git::commit(g, &repo.root, &message, amend).await?;
-            ws.refresh(&repo.root).await;
-            Ok(json!({"hash": hash}))
         }
         _ => anyhow::bail!("unknown method {method}"),
     }

@@ -61,8 +61,9 @@ Phase 0's pieces stay: the Electron shell, `gako-core` in Rust, the one WebSocke
 - **Running git:** the `git` CLI through `tokio::process`, with a timeout, no terminal prompts
   (`GIT_TERMINAL_PROMPT=0`), respecting the repo's own config (`core.fsmonitor`, hooks, signing).
 - **Protocol:** requests for repos, status, file contents at a revision (`git show <rev>:<path>`
-  and the working tree), log, commit details, stage, unstage and commit; pushed events when a
-  repo's status changes. Same framing as phase 0: JSON text frames, a `t` field, request ids.
+  and the working tree), log, commit details, stage, unstage and commit (since replaced by fetch,
+  pull and push: see decision 1); pushed events when a repo's status changes. Same framing as
+  phase 0: JSON text frames, a `t` field, request ids.
 - **Settings:** a JSON file in the platform's config folder (`~/Library/Application Support/Gako`,
   `%APPDATA%\Gako`, `~/.config/gako`), with a per-workspace override in the base folder
   (`.gako/settings.json`). Defaults suit a work layout of 10–30 repos, 1–2 levels deep: scan depth 2,

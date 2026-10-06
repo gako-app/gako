@@ -28,7 +28,6 @@ function layoutOptions(layout: Layout): monaco.editor.IDiffEditorOptions {
 const KIND_LABEL: Record<DiffTarget['kind'], string> = {
   unstaged: 'Index ↔ working tree',
   staged: 'HEAD ↔ index (staged)',
-  review: 'HEAD ↔ working tree',
   conflict: 'HEAD ↔ working tree (conflict)',
   commit: 'Commit',
 };

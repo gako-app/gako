@@ -31,10 +31,6 @@ impl Git {
 
     /// `git <args>` in `dir`, returning stdout. Fails on a non-zero exit, with git's stderr.
     pub async fn run(&self, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
-        self.run_with_input(dir, args, None).await
-    }
-
-    pub async fn run_with_input(&self, dir: &Path, args: &[&str], input: Option<&[u8]>) -> Result<Vec<u8>> {
         let _permit = self.permits.acquire().await?;
         let mut cmd = Command::new("git");
         cmd.args(args)
@@ -45,18 +41,13 @@ impl Git {
             .envs(crate::shellenv::get().get("PATH").map(|p| ("PATH", p.as_str())))
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0")
-            .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+            .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        let mut child = cmd.spawn().context("starting git")?;
-        if let Some(input) = input {
-            use tokio::io::AsyncWriteExt;
-            let mut stdin = child.stdin.take().expect("stdin");
-            stdin.write_all(input).await?;
-        }
+        let child = cmd.spawn().context("starting git")?;
         let out = tokio::time::timeout(self.timeout, child.wait_with_output())
             .await
             .with_context(|| format!("git {} timed out", args.join(" ")))??;
@@ -244,21 +235,6 @@ pub async fn show_commit(git: &Git, repo: &Path, hash: &str) -> Result<CommitDet
     })
 }
 
-/// Stages whole files (additions, changes and deletions).
-pub async fn stage(git: &Git, repo: &Path, paths: &[String]) -> Result<()> {
-    let mut args = vec!["add", "-A", "--"];
-    args.extend(paths.iter().map(String::as_str));
-    git.run(repo, &args).await.map(|_| ())
-}
-
-/// Unstages whole files. On an unborn branch there's no HEAD to restore from, so the files are
-/// removed from the index instead.
-pub async fn unstage(git: &Git, repo: &Path, paths: &[String], unborn: bool) -> Result<()> {
-    let mut args = if unborn { vec!["rm", "--cached", "-r", "-q", "--"] } else { vec!["restore", "--staged", "--"] };
-    args.extend(paths.iter().map(String::as_str));
-    git.run(repo, &args).await.map(|_| ())
-}
-
 /// Talks to the repo's remote: `fetch` (with pruning), `pull` (fast-forward only, so a button
 /// never creates a merge) or `push` (to the branch's upstream). These can take a while and wait on
 /// the network, so they don't hold one of the slots status scans use, they get two minutes, and
@@ -289,17 +265,6 @@ pub async fn remote(repo: &Path, action: &str) -> Result<()> {
         bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
     }
     Ok(())
-}
-
-/// Commits what's staged, with the message from stdin, running the repo's hooks.
-pub async fn commit(git: &Git, repo: &Path, message: &str, amend: bool) -> Result<String> {
-    let mut args = vec!["commit", "--file=-"];
-    if amend {
-        args.push("--amend");
-    }
-    git.run_with_input(repo, &args, Some(message.as_bytes())).await?;
-    let head = git.run(repo, &["rev-parse", "HEAD"]).await?;
-    Ok(String::from_utf8_lossy(&head).trim().to_string())
 }
 
 #[cfg(test)]

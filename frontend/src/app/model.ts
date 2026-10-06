@@ -66,7 +66,7 @@ export interface Side {
   path: string;
 }
 
-export type DiffKind = 'unstaged' | 'staged' | 'review' | 'conflict' | 'commit';
+export type DiffKind = 'unstaged' | 'staged' | 'conflict' | 'commit';
 
 export interface DiffTarget {
   repo: string;
@@ -99,12 +99,6 @@ export function diffTarget(repo: string, kind: Exclude<DiffKind, 'commit'>, e: E
         left: e.index === 'added' ? null : head(original),
         right: e.index === 'deleted' ? null : { rev: 'index', path: e.path },
       };
-    case 'review': {
-      // Everything that changed since the last commit, staged or not: what an agent did.
-      const added = e.untracked || e.index === 'added';
-      const deleted = e.worktree === 'deleted' || (e.index === 'deleted' && !e.worktree);
-      return { repo, kind, path: e.path, left: added ? null : head(original), right: deleted ? null : { rev: 'worktree', path: e.path } };
-    }
     case 'conflict':
       return {
         repo, kind, path: e.path,

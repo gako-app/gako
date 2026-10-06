@@ -58,23 +58,19 @@ async fn nested_repos_are_not_untracked_folders() {
 }
 
 #[tokio::test]
-async fn stage_unstage_commit_and_contents() {
+async fn contents_log_and_commit_details() {
     let t = tempfile::tempdir().unwrap();
     let dir = t.path().canonicalize().unwrap();
     init(&dir);
     std::fs::write(dir.join("a.txt"), "one\n").unwrap();
     let g = git();
 
-    stage(&g, &dir, &["a.txt".into()]).await.unwrap();
+    sh_git(&dir, &["add", "a.txt"]);
     let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
     assert_eq!(st.entries[0].index, Some(Change::Added));
-    unstage(&g, &dir, &["a.txt".into()], true).await.unwrap();
-    assert!(status(&g, &repo(&dir), &[], 100).await.unwrap().status.entries[0].untracked);
-
-    stage(&g, &dir, &["a.txt".into()]).await.unwrap();
-    let first = commit(&g, &dir, "First\n\nWith a body.", false).await.unwrap();
+    sh_git(&dir, &["commit", "-q", "-m", "First\n\nWith a body."]);
     std::fs::write(dir.join("a.txt"), "two\n").unwrap();
-    stage(&g, &dir, &["a.txt".into()]).await.unwrap();
+    sh_git(&dir, &["add", "a.txt"]);
     std::fs::write(dir.join("a.txt"), "three\n").unwrap();
 
     let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
@@ -85,19 +81,12 @@ async fn stage_unstage_commit_and_contents() {
     assert_eq!(text(file(&g, &dir, Rev::WorkTree, "a.txt", 1 << 20).await.unwrap()), "three\n");
     assert!(file(&g, &dir, Rev::Commit("HEAD"), "missing.txt", 1 << 20).await.unwrap().is_none());
 
-    unstage(&g, &dir, &["a.txt".into()], false).await.unwrap();
-    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
-    assert_eq!((st.entries[0].index, st.entries[0].worktree), (None, Some(Change::Modified)));
-
-    stage(&g, &dir, &["a.txt".into()]).await.unwrap();
-    let amended = commit(&g, &dir, "First, amended", true).await.unwrap();
-    assert_ne!(first, amended);
     let commits = log(&g, &dir, 0, 10).await.unwrap();
     assert_eq!(commits.len(), 1);
-    assert_eq!(commits[0].subject, "First, amended");
-
-    let details = show_commit(&g, &dir, &amended).await.unwrap();
-    assert_eq!(details.message, "First, amended");
+    assert_eq!(commits[0].subject, "First");
+    let head = String::from_utf8(g.run(&dir, &["rev-parse", "HEAD"]).await.unwrap()).unwrap();
+    let details = show_commit(&g, &dir, head.trim()).await.unwrap();
+    assert_eq!(details.message, "First\n\nWith a body.");
     assert_eq!(details.files.len(), 1);
     assert_eq!((details.files[0].status, details.files[0].path.as_str()), ('A', "a.txt"));
 }
