@@ -369,7 +369,17 @@ def main() -> None:
     phase0 = load_runs(args.platform, args.date, "0")
     for phase in sorted({run_phase(r) for r in runs.values()} - {"0", "1"}):
         later = load_runs(args.platform, args.date, phase)
-        for app in sorted({a for a, _, _ in later} - {"vscode"}):
+        # Panel re-runs: phase 1's table with this phase's code, against phase 1's VS Code runs.
+        panel = {k: v for k, v in later.items() if k[1].startswith("panel-")}
+        if panel:
+            vs = {k: v for k, v in load_runs(args.platform, args.date, "1").items() if k[0] == "vscode"}
+            text = phase1_markdown({**vs, **panel}, args.platform, args.date)
+            if text:
+                path = RESULTS / f"{args.platform}-phase1-rerun-phase{phase}-{args.date}.md"
+                path.write_text(text.replace("# Phase 1 results:", f"# Phase {phase} re-run of phase 1's table:", 1))
+                print(path)
+        later = {k: v for k, v in later.items() if not k[1].startswith("panel-")}
+        for app in sorted({a for a, _, _ in later} - {"vscode"}) if later else []:
             rep = Report(app, {**{k: v for k, v in phase0.items() if k[0] == "vscode"}, **later}, args.platform, args.date)
             rep.build()
             path = RESULTS / f"{args.platform}-{app}-phase{phase}-{args.date}.md"

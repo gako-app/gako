@@ -22,6 +22,9 @@ export type CoreEvent =
   | { t: 'repoStatus'; repo: string; status?: unknown; error?: string; ms: number }
   | { t: 'repoTouched'; repo: string }
   | { t: 'repos'; repos: unknown[] }
+  | { t: 'filesChanged'; dirs: string[] }
+  | { t: 'searchResults'; search: number; files: unknown[] }
+  | { t: 'indexReady'; files: number; symbols: number; ms: number }
   | { t: 'scanDone'; ms: number; repos: number };
 
 export interface Transport {

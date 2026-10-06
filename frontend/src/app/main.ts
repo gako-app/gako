@@ -3,12 +3,18 @@ import './style.css';
 import { boot } from '../boot';
 import { connect, type Transport } from '../transport';
 import { DiffPanel } from './diff';
-import { basename, h } from './dom';
+import { basename, fill, h } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
 import type { DiffTarget, Repo, RepoInfo, Status } from './model';
 import { type Item, Sidebar } from './sidebar';
 import { type Folder, Terminals } from './terminals';
+import { Explorer } from './explorer';
+import { Viewer } from './viewer';
+import { type Reveal, SearchView } from './search';
+import { GoToFile } from './gotofile';
+import { Navigator } from './navigate';
+import type { FileContent } from './model';
 
 const LAST_BASE = 'gako.lastBase';
 
@@ -27,7 +33,13 @@ class App {
   private opened: Opened | null = null;
   private scanInfo = '';
   private renderQueued = false;
-  private mode: 'welcome' | 'diff' | 'history' = 'welcome';
+  private mode: 'welcome' | 'diff' | 'history' | 'file' = 'welcome';
+  private explorer: Explorer;
+  private viewer: Viewer;
+  private search: SearchView;
+  private goto: GoToFile;
+  private nav: Navigator;
+  private indexInfo = '';
   private historyRepo: Repo | null = null;
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
@@ -46,7 +58,29 @@ class App {
       history: (r) => this.showHistory(r),
     });
     this.diff = new DiffPanel(this.git);
+    this.explorer = new Explorer(t, (path) => this.openFile(path), (m) => this.toast(m));
+    this.sidebar.explorer = this.explorer;
+    this.search = new SearchView(t, (path, reveal) => this.openFile(path, reveal));
+    this.sidebar.search = this.search;
+    this.goto = new GoToFile(t, () => this.opened?.base ?? '', (path) => this.openFile(path));
+    this.nav = new Navigator(t, {
+      open: (path, line, column) => this.openFile(path, { line, columns: [], column }),
+      references: (name) => {
+        if (!this.terminals.reviewActive) this.terminals.select(null);
+        this.sidebar.setView('search');
+        this.search.references(name);
+      },
+      relative: (path) => this.relative(path),
+      toast: (m) => this.toast(m),
+    });
+    this.viewer = new Viewer(
+      (path) => this.t.request<FileContent>('fileRead', { path }),
+      (path, line, column) => this.openInEditor(path, line, column),
+      (path) => this.relative(path),
+    );
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
+    this.viewer.attachNavigation(this.nav);
+    this.diff.attachNavigation(this.nav, (repo, path) => this.join(repo, path));
     this.terminals = new Terminals(t, this.body, this.review, () => this.folders(), this.log, (m) => this.toast(m));
     this.body.append(this.review);
     this.main.append(this.terminals.bar, this.body);
@@ -55,8 +89,18 @@ class App {
     t.onEvent((ev) => {
       if (ev.t === 'repoStatus') this.onStatus(ev.repo, ev.status as Status | undefined, ev.error);
       else if (ev.t === 'repoTouched') this.refreshOpenDiff([ev.repo]);
+      else if (ev.t === 'filesChanged') {
+        const open = this.viewer.path;
+        if (this.mode === 'file' && open && ev.dirs.some((d) => open.startsWith(d) && /^[\\/][^\\/]*$/.test(open.slice(d.length)))) {
+          this.viewer.show(open, true).catch(() => this.toast(`${this.relative(open)} can't be read any more.`));
+        }
+      }
       else if (ev.t === 'repos') this.onRepos(ev.repos as RepoInfo[]);
-      else if (ev.t === 'scanDone') {
+      else if (ev.t === 'indexReady') {
+        this.indexInfo = `${ev.symbols.toLocaleString()} symbols indexed`;
+        this.log('indexReady', { files: ev.files, symbols: ev.symbols, ms: ev.ms });
+        this.renderStatusbar();
+      } else if (ev.t === 'scanDone') {
         // From asking for the workspace to every repo's status: discovery and the first scan.
         const sinceOpen = performance.now() - this.openedAt;
         this.scanInfo = `scanned ${ev.repos} repositories in ${Math.round(sinceOpen)} ms`;
@@ -64,11 +108,35 @@ class App {
         this.renderStatusbar();
       }
     });
+    // Measurements depend on drawing; the log records when the window is hidden (and stops drawing).
+    document.addEventListener('visibilitychange', () => this.log('visibility', { state: document.visibilityState }));
+    const mac = navigator.platform.startsWith('Mac');
     document.addEventListener('keydown', (e) => {
       const typing = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;
-      if (!typing && this.terminals.reviewActive && (e.key === 'ArrowDown' || e.key === 'ArrowUp') && !(e.target as HTMLElement).closest('.monaco-editor')) {
-        e.preventDefault();
-        this.sidebar.step(e.key === 'ArrowDown' ? 1 : -1);
+      const inTerminal = !!(e.target as HTMLElement).closest?.('.xterm');
+      const mod = mac ? e.metaKey : e.ctrlKey;
+      // Shortcuts that shells use (Ctrl+P, Ctrl+Shift+F) stay with the terminal off macOS.
+      if (mod && !e.altKey && (mac || !inTerminal)) {
+        if (e.key.toLowerCase() === 'p' && !e.shiftKey) {
+          e.preventDefault();
+          this.goto.show();
+          return;
+        }
+        if (e.key.toLowerCase() === 't' && !e.shiftKey) {
+          e.preventDefault();
+          this.nav.goToSymbol();
+          return;
+        }
+        if (e.key.toLowerCase() === 'f' && e.shiftKey) {
+          e.preventDefault();
+          if (!this.terminals.reviewActive) this.terminals.select(null);
+          this.sidebar.setView('search');
+          this.search.focus();
+          return;
+        }
+      }
+      if (!typing && this.terminals.reviewActive && !(e.target as HTMLElement).closest('.monaco-editor, .sidebar-list')) {
+        if (this.sidebar.key(e)) e.preventDefault();
       }
     });
   }
@@ -85,6 +153,8 @@ class App {
       try { localStorage.setItem(LAST_BASE, opened.base); } catch { /* storage unavailable */ }
       document.title = `${basename(opened.base)} — Gako`;
       this.sidebar.baseName = basename(opened.base);
+      this.explorer.setBase(opened.base);
+      this.search.base = opened.base;
       this.scanInfo = 'scanning…';
       this.repos = opened.repos.map((r) => ({ ...r }));
       for (const s of opened.statuses) this.onStatus(s.repo, 'status' in s ? s.status : undefined, 'error' in s ? s.error : undefined);
@@ -128,6 +198,11 @@ class App {
       const changed = [...this.pendingRepos];
       this.pendingRepos.clear();
       this.sidebar.render();
+      this.explorer.setRepos(this.repos);
+      if (this.search.repos.length !== this.repos.length) {
+        this.search.repos = this.repos;
+        this.search.renderScope();
+      }
       this.log('statusRendered', { repos: changed });
       this.refreshOpenDiff(changed);
     });
@@ -148,8 +223,10 @@ class App {
     const { prev, next } = this.sidebar.neighbours();
     const r = item.repo;
     const canStage = item.target.kind !== 'commit' && !item.staged && (item.entry.worktree || item.entry.untracked || item.entry.conflict);
+    const worktree = item.target.right?.rev === 'worktree' ? item.target.right.path : null;
     this.diff.show(item.target, {
       repoName: this.name(r),
+      openInEditor: worktree ? (line, column) => this.openInEditor(this.join(r.root, worktree), line, column) : undefined,
       prev: prev ? () => this.sidebar.step(-1) : undefined,
       next: next ? () => this.sidebar.step(1) : undefined,
       stage: canStage ? () => this.act(() => this.git.stage(r.root, [item.entry.path])) : undefined,
@@ -173,8 +250,28 @@ class App {
     if (this.terminals && !this.terminals.reviewActive) this.terminals.select(null);
     if (this.mode === mode) return;
     this.mode = mode;
-    const view = mode === 'diff' ? this.diff.el : mode === 'history' ? this.history.el : this.welcome();
+    const view = mode === 'diff' ? this.diff.el : mode === 'history' ? this.history.el : mode === 'file' ? this.viewer.el : this.welcome();
     this.review.replaceChildren(view);
+  }
+
+  private openFile(path: string, reveal?: Reveal): void {
+    this.setMode('file');
+    this.viewer.show(path, false, reveal).catch((e) => this.toast(String(e.message ?? e)));
+  }
+
+  private openInEditor(path: string, line: number, column: number): void {
+    this.t.request('openInEditor', { path, line, column }).catch((e) => this.toast(String(e.message ?? e)));
+  }
+
+  private join(root: string, rel: string): string {
+    const sep = root.includes('\\') && !root.includes('/') ? '\\' : '/';
+    return root + sep + rel.replaceAll('/', sep);
+  }
+
+  /** A path relative to the base folder, for display. */
+  private relative(path: string): string {
+    const base = this.opened?.base ?? '';
+    return path.startsWith(base) ? path.slice(base.length).replace(/^[\\/]/, '') : path;
   }
 
   /** Where a new terminal can run: the repo of the selected file first, then the base folder and the rest. */
@@ -222,9 +319,10 @@ class App {
   }
 
   private renderStatusbar(): void {
-    this.statusbar.replaceChildren(
+    fill(this.statusbar,
       h('span', {}, this.opened?.base ?? ''),
       h('span', { class: 'dim' }, this.scanInfo),
+      this.indexInfo ? h('span', { class: 'dim' }, this.indexInfo) : null,
       this.terminals.strip,
       h('span', { class: 'spacer' }),
       h('button', { class: 'link', onclick: () => this.showOpenForm(this.opened?.base) }, 'Open folder…'),

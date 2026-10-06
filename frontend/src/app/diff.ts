@@ -5,6 +5,7 @@ import { languageFor, monaco } from '../monaco';
 import { basename, dirname, fill, h } from './dom';
 import type { DiffTarget, FileContent, Side } from './model';
 import type { Git } from './git';
+import type { Navigator } from './navigate';
 
 const KIND_LABEL: Record<DiffTarget['kind'], string> = {
   unstaged: 'Index ↔ working tree',
@@ -20,6 +21,8 @@ export interface DiffActions {
   stage?: () => void;
   unstage?: () => void;
   back?: () => void;
+  /** Opens the shown file in the user's editor at a line. */
+  openInEditor?: (line: number, column: number) => void;
   repoName: string;
 }
 
@@ -95,12 +98,30 @@ export class DiffPanel {
         renamed ? h('span', { class: 'dim' }, ` (renamed from ${renamed.slice(0, -3)})`) : null),
       h('div', { class: 'diff-kind dim', title: `left: ${sideLabel(t.left)}, right: ${sideLabel(t.right)}` }, what),
       h('div', { class: 'diff-actions' },
+        a.openInEditor ? h('button', { onclick: () => this.openAtCursor(a.openInEditor!), title: 'Open in your editor at the cursor' }, 'Open in editor') : null,
         a.stage ? h('button', { onclick: a.stage, title: 'Stage this file' }, 'Stage') : null,
         a.unstage ? h('button', { onclick: a.unstage, title: 'Unstage this file' }, 'Unstage') : null,
         h('button', { onclick: () => this.toggleInline(), title: 'Side by side or inline' }, 'Inline'),
         h('button', { onclick: a.prev, disabled: !a.prev, title: 'Previous file (↑)' }, '↑'),
         h('button', { onclick: a.next, disabled: !a.next, title: 'Next file (↓)' }, '↓')),
     );
+  }
+
+  private openAtCursor(open: (line: number, column: number) => void): void {
+    const pos = this.editor.getModifiedEditor().getPosition();
+    const top = this.editor.getModifiedEditor().getVisibleRanges()[0]?.startLineNumber ?? 1;
+    open(pos?.lineNumber ?? top, pos?.column ?? 1);
+  }
+
+  /** Navigation on both sides; `abs` turns a repo-relative path into a full one. */
+  attachNavigation(nav: Navigator, abs: (repo: string, path: string) => string): void {
+    const side = (s: 'left' | 'right') => () => {
+      const t = this.target;
+      const p = t?.[s]?.path ?? t?.path;
+      return t && p ? abs(t.repo, p) : null;
+    };
+    nav.attach(this.editor.getOriginalEditor(), side('left'));
+    nav.attach(this.editor.getModifiedEditor(), side('right'));
   }
 
   private toggleInline(): void {

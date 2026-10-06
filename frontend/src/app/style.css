@@ -134,3 +134,50 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .statusbar button.link { color: #fff; }
 .toasts { position: fixed; right: 12px; bottom: 34px; display: flex; flex-direction: column; gap: 6px; z-index: 10; }
 .toast { background: #5a1d1d; border: 1px solid #be1100; color: #fff; padding: 8px 12px; border-radius: 4px; max-width: 520px; white-space: pre-wrap; cursor: pointer; }
+
+.explorer { padding: 2px 0 20px; }
+.tree-row { display: flex; align-items: center; gap: 4px; padding-right: 10px; height: 22px; cursor: pointer; white-space: nowrap; }
+.tree-row:hover { background: #2a2d2e; }
+.tree-row.selected { background: var(--select); }
+.sidebar-list:focus .tree-row.selected { outline: 1px solid var(--accent); outline-offset: -1px; }
+.tree-row .twist { width: 12px; color: var(--dim); flex: none; text-align: center; }
+.tree-row .fname { overflow: hidden; text-overflow: ellipsis; }
+.tree-row.ignored .fname { color: #6f6f6f; }
+.tree-row.st-M .fname, .tree-row.st-T .fname, .tree-row.st-R .fname { color: var(--modified); }
+.tree-row.st-A .fname, .tree-row.st-U .fname { color: var(--added); }
+.tree-row.st-D .fname { color: var(--deleted); }
+.tree-row.st-\! .fname { color: var(--conflict); }
+.tree-row.dirty .fname { color: var(--modified); }
+.dirty-dot { color: var(--modified); }
+.badge.repo { background: #1f3a4d; color: #75beff; }
+
+.search { display: flex; flex-direction: column; }
+.search-form { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.search-row { display: flex; gap: 2px; }
+.search-input, .search-glob, .goto-input { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font: inherit; padding: 4px 6px; }
+.search-glob { font-size: 12px; }
+.search-input:focus, .search-glob:focus, .goto-input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.toggle { background: none; border: 1px solid transparent; color: var(--dim); padding: 0 5px; font: 12px Menlo, Consolas, monospace; }
+.toggle.on { border-color: var(--accent); color: var(--text); background: #0e3a5a; }
+.toggle.wide { font: 12px system-ui, sans-serif; }
+.scope-kinds { display: flex; gap: 2px; flex-wrap: wrap; }
+.scope-repos { display: flex; flex-direction: column; max-height: 160px; overflow: auto; padding: 2px 4px; }
+.small { font-size: 12px; }
+.search-summary { padding: 4px 8px; font-size: 12px; }
+.search-repo { display: flex; align-items: center; padding: 4px 8px; font-weight: 600; border-top: 1px solid var(--border); }
+.search-file { display: flex; align-items: center; gap: 4px; padding: 1px 8px 1px 12px; cursor: pointer; white-space: nowrap; }
+.search-file:hover, .search-line:hover { background: #2a2d2e; }
+.search-file .twist { width: 12px; color: var(--dim); }
+.search-line { display: flex; gap: 6px; padding: 1px 8px 1px 32px; cursor: pointer; white-space: nowrap; font: 12px Menlo, Consolas, monospace; }
+.search-line .lineno { min-width: 28px; text-align: right; }
+.search-text { overflow: hidden; text-overflow: ellipsis; }
+mark { background: #613214; color: inherit; outline: 1px solid #9e6a03; }
+.search-hit { background: #613214; outline: 1px solid #9e6a03; }
+.goto-backdrop { position: fixed; inset: 0; z-index: 30; display: flex; justify-content: center; align-items: flex-start; padding-top: 12vh; background: rgb(0 0 0 / 0.25); }
+.goto { width: min(640px, 90vw); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 8px 32px rgb(0 0 0 / 0.6); padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+.goto-list { max-height: 50vh; overflow: auto; }
+.goto-item { display: flex; gap: 8px; padding: 3px 8px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+.goto-item.selected { background: var(--select); }
+.goto-item .fdir { overflow: hidden; text-overflow: ellipsis; }
+.goto-item mark { background: none; outline: none; color: #75beff; font-weight: 600; }
+.goto-item .kind { min-width: 64px; font-size: 11px; text-transform: lowercase; }

@@ -8,8 +8,11 @@ search and navigation. It never edits code; editing is handed off to an external
 
 1. [docs/PLAN.md](docs/PLAN.md): goal, scope, stack, build order, known traps and decision rules.
    It's the single source of truth.
-2. The brief for the current phase. **Phase 0 is done** (see [docs/PHASE0.md](docs/PHASE0.md)): the
-   app shell is Electron. **Current phase: 1**, see [docs/PHASE1.md](docs/PHASE1.md).
+2. The phase briefs. **Phase 0 is done** (see [docs/PHASE0.md](docs/PHASE0.md)): the app shell is
+   Electron. **Phases 1–5 are built and measured on macOS**: [PHASE1](docs/PHASE1.md) (Git panel),
+   [PHASE2](docs/PHASE2.md) (terminal tabs), [PHASE3](docs/PHASE3.md) (explorer and viewer),
+   [PHASE4](docs/PHASE4.md) (search), [PHASE5](docs/PHASE5.md) (navigation). Still to do: the final
+   pass on Windows and Linux, and the user's real-use trials.
 
 ## Rules
 

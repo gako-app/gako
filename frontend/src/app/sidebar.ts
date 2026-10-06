@@ -6,10 +6,12 @@
 // rebuilt: each repo has a persistent section whose commit box survives every update.
 
 import { basename, dirname, fill, h } from './dom';
+import type { Explorer } from './explorer';
+import type { SearchView } from './search';
 import type { DiffTarget, Entry, Repo, Status } from './model';
 import { changeCount, diffTarget, LETTER, reviewLetter } from './model';
 
-export type View = 'repos' | 'review';
+export type View = 'repos' | 'review' | 'files' | 'search';
 
 /** A file row the user can select; the order of these is the order of ↑ and ↓. */
 export interface Item {
@@ -54,15 +56,25 @@ export class Sidebar {
   selected: string | null = null;
   repos: Repo[] = [];
   baseName = '';
+  explorer: Explorer | null = null;
+  search: SearchView | null = null;
 
   constructor(private hooks: SidebarHooks) {
     this.el.append(this.tabs, this.list);
     this.list.addEventListener('keydown', (e) => {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        this.step(e.key === 'ArrowDown' ? 1 : -1);
-      }
+      if (this.key(e)) e.preventDefault();
     });
+  }
+
+  /** Keyboard navigation in the current view; true if the key was used. */
+  key(e: KeyboardEvent): boolean {
+    if (this.view === 'files') return this.explorer?.key(e) ?? false;
+    if (this.view === 'search') return false;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      this.step(e.key === 'ArrowDown' ? 1 : -1);
+      return true;
+    }
+    return false;
   }
 
   setView(view: View): void {
@@ -105,10 +117,20 @@ export class Sidebar {
       h('button', { class: this.view === 'repos' ? 'active' : '', onclick: () => this.setView('repos') }, 'Repositories'),
       h('button', { class: this.view === 'review' ? 'active' : '', onclick: () => this.setView('review') },
         `Review queue${files ? ` (${files})` : ''}`),
+      h('button', { class: this.view === 'files' ? 'active' : '', onclick: () => this.setView('files') }, 'Files'),
+      h('button', { class: this.view === 'search' ? 'active' : '', onclick: () => { this.setView('search'); this.search?.focus(); } }, 'Search'),
     );
     this.items = [];
     if (this.view === 'repos') this.renderRepos(changed, clean);
-    else this.renderReview(changed);
+    else if (this.view === 'review') this.renderReview(changed);
+    else {
+      const view = this.view === 'files' ? this.explorer?.el : this.search?.el;
+      if (view && (this.list.firstChild !== view || this.list.childNodes.length !== 1)) {
+        this.list.replaceChildren(view);
+        if (this.view === 'files') this.explorer?.render();
+      }
+      return;
+    }
     this.list.querySelector(`[data-key="${CSS.escape(this.selected ?? '')}"]`)?.classList.add('selected');
   }
 

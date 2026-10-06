@@ -375,7 +375,7 @@ class Run:
     def launch_gako(self, extra_env: dict | None = None, app_page: bool = False) -> float:
         # The app page runs without GAKO_SCENARIO; the shells load the bench harness when it's set.
         scenario = {} if app_page else {"GAKO_SCENARIO": self.scenario}
-        env = {**os.environ, **scenario, "GAKO_RUN_ID": self.id, "GAKO_LOG": str(self.logfile),
+        env = {**os.environ, **scenario, "GAKO_BENCH": "1", "GAKO_RUN_ID": self.id, "GAKO_LOG": str(self.logfile),
                "GAKO_OUT_DIR": str(self.dir), "GAKO_SCROLLBACK": str(PINNED["scrollback"]),
                "GAKO_RENDERER": PINNED["renderer"], "GAKO_COLS": str(PINNED["cols"]), "GAKO_ROWS": str(PINNED["rows"]),
                **(extra_env or {})}
@@ -674,7 +674,7 @@ def run_panel(run: Run) -> None:
         run.result["memory"] = run.measure_window(start, sampler)
         idle = window(sampler.samples, start + run.args.settle * 1000, now_ms())
         run.result["cpuIdlePercent"] = cpu_percent(idle)
-        log(f"idle CPU {run.result['cpuIdlePercent']:.2f}% of a core")
+        log(f"idle CPU {run.result['cpuIdlePercent'] or 0:.2f}% of a core")
 
         if run.app != "vscode":
             def shown_after(repo: Path, t0: float) -> float:

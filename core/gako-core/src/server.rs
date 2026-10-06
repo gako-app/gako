@@ -219,13 +219,25 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                         }
                     }
                     ClientMessage::Log { rec } => state.log_record(rec),
-                    // Git requests run on their own, so a slow one never holds up terminal traffic.
-                    ClientMessage::Req { id, m, p } if m.starts_with("git") => {
+                    // Git and file requests run on their own, so a slow one never holds up terminal
+                    // traffic.
+                    ClientMessage::Req { id, m, p }
+                        if m.starts_with("git")
+                            || m.starts_with("file")
+                            || m.starts_with("search")
+                            || m.starts_with("symbol")
+                            || m == "openInEditor"
+                            || m == "findFiles" =>
+                    {
                         let ws = workspace.clone();
                         let tx = tx.clone();
                         tokio::spawn(async move {
                             let result = match ws {
-                                Some(ws) => git_request(&ws, &m, p).await,
+                                Some(ws) if m.starts_with("git") => git_request(&ws, &m, p).await,
+                                Some(ws) if m.starts_with("search") || m.starts_with("symbol") || m == "findFiles" => {
+                                    search_request(&ws, &m, p).await
+                                }
+                                Some(ws) => file_request(&ws, &m, p).await,
                                 None => Err(anyhow::anyhow!("no workspace is open")),
                             };
                             let reply = match result {
@@ -340,6 +352,82 @@ async fn request(
 
 fn param<T: serde::de::DeserializeOwned>(params: &Value, key: &str) -> Result<T> {
     serde_json::from_value(params[key].clone()).map_err(|e| anyhow::anyhow!("parameter {key}: {e}"))
+}
+
+/// Search and go-to-file. Results stream as `{"t":"searchResults"}` events; the reply carries the
+/// totals once the search ends.
+async fn search_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result<Value> {
+    let kind = params["scope"]["kind"].as_str().unwrap_or("all").to_string();
+    let chosen: Vec<String> = serde_json::from_value(params["scope"]["repos"].clone()).unwrap_or_default();
+    match method {
+        "search" => {
+            let query: crate::search::Query = param(&params, "query")?;
+            let search_id = params["search"].clone();
+            let scope = ws.scope(&kind, &chosen);
+            let cancel = ws.begin_search();
+            let ws2 = ws.clone();
+            let stats = tokio::task::spawn_blocking(move || {
+                crate::search::search(&scope, &query, &cancel, &|files| {
+                    ws2.emit(json!({"t": "searchResults", "search": search_id, "files": files}));
+                })
+            })
+            .await??;
+            Ok(serde_json::to_value(stats)?)
+        }
+        "searchCancel" => {
+            ws.cancel_search();
+            Ok(Value::Null)
+        }
+        "symbolDefinitions" => {
+            let name: String = param(&params, "name")?;
+            let from: Option<PathBuf> = serde_json::from_value(params["path"].clone()).unwrap_or(None);
+            let Some(index) = ws.symbols() else { return Ok(json!({"ready": false, "symbols": []})) };
+            let repo = from.as_deref().and_then(|p| ws.repo_of(p));
+            let found = index.read().unwrap().definitions(&name, from.as_deref(), repo.as_deref());
+            Ok(json!({"ready": true, "symbols": found}))
+        }
+        "symbolSearch" => {
+            let query: String = param(&params, "query")?;
+            let Some(index) = ws.symbols() else { return Ok(json!({"ready": false, "symbols": []})) };
+            let found: Vec<Value> = index
+                .read()
+                .unwrap()
+                .search(&query, 100)
+                .into_iter()
+                .map(|(s, positions)| json!({"symbol": s, "positions": positions}))
+                .collect();
+            Ok(json!({"ready": true, "symbols": found}))
+        }
+        "findFiles" => {
+            let query: String = param(&params, "query")?;
+            let files = ws.files().await;
+            let base = ws.base.clone();
+            let hits = tokio::task::spawn_blocking(move || crate::search::find_files(&files, &base, &query, 50)).await?;
+            Ok(serde_json::to_value(hits)?)
+        }
+        _ => anyhow::bail!("unknown method {method}"),
+    }
+}
+
+/// The file explorer's requests, limited to the workspace's folders.
+async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result<Value> {
+    let path: PathBuf = param(&params, "path")?;
+    let path = crate::files::inside(&ws.roots(), &path)?;
+    match method {
+        "filesList" => {
+            let listing = tokio::task::spawn_blocking(move || crate::files::list(&path)).await??;
+            Ok(serde_json::to_value(listing)?)
+        }
+        "fileRead" => Ok(serde_json::to_value(crate::files::read(&path, 50 << 20).await?)?),
+        "openInEditor" => {
+            let line = params["line"].as_u64().unwrap_or(1) as u32;
+            let column = params["column"].as_u64().unwrap_or(1) as u32;
+            let cmd = crate::files::editor_command(ws.settings.editor.as_deref(), &path, line, column);
+            crate::files::spawn_editor(&cmd)?;
+            Ok(json!({"command": cmd}))
+        }
+        _ => anyhow::bail!("unknown method {method}"),
+    }
 }
 
 /// Requests against the open workspace's repos. Mutations refresh the repo's status before

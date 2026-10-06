@@ -109,6 +109,19 @@ uv run measure/report.py
 
 `report.py` writes `bench/results/<platform>-phase1-<date>.md` with PHASE1.md's thresholds.
 
+## Phases 3–5: explorer, search and navigation
+
+These are measured against `gako-core` alone, on fresh copies of the same generated layouts:
+
+```bash
+node bench/measure/core.mjs work
+node bench/measure/core.mjs stress
+```
+
+It prints JSON: folder listing, search (first result and total), go to file, the symbol index's build
+time and size, definition and symbol lookups, how soon a saved function becomes findable, and the
+core's memory.
+
 ## 6. The VS Code baseline
 
 `run.py vscode …` starts VS Code with its own `--user-data-dir` under the run's folder, so your

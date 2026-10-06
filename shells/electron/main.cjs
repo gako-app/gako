@@ -99,6 +99,9 @@ app.whenReady().then(async () => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+  // bench/ measures what's drawn: a window left behind other apps counts as hidden on macOS and
+  // stops drawing, so under the bench it comes to the front.
+  if (process.env.GAKO_BENCH) win.once('ready-to-show', () => { app.focus({ steal: true }); win.moveTop(); });
   // bench/ sets GAKO_SCENARIO to drive the phase 0 measurement harness instead of the app.
   win.loadURL(process.env.GAKO_SCENARIO ? 'app://gako/bench.html' : 'app://gako/index.html');
 });
