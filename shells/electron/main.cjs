@@ -79,6 +79,9 @@ function startCore() {
 let quitting = false;
 let core = null;
 
+/** THIRD-PARTY-NOTICES.txt: in the app's resources, or at the repository root. */
+const noticesFile = () => path.join(app.isPackaged ? process.resourcesPath : root, 'THIRD-PARTY-NOTICES.txt');
+
 // The window comes back where it was left: its size and position (if they still fit a display) and
 // whether it was maximised or full screen. The first time, it opens centred at up to 1600 × 1000.
 // The bench always gets the same fixed size, so its measurements stay comparable.
@@ -131,7 +134,9 @@ function setMenu() {
   }
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Gako', submenu: [
-      { role: 'about' }, { type: 'separator' },
+      { role: 'about' },
+      { label: 'Third-Party Notices…', click: () => shell.openPath(noticesFile()) },
+      { type: 'separator' },
       { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' },
       { role: 'quit' },
     ] },
@@ -147,7 +152,7 @@ function setMenu() {
 
 app.whenReady().then(async () => {
   setMenu();
-  app.setAboutPanelOptions({ applicationName: 'Gako', applicationVersion: app.getVersion(), copyright: 'Lucide icons: ISC licence' });
+  app.setAboutPanelOptions({ applicationName: 'Gako', applicationVersion: app.getVersion(), credits: 'Third-party software: Gako menu › Third-Party Notices' });
   // Packaged, the Dock icon comes from the app bundle; run from the repository, it's set here.
   if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, 'build', 'icon.png'));
 

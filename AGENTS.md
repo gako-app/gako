@@ -10,9 +10,11 @@ search and navigation. It never edits code; editing is handed off to an external
    It's the single source of truth.
 2. The phase briefs. **Phase 0 is done** (see [docs/PHASE0.md](docs/PHASE0.md)): the app shell is
    Electron. **Phases 1–5 are built and measured on macOS**: [PHASE1](docs/PHASE1.md) (Git panel),
-   [PHASE2](docs/PHASE2.md) (terminal tabs), [PHASE3](docs/PHASE3.md) (explorer and viewer),
-   [PHASE4](docs/PHASE4.md) (search), [PHASE5](docs/PHASE5.md) (navigation). Still to do: the final
-   pass on Windows and Linux, and the user's real-use trials.
+   [PHASE2](docs/PHASE2.md) (terminals and the agent bar), [PHASE3](docs/PHASE3.md) (explorer and
+   viewer), [PHASE4](docs/PHASE4.md) (search), [PHASE5](docs/PHASE5.md) (navigation), then reworked
+   after the user's first trials (each brief's decisions say what changed and why), and packaged as
+   an app (`npm run package`, see README.md). Still to do: real use on macOS, then the pass on
+   Windows and Linux. Code signing and auto-update are left for later.
 
 ## Rules
 

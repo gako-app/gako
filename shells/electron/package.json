@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "icons": "electron scripts/icons.cjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "notices": "node scripts/notices.mjs"
   },
   "devDependencies": {
     "@electron/packager": "^20.3.0",

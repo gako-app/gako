@@ -17,8 +17,10 @@ const root = path.join(shell, '..', '..');
 const exe = process.platform === 'win32' ? '.exe' : '';
 const core = path.join(root, 'core', 'target', 'release', `gako-core${exe}`);
 const frontend = path.join(root, 'frontend', 'dist');
+const notices = path.join(root, 'THIRD-PARTY-NOTICES.txt');
+const electronDist = path.join(path.dirname(require.resolve('electron/package.json')), 'dist');
 
-for (const [what, p] of [['the core', core], ['the frontend', path.join(frontend, 'index.html')]]) {
+for (const [what, p] of [['the core', core], ['the frontend', path.join(frontend, 'index.html')], ['the notices', notices]]) {
   if (!fs.existsSync(p)) {
     console.error(`${what} isn't built (${p}); run \`npm run package\` from the repository root`);
     process.exit(1);
@@ -40,7 +42,8 @@ const [out] = await packager({
   prune: false,
   // The shell is two files; its dependencies are build tools.
   ignore: [/^\/build($|\/)/, /^\/scripts($|\/)/, /^\/node_modules($|\/)/],
-  // Resources/gako-core and Resources/dist.
-  extraResource: [core, frontend],
+  // Resources/gako-core, Resources/dist, and the licence notices: Gako's third-party notices and
+  // Electron's own two files (which would otherwise sit beside the app, not in it).
+  extraResource: [core, frontend, notices, path.join(electronDist, 'LICENSE'), path.join(electronDist, 'LICENSES.chromium.html')],
 });
 console.log(`packaged: ${out}`);

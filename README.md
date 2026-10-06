@@ -33,3 +33,7 @@ it's for the machine it was built on.
 
 The icon's source is `shells/electron/build/icon.svg`; `npm run icons -w shells/electron` renders
 the files packaging uses from it.
+
+Packaging also regenerates [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt): the npm packages and
+Rust crates Gako includes, with their licences. The app carries it, with Electron's and Chromium's
+own notices, and opens it from the Gako menu (Third-Party Notices…).

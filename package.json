@@ -10,6 +10,6 @@
     "app": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm start -w shells/electron --",
     "build:frontend": "npm run build -w frontend",
     "dev:frontend": "npm run dev -w frontend",
-    "package": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm run package -w shells/electron"
+    "package": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm run notices -w shells/electron && npm run package -w shells/electron"
   }
 }
