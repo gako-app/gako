@@ -186,11 +186,18 @@ export class Terminals {
     if (exit) return exit.code ? 'failed' : 'exited';
     const title = tab.term.title;
     if (titleHasState(title)) tab.titled = true;
+    let state: State;
     if (tab.titled) {
       const t = readTitle(title);
-      return t === 'idle' ? 'quiet' : t;
+      state = t === 'idle' ? 'quiet' : t;
+    } else {
+      state = now - tab.term.lastOutputAt < WORKING_MS ? 'working' : 'quiet';
     }
-    return now - tab.term.lastOutputAt < WORKING_MS ? 'working' : 'quiet';
+    // A notification since the user last typed (Claude Code's approval requests come this way, see
+    // agents.rs in the core) means it's waiting for them, until they type.
+    const notice = tab.term.notice;
+    if (state === 'quiet' && notice && notice.at > tab.term.lastInputAt) return 'waiting';
+    return state;
   }
 
   /** Whether the user is looking at this terminal right now. */

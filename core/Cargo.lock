@@ -377,6 +377,7 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "libc",
  "notify",
  "notify-debouncer-full",
  "portable-pty",

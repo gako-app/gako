@@ -50,6 +50,10 @@ interface PendingEcho {
 
 const encoder = new TextEncoder();
 
+/** What xterm.js sends on its own rather than from the keyboard: focus reports, mouse reports, and
+ * replies to the program's queries (device attributes, cursor position, OSC colours). */
+const TERMINAL_REPORT = /^\x1b(\[[IO]|\[\?[\d;]*c|\[>[\d;]*c|\[\d+;\d+R|\[<[\d;]+[Mm]|\[M|\]|P)/;
+
 export class TerminalTab {
   readonly el: HTMLDivElement;
   readonly term: Terminal;
@@ -127,7 +131,7 @@ export class TerminalTab {
     this.pid = r.pid;
     this.t.onBytes(this.id, (data) => this.output(data));
     this.term.onData((d) => {
-      this.lastInputAt = performance.now();
+      if (!TERMINAL_REPORT.test(d)) this.lastInputAt = performance.now();
       this.t.sendBytes(this.id, encoder.encode(d));
     });
     this.term.onBinary((d) => this.t.sendBytes(this.id, Uint8Array.from(d, (c) => c.charCodeAt(0))));

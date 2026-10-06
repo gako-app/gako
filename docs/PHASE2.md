@@ -104,8 +104,20 @@ terminals alive across app restarts; split panes.
    sent through the terminal (OSC 9, OSC 777 or kitty's OSC 99, whose support query Gako now
    answers) marks the agent and shows its text. Answering made no difference to OpenCode 1.18 with
    its defaults: it sent nothing at the end of a turn or for a permission request (tried
-   2026-10-06), so OpenCode and Pi still rely on output alone. Not built yet: a Claude Code hook
-   (through `--settings`) to tell its approvals apart from finished turns.
+   2026-10-06), so OpenCode and Pi still rely on output alone. *Claude Code's approvals:* Gako starts `claude`
+   with a Notification hook passed through `--settings` (added to the user's own settings, not
+   replacing them), which runs `gako-core notify`. Claude Code runs hooks without a terminal, so
+   the core names each terminal's device in `GAKO_TTY` and the helper writes an OSC 9 notification
+   there. Claude Code sends it about 6 s after its approval prompt appears ("Claude needs your
+   permission"); the agent bar then shows the agent as waiting, in yellow, until the user types.
+   The `agentHooks` setting (on by default) turns this off.
+   *Closing terminals (found 2026-10-06 with Claude Code):* Claude Code survives the SIGHUP a
+   closing terminal sends, and on macOS a program can't finish exiting while its terminal still
+   holds output nobody reads, which the core's reader did while waiting for the exit status. Both
+   left Claude Code running after its tab closed, or stuck exiting. Now the reader lets go of the
+   terminal first, and the program's process group gets SIGTERM and then SIGKILL if SIGHUP doesn't
+   end it (`pty.rs`, with tests for both cases). Phase 0's orphan check used test programs that
+   exit on SIGHUP, so it couldn't catch this.
 2. **New tabs:** a menu picks the program (shell, or a configured agent found on the PATH) and the
    folder (the base folder or a repo; the repo of the selected file comes first).
 3. **Settings:** `agents` (name and command; Claude Code, Codex, OpenCode and Pi by default, each offered

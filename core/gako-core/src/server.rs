@@ -69,8 +69,10 @@ impl State {
     /// Kills every terminal's child process. Called before the core exits.
     pub fn shutdown(&self) {
         let terms: Vec<_> = self.terminals.lock().unwrap().drain().map(|(_, t)| t).collect();
-        for t in terms {
-            t.close();
+        // The core exits next, so it waits until each program is gone (a few seconds at most).
+        let ending: Vec<_> = terms.iter().filter_map(|t| t.close()).collect();
+        for e in ending {
+            let _ = e.join();
         }
         self.log_record(json!({"ev": "coreExit"}));
     }
@@ -294,7 +296,10 @@ async fn request(
             Ok(json!({"text": String::from_utf8_lossy(&bytes)}))
         }
         "termOpen" => {
-            let req: OpenRequest = serde_json::from_value(params)?;
+            let mut req: OpenRequest = serde_json::from_value(params)?;
+            if workspace.as_ref().is_none_or(|w| w.settings.agent_hooks) {
+                req.cmd = req.cmd.map(crate::agents::adjust);
+            }
             let id = state.next_term.fetch_add(1, Ordering::Relaxed);
             let term = Terminal::spawn(id, req, &state.root, state.flow, tx.clone())?;
             state.log_record(json!({"ev": "termSpawn", "term": id, "pid": term.pid}));

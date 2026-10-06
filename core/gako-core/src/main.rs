@@ -5,6 +5,7 @@
 //! that present the token it was started with (`GAKO_TOKEN`). It exits when its stdin closes, which
 //! is how it notices that the parent shell has gone, even after a crash.
 
+mod agents;
 mod editors;
 mod files;
 mod git;
@@ -27,6 +28,10 @@ use crate::pty::FlowConfig;
 use crate::server::State;
 
 fn main() -> Result<()> {
+    // `gako-core notify`: run by an agent's hook, not as the core (see agents.rs).
+    if std::env::args().nth(1).as_deref() == Some("notify") {
+        return agents::notify_main();
+    }
     let generated_token = std::env::var("GAKO_TOKEN").is_err();
     let token = match std::env::var("GAKO_TOKEN") {
         Ok(t) if !t.is_empty() => t,

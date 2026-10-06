@@ -105,6 +105,10 @@ impl Flow {
         self.cv.notify_all();
     }
 
+    fn is_closed(&self) -> bool {
+        self.state.lock().unwrap().closed
+    }
+
     fn stats(&self) -> Stats {
         self.state.lock().unwrap().stats
     }
@@ -118,6 +122,26 @@ pub fn fnv1a(mut hash: u32, bytes: &[u8]) -> u32 {
         hash = hash.wrapping_mul(0x0100_0193);
     }
     hash
+}
+
+/// Signals a process group until it's gone: SIGHUP, then SIGTERM, then SIGKILL, with a grace period
+/// between them.
+#[cfg(unix)]
+fn end_group(group: libc::pid_t) {
+    use std::time::{Duration, Instant};
+    // SAFETY: killpg only sends a signal; signal 0 checks whether any process is left in the group.
+    let alive = || unsafe { libc::killpg(group, 0) } == 0;
+    for (signal, grace) in [(libc::SIGHUP, 1000), (libc::SIGTERM, 1500)] {
+        unsafe { libc::killpg(group, signal) };
+        let until = Instant::now() + Duration::from_millis(grace);
+        while Instant::now() < until {
+            if !alive() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+    unsafe { libc::killpg(group, libc::SIGKILL) };
 }
 
 /// `GAKO_SHELL` if set; otherwise PowerShell on Windows (VS Code's default there too) and the
@@ -208,6 +232,11 @@ impl Terminal {
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         cmd.env("TERM_PROGRAM", "gako");
+        // The terminal's device, for helpers that run without one, such as an agent's hooks (see
+        // agents.rs).
+        if let Some(tty) = pair.master.tty_name() {
+            cmd.env("GAKO_TTY", tty);
+        }
         for (k, v) in &req.env {
             cmd.env(k, v);
         }
@@ -282,7 +311,14 @@ impl Terminal {
                     r.record("out", &buf[..n]);
                 }
                 flow.forwarded(&buf[..n]);
+                if flow.is_closed() {
+                    break;
+                }
             }
+            // The PTY closes before waiting for the program: on macOS a program can't finish exiting
+            // while its terminal still holds output nobody reads, so holding it here would leave both
+            // waiting on each other (and the program alive, stuck exiting).
+            drop(reader);
             let code = status_rx.recv().ok().flatten();
             let _ = tx.send(Event::Exit(ExitInfo { term: id, code, stats: flow.stats() }));
         })?;
@@ -323,11 +359,95 @@ impl Terminal {
     }
 
     /// Kills the child and releases the PTY. The reader thread then reports the exit.
-    pub fn close(&self) {
+    /// Ends the program: SIGHUP first, as a terminal closing does. Some programs ignore it (Claude
+    /// Code does) or leave children behind, so on Unix its whole process group then gets SIGTERM
+    /// and finally SIGKILL, on a thread that's returned for callers that must wait for it (the
+    /// core exiting).
+    pub fn close(&self) -> Option<std::thread::JoinHandle<()>> {
         self.start();
         let _ = self.killer.lock().unwrap().kill();
         self.flow.close();
         self.input.lock().unwrap().take();
         self.master.lock().unwrap().take();
+        #[cfg(unix)]
+        {
+            // The program leads its own session, so its process group has its pid.
+            let group = self.pid? as libc::pid_t;
+            std::thread::Builder::new().name("pty-end".into()).spawn(move || end_group(group)).ok()
+        }
+        #[cfg(not(unix))]
+        None
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn alive(pid: u32) -> bool {
+        // SAFETY: signal 0 only checks that the process exists.
+        unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+    }
+
+    /// A program that ignores SIGHUP, as Claude Code does, and its child are still ended when
+    /// their terminal closes.
+    #[test]
+    fn closing_ends_programs_that_ignore_sighup() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("child");
+        let script = format!("trap '' HUP; sleep 60 & echo $! > {}; wait", pid_file.display());
+        let req = OpenRequest {
+            cols: 80,
+            rows: 24,
+            cmd: Some(vec!["sh".into(), "-c".into(), script]),
+            cwd: None,
+            env: BTreeMap::new(),
+        };
+        let config = FlowConfig { high: 1 << 20, low: 1 << 18, chunk: 4096 };
+        let term = Terminal::spawn(1, req, dir.path(), config, tx).unwrap();
+        term.start();
+        let pid = term.pid.unwrap();
+        let started = std::time::Instant::now();
+        while !pid_file.exists() && started.elapsed().as_secs() < 5 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let child: u32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+        assert!(alive(pid) && alive(child));
+        term.close().unwrap().join().unwrap();
+        // The program is reaped by its waiter thread; give it a moment.
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        while rx.try_recv().is_ok() {}
+        assert!(!alive(child), "the child survived");
+        assert!(!alive(pid), "the program survived");
+    }
+
+    /// A program that writes a lot as it exits, after the page that read its terminal has gone,
+    /// still finishes exiting (on macOS it can't while its unread output is held).
+    #[test]
+    fn closing_ends_programs_that_write_on_exit() {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let dir = tempfile::tempdir().unwrap();
+        let ready = dir.path().join("ready");
+        let script = format!(
+            "trap 'head -c 4000000 /dev/zero | tr \\0 x; exit 0' HUP TERM; touch {}; while :; do sleep 1; done",
+            ready.display()
+        );
+        let req = OpenRequest { cols: 80, rows: 24, cmd: Some(vec!["sh".into(), "-c".into(), script]), cwd: None, env: BTreeMap::new() };
+        let config = FlowConfig { high: 1 << 20, low: 1 << 18, chunk: 4096 };
+        let term = Terminal::spawn(1, req, dir.path(), config, tx).unwrap();
+        term.start();
+        let pid = term.pid.unwrap();
+        let started = std::time::Instant::now();
+        while !ready.exists() && started.elapsed().as_secs() < 5 {
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        drop(rx);
+        let closed = std::time::Instant::now();
+        term.close().unwrap().join().unwrap();
+        while alive(pid) && closed.elapsed().as_secs() < 6 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(!alive(pid), "the program is stuck exiting");
     }
 }

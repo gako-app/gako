@@ -42,6 +42,8 @@ pub struct Settings {
     /// `{file}`, `{line}` and `{column}` placeholders. Unset: the first known editor installed. See
     /// PHASE3.md and editors.rs.
     pub editor: Option<crate::editors::EditorSetting>,
+    /// Start Claude Code with a hook that reports when it waits for approval (see agents.rs).
+    pub agent_hooks: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -73,6 +75,7 @@ impl Default for Settings {
             terminal_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
             terminal_max_combining: 4,
             editor: None,
+            agent_hooks: true,
         }
     }
 }
