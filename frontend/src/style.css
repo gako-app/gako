@@ -1,0 +1,76 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #1e1e1e;
+  color: #cccccc;
+  font: 12px system-ui, sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#tabs {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: #252526;
+  flex: none;
+}
+
+#tabs button {
+  background: #2d2d2d;
+  color: inherit;
+  border: 0;
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+
+#tabs button.active {
+  background: #1e1e1e;
+  color: #ffffff;
+}
+
+#tabs .extra {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+}
+
+#views {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.view {
+  position: absolute;
+  inset: 0;
+}
+
+.view.terminal {
+  padding: 4px;
+  overflow: hidden;
+}
+
+#overlay {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  max-width: 480px;
+  padding: 6px 8px;
+  background: rgb(0 0 0 / 0.7);
+  font: 11px Menlo, Consolas, monospace;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#overlay:empty {
+  display: none;
+}

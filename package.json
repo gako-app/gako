@@ -1,0 +1,9 @@
+{
+  "name": "gako",
+  "private": true,
+  "workspaces": ["frontend", "shells/electron", "shells/tauri"],
+  "scripts": {
+    "build:frontend": "npm run build -w frontend",
+    "dev:frontend": "npm run dev -w frontend"
+  }
+}

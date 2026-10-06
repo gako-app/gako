@@ -1,0 +1,17 @@
+# Build output
+target/
+node_modules/
+dist/
+frontend/dist/
+
+# Generated test data, logs and raw measurements
+bench/out/
+
+# Python
+__pycache__/
+.venv/
+
+.DS_Store
+
+# Tauri-generated schemas
+shells/tauri/src-tauri/gen/
