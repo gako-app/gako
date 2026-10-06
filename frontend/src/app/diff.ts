@@ -61,8 +61,9 @@ export class DiffPanel {
     return this.git.file(repo, side.rev, side.path);
   }
 
-  /** Shows a diff. With `keepView`, the scroll position survives (a refresh of the same file). */
-  async show(target: DiffTarget, actions: DiffActions, keepView = false): Promise<void> {
+  /** Shows a diff. With `keepView`, the scroll position survives (a refresh of the same file); `view`
+   * restores one saved earlier (a tab shown again). */
+  async show(target: DiffTarget, actions: DiffActions, keepView = false, saved?: unknown): Promise<void> {
     const ticket = ++this.loading;
     const same = keepView && this.target && this.target.repo === target.repo && this.target.path === target.path &&
       this.target.kind === target.kind;
@@ -79,7 +80,7 @@ export class DiffPanel {
     this.notice.hidden = notes.length === 0;
 
     const lang = languageFor(target.path);
-    const view = same ? this.editor.getModifiedEditor().saveViewState() : null;
+    const view = same ? this.editor.getModifiedEditor().saveViewState() : (saved as monaco.editor.ICodeEditorViewState | undefined) ?? null;
     const previous = this.editor.getModel();
     const model = {
       original: monaco.editor.createModel(left?.text ?? '', languageFor(target.left?.path ?? target.path)),
@@ -111,6 +112,11 @@ export class DiffPanel {
         h('button', { onclick: a.prev, disabled: !a.prev, title: 'Previous file (↑)' }, '↑'),
         h('button', { onclick: a.next, disabled: !a.next, title: 'Next file (↓)' }, '↓')),
     );
+  }
+
+  /** The scroll position and cursor, to restore when this diff is shown again. */
+  saveView(): unknown {
+    return this.target ? this.editor.getModifiedEditor().saveViewState() : null;
   }
 
   /** Where the right side is: the cursor's line if it's on screen, else the top of the view. */

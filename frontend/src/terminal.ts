@@ -58,6 +58,8 @@ export class TerminalTab {
   received = 0;
   hash = FNV_OFFSET;
   lastOutputAt = 0;
+  /** When the user last typed or pasted into it. */
+  lastInputAt = 0;
   exit: Exit | null = null;
   contextLosses = 0;
   private webgl: WebglAddon | null = null;
@@ -109,7 +111,10 @@ export class TerminalTab {
     this.id = r.term;
     this.pid = r.pid;
     this.t.onBytes(this.id, (data) => this.output(data));
-    this.term.onData((d) => this.t.sendBytes(this.id, encoder.encode(d)));
+    this.term.onData((d) => {
+      this.lastInputAt = performance.now();
+      this.t.sendBytes(this.id, encoder.encode(d));
+    });
     this.term.onBinary((d) => this.t.sendBytes(this.id, Uint8Array.from(d, (c) => c.charCodeAt(0))));
   }
 

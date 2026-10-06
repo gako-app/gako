@@ -46,7 +46,8 @@ export class Explorer {
   constructor(
     private t: Transport,
     private editors: Editors,
-    private openFile: (path: string) => void,
+    /** Opens a file; `pin` keeps its tab open (a double click). */
+    private openFile: (path: string, pin?: boolean) => void,
     private onError: (message: string) => void,
     private relative: (path: string) => string,
   ) {
@@ -198,6 +199,7 @@ export class Explorer {
           style: `padding-left:${8 + depth * 12}px`,
           title: entry.path,
           onclick: () => this.activate(row),
+          ondblclick: () => { if (entry.kind !== 'dir') this.openFile(entry.path, true); },
           oncontextmenu: (e: MouseEvent) => this.contextMenu(e, entry),
         },
         h('span', { class: 'twist' }, isDir ? (open ? '▾' : '▸') : ''),

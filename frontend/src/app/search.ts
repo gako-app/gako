@@ -58,7 +58,8 @@ export class SearchView {
 
   constructor(
     private t: Transport,
-    private open: (path: string, reveal: Reveal) => void,
+    /** Opens a match; `pin` keeps its tab open (a double click). */
+    private open: (path: string, reveal: Reveal, pin?: boolean) => void,
   ) {
     const toggle = (key: keyof SearchView['toggles'], label: string | HTMLElement, title: string) => {
       const b = h('button', { class: 'toggle', title, onclick: () => { this.toggles[key] = !this.toggles[key]; b.classList.toggle('on'); this.schedule(0); } }, label);
@@ -204,7 +205,7 @@ export class SearchView {
         h('span', { class: 'fdir dim' }, dirname(rel)), h('span', { class: 'count' }, String(f.matches.length))));
         if (!open) continue;
         for (const m of f.matches) {
-          out.push(h('div', { class: 'search-line', onclick: () => this.open(f.path, { line: m.line, columns: m.columns }) },
+          out.push(h('div', { class: 'search-line', onclick: () => this.open(f.path, { line: m.line, columns: m.columns }), ondblclick: () => this.open(f.path, { line: m.line, columns: m.columns }, true) },
             h('span', { class: 'lineno dim' }, String(m.line)), highlight(m.text, m.ranges)));
         }
       }

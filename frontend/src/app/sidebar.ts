@@ -23,7 +23,8 @@ export interface Item {
 }
 
 export interface SidebarHooks {
-  open(item: Item): void;
+  /** Opens an item's diff; `pin` keeps its tab open (a double click). */
+  open(item: Item, pin?: boolean): void;
   stage(repo: Repo, paths: string[]): void;
   unstage(repo: Repo, paths: string[]): void;
   commit(repo: Repo, message: string, amend: boolean): Promise<boolean>;
@@ -96,17 +97,34 @@ export class Sidebar {
     return { prev: this.items[i - 1], next: this.items[i + 1] };
   }
 
-  /** The item that matches what's open, after a status change (its key may have moved groups). */
-  find(key: string): Item | undefined {
-    return this.items.find((it) => it.key === key);
+  /** The item a key names, from the repos' current status whichever view is shown; undefined once
+   * the file has no changes of that kind. */
+  resolve(key: string): Item | undefined {
+    const [root, group, path] = key.split('\x1f');
+    const repo = this.repos.find((r) => r.root === root);
+    const e = repo?.status?.entries.find((x) => x.path === path);
+    if (!repo || !e) return undefined;
+    switch (group) {
+      case 'conflicts': return e.conflict ? { key, repo, entry: e, target: diffTarget(root, 'conflict', e), staged: false } : undefined;
+      case 'staged': return e.index ? { key, repo, entry: e, target: diffTarget(root, 'staged', e), staged: true } : undefined;
+      case 'changes': return e.worktree ? { key, repo, entry: e, target: diffTarget(root, 'unstaged', e), staged: false } : undefined;
+      case 'untracked': return e.untracked ? { key, repo, entry: e, target: diffTarget(root, 'unstaged', e), staged: false } : undefined;
+      case 'review': return { key, repo, entry: e, target: diffTarget(root, e.conflict ? 'conflict' : 'review', e), staged: !!e.index && !e.worktree };
+    }
+    return undefined;
   }
 
-  private select(item: Item): void {
-    this.selected = item.key;
+  /** Marks an item as the selected one without opening it (its tab was shown). */
+  mark(key: string | null): void {
+    this.selected = key;
     for (const el of this.list.querySelectorAll('.file.selected')) el.classList.remove('selected');
-    this.list.querySelector(`[data-key="${CSS.escape(item.key)}"]`)?.classList.add('selected');
+    if (key) this.list.querySelector(`[data-key="${CSS.escape(key)}"]`)?.classList.add('selected');
+  }
+
+  private select(item: Item, pin = false): void {
+    this.mark(item.key);
     this.list.querySelector('.file.selected')?.scrollIntoView({ block: 'nearest' });
-    this.hooks.open(item);
+    this.hooks.open(item, pin);
   }
 
   render(): void {
@@ -270,7 +288,10 @@ export class Sidebar {
 
   private fileRow(item: Item, letter: string, action: HTMLElement | null): HTMLElement {
     const e = item.entry;
-    return h('div', { class: `file st-${letter}`, 'data-key': item.key, onclick: () => this.select(item), title: e.path },
+    return h('div', {
+      class: `file st-${letter}`, 'data-key': item.key, title: e.path,
+      onclick: () => this.select(item), ondblclick: () => this.select(item, true),
+    },
       h('span', { class: 'letter' }, letter),
       h('span', { class: 'fname' }, basename(e.path)),
       h('span', { class: 'fdir dim' }, dirname(e.path)),

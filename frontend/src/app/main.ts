@@ -3,7 +3,7 @@ import './style.css';
 import { boot } from '../boot';
 import { connect, type Transport } from '../transport';
 import { DiffPanel } from './diff';
-import { basename, fill, h } from './dom';
+import { basename, dirname, fill, h } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
 import type { DiffTarget, Repo, RepoInfo, Status } from './model';
@@ -16,6 +16,7 @@ import { GoToFile } from './gotofile';
 import { Navigator } from './navigate';
 import type { FileContent } from './model';
 import { Editors } from './editors';
+import { DocTabs } from './doctabs';
 
 const LAST_BASE = 'gako.lastBase';
 
@@ -43,6 +44,7 @@ class App {
   private indexInfo = '';
   private historyRepo: Repo | null = null;
   private editors: Editors;
+  private docs: DocTabs;
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
@@ -52,7 +54,7 @@ class App {
       ? (ev, data = {}) => t.send({ t: 'log', rec: { ev, epochMs: performance.timeOrigin + performance.now(), ...data } })
       : () => {};
     this.sidebar = new Sidebar({
-      open: (item) => this.openItem(item),
+      open: (item, pin) => this.openItem(item, pin),
       stage: (r, paths) => this.act(() => this.git.stage(r.root, paths)),
       unstage: (r, paths) => this.act(() => this.git.unstage(r.root, paths)),
       commit: (r, message, amend) => this.commit(r, message, amend),
@@ -61,9 +63,9 @@ class App {
     });
     this.editors = new Editors(t, (m) => this.toast(m));
     this.diff = new DiffPanel(this.git, this.editors, (spot) => this.openFile(spot.path, { line: spot.line ?? 1, columns: [], column: spot.column }));
-    this.explorer = new Explorer(t, this.editors, (path) => this.openFile(path), (m) => this.toast(m), (path) => this.relative(path));
+    this.explorer = new Explorer(t, this.editors, (path, pin) => this.openFile(path, undefined, pin), (m) => this.toast(m), (path) => this.relative(path));
     this.sidebar.explorer = this.explorer;
-    this.search = new SearchView(t, (path, reveal) => this.openFile(path, reveal));
+    this.search = new SearchView(t, (path, reveal, pin) => this.openFile(path, reveal, pin));
     this.sidebar.search = this.search;
     this.goto = new GoToFile(t, () => this.opened?.base ?? '', (path) => this.openFile(path));
     this.nav = new Navigator(t, {
@@ -84,10 +86,16 @@ class App {
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
     this.viewer.attachNavigation(this.nav);
     this.diff.attachNavigation(this.nav, (repo, path) => this.join(repo, path));
-    this.terminals = new Terminals(t, this.body, this.review, () => this.folders(), this.log, (m) => this.toast(m));
+    this.docs = new DocTabs({
+      save: (kind) => (kind === 'diff' ? this.diff.saveView() : kind === 'file' ? this.viewer.saveView() : null),
+      front: () => { if (!this.terminals.reviewActive) this.terminals.select(null); },
+      empty: () => this.showWelcome(),
+    });
+    this.terminals = new Terminals(t, this.body, this.review, () => this.folders(), this.log, (m) => this.toast(m),
+      (terminal) => this.docs.setFront(!terminal));
     this.body.append(this.review);
-    this.main.append(this.terminals.bar, this.body);
-    document.getElementById('app')!.replaceChildren(this.sidebar.el, this.main, this.statusbar, this.toasts);
+    this.main.append(this.docs.bar, this.body);
+    document.getElementById('app')!.replaceChildren(this.sidebar.el, this.main, this.terminals.el, this.statusbar, this.toasts);
     this.showWelcome();
     t.onEvent((ev) => {
       if (ev.t === 'repoStatus') this.onStatus(ev.repo, ev.status as Status | undefined, ev.error);
@@ -215,15 +223,34 @@ class App {
   /** The open diff follows the file: refreshed in place, or cleared once the file has no changes. */
   private refreshOpenDiff(changedRepos: string[]): void {
     const target = this.diff.target;
-    if (this.mode !== 'diff' || !target || target.kind === 'commit' || !changedRepos.includes(target.repo)) return;
-    const key = this.sidebar.selected;
-    const item = key ? this.sidebar.find(key) : undefined;
-    if (item) this.openItem(item, true);
-    else this.diff.clear(`${target.path} has no more changes here.`);
+    const key = this.docs.active?.key;
+    if (this.mode !== 'diff' || !target || target.kind === 'commit' || !key?.startsWith('diff:') || !changedRepos.includes(target.repo)) return;
+    this.showItem(key.slice(5), undefined, true);
   }
 
-  private openItem(item: Item, keepView = false): void {
+  /** Opens an item's diff in the preview tab, or in a tab of its own with `pin`. */
+  private openItem(item: Item, pin = false): void {
+    const kind = item.target.kind;
+    this.docs.open({
+      key: `diff:${item.key}`,
+      kind: 'diff',
+      title: basename(item.entry.path),
+      detail: `${this.name(item.repo)}${kind === 'staged' ? ' · staged' : kind === 'conflict' ? ' · conflict' : ''}`,
+      tooltip: `${this.name(item.repo)} › ${item.entry.path}`,
+      show: (saved) => this.showItem(item.key, saved),
+    }, pin);
+  }
+
+  /** Draws the diff for a sidebar key, as the file stands now. */
+  private showItem(key: string, saved?: unknown, keepView = false): void {
     this.setMode('diff');
+    const item = this.sidebar.resolve(key);
+    if (!item) {
+      this.sidebar.mark(null);
+      this.diff.clear(`${key.split('\x1f')[2] ?? 'This file'} has no more changes here.`);
+      return;
+    }
+    this.sidebar.mark(key);
     const { prev, next } = this.sidebar.neighbours();
     const r = item.repo;
     const canStage = item.target.kind !== 'commit' && !item.staged && (item.entry.worktree || item.entry.untracked || item.entry.conflict);
@@ -235,19 +262,37 @@ class App {
       next: next ? () => this.sidebar.step(1) : undefined,
       stage: canStage ? () => this.act(() => this.git.stage(r.root, [item.entry.path])) : undefined,
       unstage: item.entry.index && !item.entry.conflict ? () => this.act(() => this.git.unstage(r.root, [item.entry.path])) : undefined,
-    }, keepView).catch((e) => this.toast(String(e.message ?? e)));
+    }, keepView, saved).catch((e) => this.toast(String(e.message ?? e)));
   }
 
   private openCommitDiff(target: DiffTarget, repo: Repo): void {
-    this.setMode('diff');
-    this.diff.show(target, { repoName: this.name(repo), back: () => this.showHistory(repo) })
-      .catch((e) => this.toast(String(e.message ?? e)));
+    this.docs.open({
+      key: `commit:${repo.root}\x1f${target.hash}\x1f${target.path}`,
+      kind: 'diff',
+      title: basename(target.path),
+      detail: `${this.name(repo)} @ ${target.hash?.slice(0, 7)}`,
+      tooltip: `${this.name(repo)} › ${target.path} in commit ${target.hash?.slice(0, 7)}`,
+      show: (saved) => {
+        this.setMode('diff');
+        this.diff.show(target, { repoName: this.name(repo), back: () => this.showHistory(repo) }, false, saved)
+          .catch((e) => this.toast(String(e.message ?? e)));
+      },
+    });
   }
 
   private showHistory(r: Repo): void {
-    this.historyRepo = r;
-    this.setMode('history');
-    this.history.show(r).catch((e) => this.toast(String(e.message ?? e)));
+    this.docs.open({
+      key: `history:${r.root}`,
+      kind: 'history',
+      title: 'History',
+      detail: this.name(r),
+      tooltip: `The commits of ${this.name(r)}`,
+      show: () => {
+        this.historyRepo = r;
+        this.setMode('history');
+        this.history.show(r).catch((e) => this.toast(String(e.message ?? e)));
+      },
+    });
   }
 
   private setMode(mode: App['mode']): void {
@@ -258,9 +303,22 @@ class App {
     this.review.replaceChildren(view);
   }
 
-  private openFile(path: string, reveal?: Reveal): void {
-    this.setMode('file');
-    this.viewer.show(path, false, reveal).catch((e) => this.toast(String(e.message ?? e)));
+  /** Opens a file in the preview tab (or its own with `pin`), at `reveal` if given. */
+  private openFile(path: string, reveal?: Reveal, pin = false): void {
+    const rel = this.relative(path).replaceAll('\\', '/');
+    this.docs.open({
+      key: `file:${path}`,
+      kind: 'file',
+      title: basename(path),
+      detail: dirname(rel),
+      tooltip: rel,
+      show: (saved) => {
+        this.setMode('file');
+        // A reveal applies when the file is opened, not when its tab is shown again.
+        this.viewer.show(path, false, saved === undefined ? reveal : undefined, saved ?? undefined)
+          .catch((e) => this.toast(String(e.message ?? e)));
+      },
+    }, pin);
   }
 
   private join(root: string, rel: string): string {
@@ -323,7 +381,6 @@ class App {
       h('span', {}, this.opened?.base ?? ''),
       h('span', { class: 'dim' }, this.scanInfo),
       this.indexInfo ? h('span', { class: 'dim' }, this.indexInfo) : null,
-      this.terminals.strip,
       h('span', { class: 'spacer' }),
       h('button', { class: 'link', onclick: () => this.showOpenForm(this.opened?.base) }, 'Open folder…'),
     );

@@ -34,7 +34,8 @@ export class Viewer {
     });
   }
 
-  async show(path: string, keepView = false, reveal?: Reveal): Promise<void> {
+  /** Shows a file: at `reveal` if given, else where `saved` left it (a tab shown again). */
+  async show(path: string, keepView = false, reveal?: Reveal, saved?: unknown): Promise<void> {
     const ticket = ++this.ticket;
     const same = keepView && this.path === path;
     this.path = path;
@@ -50,7 +51,7 @@ export class Viewer {
     ].filter(Boolean);
     this.notice.textContent = notes.join(' ');
     this.notice.hidden = notes.length === 0;
-    const view = same ? this.editor.saveViewState() : null;
+    const view = same ? this.editor.saveViewState() : (saved as monaco.editor.ICodeEditorViewState | undefined) ?? null;
     const previous = this.editor.getModel();
     this.editor.setModel(monaco.editor.createModel(content.binary ? '' : content.text, languageFor(path)));
     previous?.dispose();
@@ -67,6 +68,10 @@ export class Viewer {
       this.editor.setPosition({ lineNumber: reveal.line, column: fixed[0]?.startColumn ?? reveal.column ?? 1 });
       this.editor.focus();
     }
+  }
+
+  saveView(): unknown {
+    return this.path ? this.editor.saveViewState() : null;
   }
 
   attachNavigation(nav: Navigator): void {

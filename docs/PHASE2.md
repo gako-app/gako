@@ -13,11 +13,14 @@ review round, at the user's request; they're listed at the end and can be change
 
 ## What phase 2 delivers
 
-- **Terminal tabs** next to the review area: each runs a shell or an agent (`claude`, `codex`, or any
-  configured command) in the base folder or one of its repos. The harness TUIs are untouched: Gako
-  never replaces them (PLAN.md).
-- **A status strip** in the status bar: one chip per tab with its name and state, working (output in
-  the last two seconds), quiet, or exited (with the exit code). Clicking a chip shows its tab.
+- **Terminals for agents**: each runs a shell or an agent (`claude`, `codex`, or any configured
+  command) in the base folder or one of its repos. The harness TUIs are untouched: Gako never
+  replaces them (PLAN.md).
+- **An agent bar** on the right (it replaced the first build's terminal tabs and status-bar chips;
+  see decision 1): one entry per terminal with its name, folder and state, working (output in the
+  last two seconds), quiet, exited or failed (with the exit code). Picking one shows its terminal in
+  the main area. A terminal that finishes a stretch of work while you aren't looking at it is
+  marked, bold with a blue dot, until you look.
 - **Terminals sized to the window** (phase 0 used a fixed size for measuring), resized with it.
 - **The combining-character limit** from phase 0's results: a run of more than 4 combining marks on
   one character is dropped whole, keeping the character, which keeps a tab's memory bounded (see
@@ -78,6 +81,15 @@ terminals alive across app restarts; split panes.
 
 1. **Layout:** the main area gets a tab bar: *Review* (the diffs and history from phase 1) and one tab
    per terminal. The status strip lives in the status bar.
+   *Changed after the user's first trial (2026-10-06):* terminals moved to a collapsible agent bar on
+   the right, which also shows their states, so the status-bar chips went. The top tab bar now holds
+   only diffs, files and histories, as VS Code's editor tabs do: a single click opens a preview tab
+   (in italics) that the next one replaces, and a double click keeps it. A terminal and the
+   documents take turns in the whole main area.
+   *Finished, unseen:* output that lasted at least 1.5 s after the user's last keystroke, then
+   stopped (or the program exited), while that terminal wasn't in front of a focused window. The
+   keystroke rule keeps the echo of typing from counting as work. Reading an agent's own signals
+   (waiting for input, for instance) is the next step, after recording what each agent emits.
 2. **New tabs:** a menu picks the program (shell, or a configured agent found on the PATH) and the
    folder (the base folder or a repo; the repo of the selected file comes first).
 3. **Settings:** `agents` (name and command; Claude Code, Codex, OpenCode and Pi by default, each offered
