@@ -7,7 +7,7 @@
 // Run from the repository (`npm run app`), it uses the built core and frontend there; packaged
 // (`npm run package`, scripts/package.mjs), it finds them in the app's resources.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, net, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, net, screen, shell } = require('electron');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -79,6 +79,49 @@ function startCore() {
 let quitting = false;
 let core = null;
 
+// The window comes back where it was left: its size and position (if they still fit a display) and
+// whether it was maximised or full screen. The first time, it opens centred at up to 1600 × 1000.
+// The bench always gets the same fixed size, so its measurements stay comparable.
+const windowFile = () => path.join(app.getPath('userData'), 'window.json');
+
+function savedWindow() {
+  if (process.env.GAKO_BENCH) return null;
+  try {
+    const s = JSON.parse(fs.readFileSync(windowFile(), 'utf8'));
+    const fits = screen.getAllDisplays().some(({ workArea: a }) =>
+      s.x < a.x + a.width - 100 && s.x + s.width > a.x + 100 && s.y >= a.y - 10 && s.y < a.y + a.height - 100);
+    return fits && s.width >= 400 && s.height >= 300 ? s : null;
+  } catch {
+    return null;
+  }
+}
+
+function firstWindow() {
+  if (process.env.GAKO_BENCH) return { width: 1600, height: 1000 };
+  const a = screen.getPrimaryDisplay().workArea;
+  const width = Math.min(1600, Math.round(a.width * 0.85));
+  const height = Math.min(1000, Math.round(a.height * 0.85));
+  return { width, height, x: a.x + Math.round((a.width - width) / 2), y: a.y + Math.round((a.height - height) / 2) };
+}
+
+function rememberWindow(win) {
+  if (process.env.GAKO_BENCH) return;
+  const save = () => {
+    if (win.isDestroyed()) return;
+    const b = win.getNormalBounds();
+    try {
+      fs.writeFileSync(windowFile(), JSON.stringify({ ...b, maximized: win.isMaximized(), fullScreen: win.isFullScreen() }));
+    } catch { /* not worth failing for */ }
+  };
+  let timer = null;
+  const later = () => {
+    clearTimeout(timer);
+    timer = setTimeout(save, 500);
+  };
+  for (const ev of ['resize', 'move', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) win.on(ev, later);
+  win.on('close', save);
+}
+
 /** The menu bar on macOS: Gako's own, without Electron's items. Windows and Linux get none (their
  * copy and paste shortcuts work without one). ⌘W isn't taken, so it reaches the page. */
 function setMenu() {
@@ -121,9 +164,11 @@ app.whenReady().then(async () => {
     e.returnValue = started.boot;
   });
 
+  const saved = savedWindow();
   const win = new BrowserWindow({
-    width: 1600,
-    height: 1000,
+    ...(saved ? { x: saved.x, y: saved.y, width: saved.width, height: saved.height } : firstWindow()),
+    minWidth: 800,
+    minHeight: 500,
     title: 'Gako',
     backgroundColor: '#1e1e1e',
     webPreferences: {
@@ -133,6 +178,9 @@ app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   });
+  if (saved?.maximized) win.maximize();
+  if (saved?.fullScreen) win.setFullScreen(true);
+  rememberWindow(win);
   // Links (from terminal output) open in the user's browser, never inside the app.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
