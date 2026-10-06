@@ -8,6 +8,7 @@ import type { Repo } from './model';
 import { LETTER } from './model';
 import type { Editors } from './editors';
 import { type MenuItem, showMenu } from './menu';
+import { iconButton } from './icons';
 
 interface Entry {
   name: string;
@@ -197,7 +198,7 @@ export class Explorer {
           // A nested repo the base repo ignores is still a repo of its own: not dimmed.
           class: `tree-row ${entry.ignored && !entry.repo ? 'ignored' : ''} ${letter ? `st-${letter}` : ''} ${this.dirty.has(entry.path) ? 'dirty' : ''} ${entry.path === this.selected ? 'selected' : ''}`,
           style: `padding-left:${8 + depth * 12}px`,
-          title: entry.path,
+          'data-tip': entry.path,
           onclick: () => this.activate(row),
           ondblclick: () => { if (entry.kind !== 'dir') this.openFile(entry.path, true); },
           oncontextmenu: (e: MouseEvent) => this.contextMenu(e, entry),
@@ -207,10 +208,7 @@ export class Explorer {
         entry.repo ? h('span', { class: 'badge repo' }, 'repo') : null,
         entry.kind === 'symlink' ? h('span', { class: 'dim' }, ' ↗') : null,
         h('span', { class: 'spacer' }),
-        h('button', {
-          class: 'icon', title: this.editors.label(),
-          onclick: (e: Event) => { e.stopPropagation(); this.editors.open({ path: entry.path }); },
-        }, '↗'),
+        iconButton('external', `${this.editors.label()}${isDir ? ' (the folder)' : ''}`, () => this.editors.open({ path: entry.path }), { class: 'hover' }),
         letter ? h('span', { class: 'letter' }, letter) : this.dirty.has(entry.path) ? h('span', { class: 'dirty-dot' }, '•') : null));
         if (open) walk(entry.path, depth + 1);
       }

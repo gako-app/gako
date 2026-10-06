@@ -156,3 +156,49 @@ async fn detached_head_and_ahead_behind() {
     assert_eq!(st.branch, None);
     assert!(st.oid.is_some());
 }
+
+#[tokio::test]
+async fn fetch_pull_and_push_against_a_remote() {
+    let t = tempfile::tempdir().unwrap();
+    let origin = t.path().join("origin.git");
+    std::fs::create_dir_all(&origin).unwrap();
+    sh_git(&origin, &["init", "-q", "--bare"]);
+    let a = t.path().join("a");
+    let b = t.path().join("b");
+    for (dir, name) in [(&a, "a"), (&b, "b")] {
+        sh_git(t.path(), &["clone", "-q", origin.to_str().unwrap(), name]);
+        configure(dir);
+    }
+    // a pushes a commit; b sees it as behind after a fetch and fast-forwards to it.
+    std::fs::write(a.join("f"), "1").unwrap();
+    sh_git(&a, &["add", "f"]);
+    sh_git(&a, &["commit", "-q", "-m", "one"]);
+    sh_git(&a, &["push", "-q", "-u", "origin", "HEAD"]);
+    std::fs::write(a.join("f"), "2").unwrap();
+    sh_git(&a, &["commit", "-q", "-am", "two"]);
+    let s = status(&git(), &repo(&a), &[], 100).await.unwrap();
+    assert_eq!(s.status.ahead, 1);
+    remote(&a, "push").await.unwrap();
+    let s = status(&git(), &repo(&a), &[], 100).await.unwrap();
+    assert_eq!(s.status.ahead, 0);
+
+    sh_git(&b, &["fetch", "-q"]);
+    sh_git(&b, &["checkout", "-q", "-b", "main", "--track", "origin/main"]);
+    sh_git(&b, &["reset", "-q", "--hard", "HEAD~1"]);
+    remote(&b, "fetch").await.unwrap();
+    let s = status(&git(), &repo(&b), &[], 100).await.unwrap();
+    assert_eq!(s.status.behind, 1);
+    remote(&b, "pull").await.unwrap();
+    assert_eq!(std::fs::read_to_string(b.join("f")).unwrap(), "2");
+
+    // A pull that would need a merge is refused rather than merging.
+    std::fs::write(b.join("g"), "b").unwrap();
+    sh_git(&b, &["add", "g"]);
+    sh_git(&b, &["commit", "-q", "-m", "b's"]);
+    std::fs::write(a.join("h"), "a").unwrap();
+    sh_git(&a, &["add", "h"]);
+    sh_git(&a, &["commit", "-q", "-m", "a's"]);
+    remote(&a, "push").await.unwrap();
+    assert!(remote(&b, "pull").await.is_err());
+    assert!(remote(&b, "merge").await.is_err());
+}

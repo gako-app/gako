@@ -486,6 +486,11 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
             ws.refresh(&repo.root).await;
             Ok(Value::Null)
         }
+        "gitFetch" | "gitPull" | "gitPush" => {
+            git::remote(&repo.root, &method[3..].to_lowercase()).await?;
+            ws.refresh(&repo.root).await;
+            Ok(Value::Null)
+        }
         "gitCommit" => {
             let message: String = param(&params, "message")?;
             let amend = params["amend"].as_bool().unwrap_or(false);

@@ -7,6 +7,7 @@ import type { DiffTarget, FileContent, Side } from './model';
 import type { Git } from './git';
 import type { Navigator } from './navigate';
 import { type Editors, type Spot, spotIn } from './editors';
+import { iconButton } from './icons';
 
 const INLINE = 'gako.diffInline';
 
@@ -21,8 +22,6 @@ const KIND_LABEL: Record<DiffTarget['kind'], string> = {
 export interface DiffActions {
   prev?: () => void;
   next?: () => void;
-  stage?: () => void;
-  unstage?: () => void;
   back?: () => void;
   /** The working-tree file shown on the right, which can be opened in the viewer or an editor. */
   file?: string;
@@ -102,15 +101,13 @@ export class DiffPanel {
         h('span', { class: 'diff-name' }, basename(t.path)),
         h('span', { class: 'dim' }, ` ${a.repoName}${dirname(t.path) ? ' › ' + dirname(t.path) : ''}`),
         renamed ? h('span', { class: 'dim' }, ` (renamed from ${renamed.slice(0, -3)})`) : null),
-      h('div', { class: 'diff-kind dim', title: `left: ${sideLabel(t.left)}, right: ${sideLabel(t.right)}` }, what),
+      h('div', { class: 'diff-kind dim', 'data-tip': `Left: ${sideLabel(t.left)}. Right: ${sideLabel(t.right)}.` }, what),
       h('div', { class: 'diff-actions' },
-        a.file ? h('button', { onclick: () => this.openFile(this.spot(a.file!)), title: 'Show the whole file, at this line' }, 'Open file') : null,
+        a.file ? iconButton('file', 'Open the whole file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
         a.file ? this.editors.button(() => this.spot(a.file!)) : null,
-        a.stage ? h('button', { onclick: a.stage, title: 'Stage this file' }, 'Stage') : null,
-        a.unstage ? h('button', { onclick: a.unstage, title: 'Unstage this file' }, 'Unstage') : null,
         this.modeSwitch(),
-        h('button', { onclick: a.prev, disabled: !a.prev, title: 'Previous file (↑)' }, '↑'),
-        h('button', { onclick: a.next, disabled: !a.next, title: 'Next file (↓)' }, '↓')),
+        h('button', { onclick: a.prev, disabled: !a.prev, 'data-tip': 'Previous file (↑)' }, '↑'),
+        h('button', { onclick: a.next, disabled: !a.next, 'data-tip': 'Next file (↓)' }, '↓')),
     );
   }
 
@@ -130,7 +127,7 @@ export class DiffPanel {
       class: inline === this.inline ? 'on' : '', 'aria-pressed': String(inline === this.inline),
       onclick: () => this.setInline(inline),
     }, label);
-    return h('span', { class: 'segmented', role: 'group', title: 'How the diff is laid out' },
+    return h('span', { class: 'segmented', role: 'group', 'data-tip': 'How the diff is laid out' },
       option(false, 'Side by side'), option(true, 'Inline'));
   }
 

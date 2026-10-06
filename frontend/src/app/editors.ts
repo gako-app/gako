@@ -33,7 +33,6 @@ export class Editors {
     let chosen: string | null = null;
     try { chosen = localStorage.getItem(CHOSEN); } catch { /* storage unavailable */ }
     this.current = this.list.some((e) => e.id === chosen) ? chosen : r.default;
-    for (const el of document.querySelectorAll('.open-editor-label')) el.textContent = this.label();
   }
 
   /** "Open in VS Code", or the generic label before the editors are known or when none is. */
@@ -50,13 +49,13 @@ export class Editors {
   private choose(id: string): void {
     this.current = id;
     try { localStorage.setItem(CHOSEN, id); } catch { /* storage unavailable */ }
-    for (const el of document.querySelectorAll('.open-editor-label')) el.textContent = this.label();
   }
 
-  /** Menu items opening `spot` in each editor; picking another one makes it the default. */
-  items(spot: Spot): { label: string; checked: boolean; run: () => void }[] {
+  /** Menu items opening `spot` in each editor ("Open in VS Code", or just "VS Code" under an
+   * "Open in…" button); picking another one makes it the default. */
+  items(spot: Spot, short = false): { label: string; checked: boolean; run: () => void }[] {
     return this.list.map((e) => ({
-      label: this.label(e.id),
+      label: short ? e.name : this.label(e.id),
       checked: this.list.length > 1 && e.id === this.current,
       run: () => {
         this.choose(e.id);
@@ -65,23 +64,19 @@ export class Editors {
     }));
   }
 
-  /** The header button, with a menu of the other editors when there are several. */
+  /** "Open in…": a menu of the editors found, opening at the cursor or the top of the view. */
   button(spot: () => Spot | null): HTMLElement {
-    const go = () => {
-      const s = spot();
-      if (s) this.open(s);
-    };
-    const main = h('button', { onclick: go, title: 'Open at the cursor, or at the top of the view' },
-      h('span', { class: 'open-editor-label' }, this.label()));
-    if (this.list.length < 2) return main;
-    const more = h('button', {
-      class: 'split-more', title: 'Choose the editor',
+    const b = h('button', {
+      'data-tip': 'Open this file in an editor, at the cursor or the top of the view',
       onclick: () => {
         const s = spot();
-        if (s) showMenu(more, this.items(s));
+        if (!s) return;
+        const items = this.items(s, true);
+        // With none found, the one item explains why when it's used.
+        showMenu(b, items.length ? items : [{ label: 'Open in editor', run: () => this.open(s) }]);
       },
-    }, '▾');
-    return h('span', { class: 'split' }, main, more);
+    }, 'Open in…');
+    return b;
   }
 }
 

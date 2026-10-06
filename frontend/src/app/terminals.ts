@@ -16,6 +16,7 @@ import type { CoreEvent, Transport } from '../transport';
 import { h } from './dom';
 import type { Settings } from './model';
 import { readTitle, titleHasState, titleTopic } from './agentstate';
+import { iconButton } from './icons';
 
 export interface Program {
   name: string;
@@ -60,12 +61,14 @@ export class Terminals {
   private list = h('div', { class: 'agent-list' });
   private tabs: Tab[] = [];
   private active: Tab | null = null;
-  private addButton = h('button', { class: 'icon-button', title: 'New terminal', onclick: (e: Event) => this.menu(e.currentTarget as HTMLElement) }, '+');
-  private collapseButton = h('button', { class: 'icon-button', onclick: () => this.setCollapsed(!this.collapsed) });
+  private addButton = iconButton('plus', 'Start an agent or a shell', (e) => this.menu(e.currentTarget as HTMLElement), { class: 'add' });
+  private collapseButton = h('span', { class: 'collapse' });
   private menuEl: HTMLElement | null = null;
   private programs: Program[] = [{ name: 'Shell' }];
   private settings: Settings | null = null;
-  private collapsed = false;
+  collapsed = false;
+  /** Told when the bar collapses or expands, so the layout can follow. */
+  onCollapse: (() => void) | null = null;
 
   constructor(
     private t: Transport,
@@ -248,12 +251,14 @@ export class Terminals {
     }
   }
 
-  private setCollapsed(collapsed: boolean): void {
+  setCollapsed(collapsed: boolean): void {
     this.collapsed = collapsed;
     try { localStorage.setItem(COLLAPSED, collapsed ? '1' : '0'); } catch { /* storage unavailable */ }
     this.el.classList.toggle('collapsed', collapsed);
-    this.collapseButton.textContent = collapsed ? '‹' : '›';
-    this.collapseButton.title = collapsed ? 'Show the agent bar' : 'Collapse the agent bar';
+    this.collapseButton.replaceChildren(collapsed
+      ? iconButton('left', 'Show the agent bar', () => this.setCollapsed(false), { class: 'bar-toggle' })
+      : iconButton('right', 'Hide the agent bar', () => this.setCollapsed(true), { class: 'bar-toggle' }));
+    this.onCollapse?.();
     this.render();
   }
 
@@ -265,7 +270,7 @@ export class Terminals {
     }
     this.list.replaceChildren(...this.tabs.map((tab) => h('div', {
       class: `agent ${tab === this.active ? 'active' : ''} ${tab.unseen ? 'unseen' : ''}`,
-      title: `${tab.program.name} in ${tab.folder.path}: ${this.stateText(tab)}${tab.term.title ? `\n${tab.term.title}` : ''}`,
+      'data-tip': `${tab.program.name} in ${tab.folder.path}: ${this.stateText(tab)}${tab.term.title ? `\n${tab.term.title}` : ''}`,
       onclick: () => this.select(tab),
     },
     h('span', { class: `dot ${tab.state}` }),
@@ -275,7 +280,7 @@ export class Terminals {
         h('span', { class: 'agent-name' }, tab.program.name),
         h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || tab.folder.name} · ${this.stateText(tab)}`)),
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
-    this.collapsed ? null : h('span', { class: 'close', title: 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'))));
+    this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'))));
   }
 
   private menu(anchor: HTMLElement): void {

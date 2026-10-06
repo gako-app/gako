@@ -23,7 +23,22 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 button.link { background: none; border: none; color: #3794ff; padding: 0 4px; }
-button.icon { background: none; border: none; padding: 0 4px; color: var(--dim); visibility: hidden; }
+/* Icon buttons (icons.ts): line icons in the text colour, some shown only when their row is hovered. */
+.svg-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+.icon-btn { display: inline-flex; align-items: center; gap: 2px; background: none; border: none; padding: 2px 3px; color: var(--dim); border-radius: 3px; line-height: 1; }
+.icon-btn:hover:not(:disabled) { color: var(--text); background: #3a3d41; }
+.icon-btn.hover { visibility: hidden; }
+.repo-header:hover .icon-btn.hover, .clean-repo:hover .icon-btn.hover, .file:hover .icon-btn.hover, .file.selected .icon-btn.hover,
+.tree-row:hover .icon-btn.hover, .tree-row.selected .icon-btn.hover { visibility: visible; }
+.icon-btn.sync { color: var(--text); background: rgb(255 255 255 / 0.07); padding: 1px 5px 1px 3px; }
+.icon-btn.sync:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.icon-label { font-size: 11px; font-weight: 600; }
+.icon-btn.framed { border: 1px solid var(--border); background: var(--panel-2); padding: 3px 6px; }
+.icon-btn.framed:hover:not(:disabled) { background: #3a3d41; }
+.repo-actions { display: inline-flex; align-items: center; gap: 1px; font-weight: normal; }
+.busy { font-size: 11px; padding: 0 4px; }
+.tooltip { position: fixed; z-index: 50; max-width: 420px; padding: 4px 8px; border-radius: 3px; background: #252526; border: 1px solid #454545; color: var(--text); font-size: 12px; line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; box-shadow: 0 2px 8px rgb(0 0 0 / 0.4); }
+.tooltip[hidden] { display: none; }
 .dim { color: var(--dim); }
 .spacer { flex: 1; }
 .error { color: var(--deleted); padding: 4px 8px; white-space: pre-wrap; }
@@ -31,27 +46,30 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .badge { font-size: 10px; padding: 0 5px; margin-left: 6px; border-radius: 8px; background: #4d3b1f; color: var(--modified); }
 .count { font-size: 11px; color: var(--dim); background: var(--panel-2); border-radius: 8px; padding: 0 6px; margin-left: 6px; }
 
-#app { display: grid; grid-template-columns: minmax(280px, 26%) minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) 22px; height: 100%; }
+#app { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) 22px; height: 100%; }
 
-.sidebar { grid-row: 1; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
-.sidebar-tabs { display: flex; gap: 2px; padding: 6px 6px 0; border-bottom: 1px solid var(--border); }
+/* Sidebar widths come from layout.ts; the handles sit on their inner edges. */
+.resize-handle { position: absolute; top: 0; bottom: 22px; width: 7px; z-index: 15; cursor: col-resize; }
+.resize-handle.left { left: calc(var(--left-edge, 300px) - 4px); }
+.resize-handle.right { right: calc(var(--right-edge, 220px) - 4px); }
+.resize-handle:hover, body.resizing .resize-handle { background: rgb(14 99 156 / 0.5); }
+body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
+.left-rail { grid-column: 1; grid-row: 1; width: 28px; display: flex; flex-direction: column; align-items: center; padding-top: 4px; background: var(--panel); border-right: 1px solid var(--border); }
+.left-rail[hidden], .sidebar[hidden] { display: none; }
+
+.sidebar { grid-column: 1; grid-row: 1; width: var(--left-w, 300px); background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; }
+.sidebar-tabs { display: flex; align-items: center; gap: 2px; padding: 6px 6px 0; border-bottom: 1px solid var(--border); }
+.sidebar-tabs .bar-toggle { margin-bottom: 2px; }
 .sidebar-tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 4px 8px; color: var(--dim); }
 .sidebar-tabs button.active { color: var(--text); border-bottom-color: var(--accent); }
 .sidebar-list { flex: 1; overflow: auto; outline: none; padding-bottom: 20px; }
 
-.repo-header, .review-repo { display: flex; align-items: center; gap: 2px; padding: 4px 6px; font-weight: 600; position: sticky; top: 0; background: var(--panel); z-index: 1; border-top: 1px solid var(--border); }
-.repo-header:hover button.icon, .group:hover button.icon, .file:hover button.icon, .tree-row:hover button.icon { visibility: visible; }
+.repo-header { display: flex; align-items: center; gap: 2px; padding: 4px 6px; font-weight: 600; position: sticky; top: 0; background: var(--panel); z-index: 1; border-top: 1px solid var(--border); }
 .twisty { background: none; border: none; padding: 0 2px; width: 16px; color: var(--dim); }
 .repo-name { white-space: nowrap; }
 .branch { font-weight: normal; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 6px; font-size: 12px; }
 .ab { color: var(--text); }
-.commit-box { padding: 2px 8px 4px 24px; }
-.commit-line { display: flex; gap: 4px; align-items: flex-start; }
-.commit-message { flex: 1; min-width: 0; box-sizing: border-box; resize: none; height: 24px; line-height: 16px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 3px; font: inherit; padding: 4px 6px; }
-.commit-message:focus, .path:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
-.commit-message:focus, .commit-box.has-text .commit-message { height: 56px; resize: vertical; }
-.commit-row { display: none; margin-top: 3px; font-size: 12px; }
-.commit-box:focus-within .commit-row, .commit-box.has-text .commit-row { display: block; }
+.path:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 .group { display: flex; align-items: center; padding: 3px 8px 3px 24px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--dim); }
 .file { display: flex; align-items: center; gap: 6px; padding: 1px 8px 1px 32px; cursor: pointer; white-space: nowrap; }
 .file:hover { background: #2a2d2e; }
@@ -68,11 +86,11 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .more { padding: 2px 8px 2px 32px; font-size: 12px; }
 .clean { border-top: 1px solid var(--border); padding: 4px 0; }
 .group-toggle { background: none; border: none; color: var(--dim); padding: 2px 8px; }
-.clean-repo { padding: 2px 8px 2px 24px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clean-repo { display: flex; align-items: center; gap: 2px; padding: 2px 6px 2px 24px; white-space: nowrap; overflow: hidden; }
 .clean-repo:hover { background: #2a2d2e; }
 .empty { padding: 16px; }
 
-.main { grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.main { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .doc-tabs { display: flex; gap: 1px; background: var(--panel); border-bottom: 1px solid var(--border); overflow-x: auto; flex: none; min-height: 28px; scrollbar-width: none; }
 .doc-tab { display: flex; align-items: center; gap: 6px; background: var(--panel-2); color: var(--dim); padding: 0 6px 0 10px; height: 28px; white-space: nowrap; cursor: pointer; flex: none; }
 .doc-tab:hover { color: var(--text); }
@@ -84,14 +102,15 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .doc-tab.active .close, .doc-tab:hover .close, .agent:hover .close { visibility: visible; }
 .doc-tab .close:hover, .agent .close:hover { background: #45494e; color: var(--text); }
 
-.agents { grid-row: 1; width: 220px; background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+.agents { grid-column: 3; grid-row: 1; width: var(--right-w, 220px); background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
 .agents.collapsed { width: 44px; }
 .agents-header { display: flex; align-items: center; gap: 2px; padding: 0 4px 0 10px; height: 28px; border-bottom: 1px solid var(--border); flex: none; }
 .agents-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--dim); }
 .agents.collapsed .agents-header { flex-direction: column; height: auto; padding: 4px 0; gap: 2px; }
 .agents.collapsed .agents-title, .agents.collapsed .agents-header .spacer { display: none; }
-.icon-button { background: none; border: none; color: var(--dim); padding: 0 6px; font-size: 15px; line-height: 20px; }
-.icon-button:hover:not(:disabled) { color: var(--text); background: #3a3d41; }
+.agents-header .icon-btn { padding: 3px; }
+/* Collapsed, the bar's toggle comes first, above +. */
+.agents.collapsed .agents-header .collapse { order: -1; }
 .agent-list { flex: 1; overflow: auto; padding: 4px 0; }
 .agents-empty { padding: 10px; font-size: 12px; line-height: 1.5; }
 .agent { position: relative; display: flex; align-items: center; gap: 8px; padding: 5px 6px 5px 10px; cursor: pointer; border-left: 2px solid transparent; }
@@ -121,7 +140,7 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .dot.waiting { background: var(--modified); box-shadow: 0 0 4px var(--modified); }
 .dot.exited { background: transparent; border: 1px solid var(--dim); width: 6px; height: 6px; }
 .dot.failed { background: var(--deleted); }
-.menu { position: fixed; z-index: 20; min-width: 240px; max-height: 70vh; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.5); padding: 4px 0; }
+.menu { position: fixed; z-index: 20; min-width: 160px; max-height: 70vh; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.5); padding: 4px 0; }
 .menu-title { padding: 4px 10px; font-size: 11px; text-transform: uppercase; color: var(--dim); }
 .menu-list { display: flex; flex-direction: column; }
 .menu-item { text-align: left; border: none; border-radius: 0; background: none; padding: 4px 14px; white-space: nowrap; }

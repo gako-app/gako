@@ -30,15 +30,8 @@ export class Git {
     return this.t.request('gitCommitDetails', { repo, hash });
   }
 
-  stage(repo: string, paths: string[]): Promise<void> {
-    return this.t.request('gitStage', { repo, paths });
-  }
-
-  unstage(repo: string, paths: string[]): Promise<void> {
-    return this.t.request('gitUnstage', { repo, paths });
-  }
-
-  commit(repo: string, message: string, amend: boolean): Promise<{ hash: string }> {
-    return this.t.request('gitCommit', { repo, message, amend });
+  /** Fetches, pulls (fast-forward only) or pushes; the repo's status follows. */
+  remote(repo: string, action: 'fetch' | 'pull' | 'push'): Promise<void> {
+    return this.t.request(`git${action[0].toUpperCase()}${action.slice(1)}`, { repo });
   }
 }

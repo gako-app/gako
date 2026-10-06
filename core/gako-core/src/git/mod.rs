@@ -259,6 +259,38 @@ pub async fn unstage(git: &Git, repo: &Path, paths: &[String], unborn: bool) -> 
     git.run(repo, &args).await.map(|_| ())
 }
 
+/// Talks to the repo's remote: `fetch` (with pruning), `pull` (fast-forward only, so a button
+/// never creates a merge) or `push` (to the branch's upstream). These can take a while and wait on
+/// the network, so they don't hold one of the slots status scans use, they get two minutes, and
+/// they run with the login shell's whole environment, for the SSH agent and credential helpers.
+pub async fn remote(repo: &Path, action: &str) -> Result<()> {
+    let args: &[&str] = match action {
+        "fetch" => &["fetch", "--prune"],
+        "pull" => &["pull", "--ff-only"],
+        "push" => &["push"],
+        _ => bail!("unknown remote action {action}"),
+    };
+    let mut cmd = Command::new("git");
+    cmd.args(args)
+        .current_dir(repo)
+        .envs(crate::shellenv::get())
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    let child = cmd.spawn().context("starting git")?;
+    let out = tokio::time::timeout(Duration::from_secs(120), child.wait_with_output())
+        .await
+        .with_context(|| format!("git {} timed out after two minutes", args.join(" ")))??;
+    if !out.status.success() {
+        bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(())
+}
+
 /// Commits what's staged, with the message from stdin, running the repo's hooks.
 pub async fn commit(git: &Git, repo: &Path, message: &str, amend: bool) -> Result<String> {
     let mut args = vec!["commit", "--file=-"];

@@ -114,14 +114,6 @@ export function diffTarget(repo: string, kind: Exclude<DiffKind, 'commit'>, e: E
   }
 }
 
-/** The single-letter badge for an entry in the review queue. */
-export function reviewLetter(e: Entry): string {
-  if (e.conflict) return '!';
-  if (e.untracked) return 'U';
-  const c = e.index ?? e.worktree;
-  return c ? LETTER[c] : 'M';
-}
-
 export function changeCount(s: Status): number {
   return s.entries.length + s.untrackedOmitted;
 }

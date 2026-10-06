@@ -17,6 +17,8 @@ import { Navigator } from './navigate';
 import type { FileContent } from './model';
 import { Editors } from './editors';
 import { DocTabs } from './doctabs';
+import { Layout } from './layout';
+import { installTooltips } from './tooltip';
 
 const LAST_BASE = 'gako.lastBase';
 
@@ -45,6 +47,7 @@ class App {
   private historyRepo: Repo | null = null;
   private editors: Editors;
   private docs: DocTabs;
+  private layout: Layout;
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
@@ -55,11 +58,13 @@ class App {
       : () => {};
     this.sidebar = new Sidebar({
       open: (item, pin) => this.openItem(item, pin),
-      stage: (r, paths) => this.act(() => this.git.stage(r.root, paths)),
-      unstage: (r, paths) => this.act(() => this.git.unstage(r.root, paths)),
-      commit: (r, message, amend) => this.commit(r, message, amend),
-      lastMessage: async (r) => (r.status?.oid ? (await this.git.details(r.root, 'HEAD')).message : ''),
+      openFile: (item) => this.openFile(this.join(item.repo.root, item.entry.path)),
       history: (r) => this.showHistory(r),
+      remote: async (r, action) => {
+        await this.act(() => this.git.remote(r.root, action));
+        if (this.mode === 'history' && this.historyRepo?.root === r.root) this.history.refresh(r);
+      },
+      collapse: () => this.layout.setLeftCollapsed(true),
     });
     this.editors = new Editors(t, (m) => this.toast(m));
     this.diff = new DiffPanel(this.git, this.editors, (spot) => this.openFile(spot.path, { line: spot.line ?? 1, columns: [], column: spot.column }));
@@ -95,7 +100,11 @@ class App {
       (terminal) => this.docs.setFront(!terminal));
     this.body.append(this.review);
     this.main.append(this.docs.bar, this.body);
-    document.getElementById('app')!.replaceChildren(this.sidebar.el, this.main, this.terminals.el, this.statusbar, this.toasts);
+    const app = document.getElementById('app')!;
+    this.layout = new Layout(app, this.sidebar.el, this.terminals);
+    this.terminals.onCollapse = () => this.layout.apply();
+    app.prepend(this.sidebar.el, this.layout.leftRail, this.main, this.terminals.el, this.statusbar, this.toasts);
+    installTooltips();
     this.showWelcome();
     t.onEvent((ev) => {
       if (ev.t === 'repoStatus') this.onStatus(ev.repo, ev.status as Status | undefined, ev.error);
@@ -253,15 +262,12 @@ class App {
     this.sidebar.mark(key);
     const { prev, next } = this.sidebar.neighbours();
     const r = item.repo;
-    const canStage = item.target.kind !== 'commit' && !item.staged && (item.entry.worktree || item.entry.untracked || item.entry.conflict);
     const worktree = item.target.right?.rev === 'worktree' ? item.target.right.path : null;
     this.diff.show(item.target, {
       repoName: this.name(r),
       file: worktree ? this.join(r.root, worktree) : undefined,
       prev: prev ? () => this.sidebar.step(-1) : undefined,
       next: next ? () => this.sidebar.step(1) : undefined,
-      stage: canStage ? () => this.act(() => this.git.stage(r.root, [item.entry.path])) : undefined,
-      unstage: item.entry.index && !item.entry.conflict ? () => this.act(() => this.git.unstage(r.root, [item.entry.path])) : undefined,
     }, keepView, saved).catch((e) => this.toast(String(e.message ?? e)));
   }
 
@@ -353,7 +359,7 @@ class App {
     return h('div', { class: 'welcome' },
       h('h1', {}, this.opened ? basename(this.opened.base) : 'Gako'),
       this.opened ? h('p', { class: 'dim' }, `${n} repositor${n === 1 ? 'y' : 'ies'} in ${this.opened.base}`) : null,
-      h('p', { class: 'dim' }, 'Select a file to see its diff. ↑ and ↓ move between files; the review queue lists every change in every repository.'));
+      h('p', { class: 'dim' }, 'Select a file to see its diff; ↑ and ↓ move between files. A double click keeps a file open in its own tab.'));
   }
 
   private async act(fn: () => Promise<unknown>): Promise<boolean> {
@@ -364,16 +370,6 @@ class App {
       this.toast(String((e as Error).message ?? e));
       return false;
     }
-  }
-
-  private async commit(r: Repo, message: string, amend: boolean): Promise<boolean> {
-    if (!message.trim()) {
-      this.toast('Write a commit message first.');
-      return false;
-    }
-    const ok = await this.act(() => this.git.commit(r.root, message, amend));
-    if (ok && this.mode === 'history' && this.historyRepo?.root === r.root) this.history.refresh(r);
-    return ok;
   }
 
   private renderStatusbar(): void {

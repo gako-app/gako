@@ -254,7 +254,9 @@ This is what makes the work setup usable, and no other tool tested handles it we
 
 - Find nested repos up to a configurable depth, plus any extra folders you configure to scan.
 - Run `git status --porcelain=v2 -z --branch` for each repo and refresh it when files change.
-- Show each repo with branch, ahead/behind, staged and unstaged files, and a commit box.
+- Show each repo with branch, ahead/behind, staged and unstaged files. *No commit box: after the
+  first trial (2026-10-06), staging and committing are left to the agents, and each repo offers
+  fetch, pull and push instead ([PHASE1.md](PHASE1.md), decision 1).*
 - Clicking a file opens a Monaco diff, and the full file can be opened from there.
 - Show commit history (`git log`) and commit details (`git show`) for each repo.
 - VS Code's built-in git extension (`extensions/git`, MIT licensed) is the reference for edge cases:
@@ -265,7 +267,8 @@ This is what makes the work setup usable, and no other tool tested handles it we
 - **Show only repos with changes.** Clean repos collapse or hide, so there isn't a commit box for
   every repo.
 - **One review queue:** a combined change list across all repos, grouped by repo. This is the feature
-  for reviewing an agent's edits across components.
+  for reviewing an agent's edits across components. *The repos view became this list once commit
+  boxes went, so it has no separate tab (2026-10-06).*
 - **Scoped search:** a toggle for all repos, the base repo, or a chosen subset.
 - Later: a combined history timeline across repos.
 

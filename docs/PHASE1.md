@@ -21,7 +21,8 @@ The Source Control sidebar's replacement, for a base folder holding several inde
   or staged against HEAD), with the full file a click away.
 - **History:** each repo's commit log, and a commit's details and diff.
 - **Stage and commit:** stage and unstage whole files, and a commit box per changed repo (with
-  amend). Fetch, pull, push and branches stay with the terminal and the agents.
+  amend). Fetch, pull, push and branches stay with the terminal and the agents. *Reversed after the
+  user's trial; see decision 1.*
 
 PLAN.md's test for this phase: on the real work layout, on the Windows work machine, it must beat
 VS Code's Source Control view. If it doesn't, that shows up here, before anything else is built.
@@ -116,6 +117,11 @@ auto-update. Editing files stays out, always.
 
 1. **Git actions:** stage and unstage whole files, and commit with amend. No hunk staging, fetch,
    pull, push or branch actions in phase 1.
+   *Changed after the user's first trial (2026-10-06):* staging and committing are the agents' job,
+   so the commit boxes and stage buttons are gone. Each repo, clean ones included, instead offers
+   its history, a fetch (refresh), and pull (fast-forward only) and push buttons with counts when
+   its branch is behind or ahead of its upstream. The review queue went too: the repos view already
+   lists every change in every repo. Each changed file also opens whole, not only as a diff.
 2. **Layout defaults:** sized for the work layout (10–30 repos, 1–2 levels deep), every limit
    configurable, and a 100-repo stress layout in the tests so larger setups for other people are
    covered.
