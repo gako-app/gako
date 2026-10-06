@@ -146,6 +146,37 @@ pub struct Terminal {
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     flow: Arc<Flow>,
     start: Mutex<Option<std_mpsc::Sender<()>>>,
+    recorder: Option<Arc<Recorder>>,
+}
+
+/// With `GAKO_RECORD_DIR` set, each terminal's output and input go to a file there, one JSON line
+/// per chunk with its time: `{"ms":12,"out":"…"}` or `{"ms":40,"in":"…"}`. For finding out what
+/// agents send to the terminal (titles, bells, notifications), not for normal use.
+struct Recorder {
+    file: Mutex<std::fs::File>,
+    started: std::time::Instant,
+}
+
+impl Recorder {
+    fn open(id: u32, program: &str) -> Option<Arc<Recorder>> {
+        let dir = std::env::var_os("GAKO_RECORD_DIR")?;
+        let name = std::path::Path::new(program).file_name().map_or("shell".into(), |n| n.to_string_lossy().into_owned());
+        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let path = std::path::Path::new(&dir).join(format!("{secs}-{id}-{name}.jsonl"));
+        let file = std::fs::create_dir_all(&dir).and_then(|_| std::fs::File::create(&path));
+        match file {
+            Ok(f) => Some(Arc::new(Recorder { file: Mutex::new(f), started: std::time::Instant::now() })),
+            Err(e) => {
+                eprintln!("gako-core: can't record to {}: {e}", path.display());
+                None
+            }
+        }
+    }
+
+    fn record(&self, key: &str, bytes: &[u8]) {
+        let line = serde_json::json!({"ms": self.started.elapsed().as_millis() as u64, key: String::from_utf8_lossy(bytes)});
+        let _ = writeln!(self.file.lock().unwrap(), "{line}");
+    }
 }
 
 impl Terminal {
@@ -160,6 +191,7 @@ impl Terminal {
             .openpty(PtySize { rows: req.rows, cols: req.cols, pixel_width: 0, pixel_height: 0 })
             .context("openpty")?;
 
+        let recorder = Recorder::open(id, req.cmd.as_deref().and_then(|c| c.first()).map_or("shell", |p| p.as_str()));
         let mut cmd = match req.cmd.as_deref() {
             Some([program, args @ ..]) => {
                 let mut c = CommandBuilder::new(program);
@@ -212,6 +244,7 @@ impl Terminal {
             killer: Mutex::new(killer),
             flow: flow.clone(),
             start: Mutex::new(Some(start_tx)),
+            recorder: recorder.clone(),
         });
 
         let (status_tx, status_rx) = std_mpsc::channel::<Option<u32>>();
@@ -245,6 +278,9 @@ impl Terminal {
                 if tx.send(Event::Data(frame)).is_err() {
                     break;
                 }
+                if let Some(r) = &recorder {
+                    r.record("out", &buf[..n]);
+                }
                 flow.forwarded(&buf[..n]);
             }
             let code = status_rx.recv().ok().flatten();
@@ -263,6 +299,9 @@ impl Terminal {
     }
 
     pub fn write(&self, bytes: Vec<u8>) {
+        if let Some(r) = &self.recorder {
+            r.record("in", &bytes);
+        }
         if let Some(input) = self.input.lock().unwrap().as_ref() {
             let _ = input.send(bytes);
         }

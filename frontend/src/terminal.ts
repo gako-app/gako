@@ -60,6 +60,8 @@ export class TerminalTab {
   lastOutputAt = 0;
   /** When the user last typed or pasted into it. */
   lastInputAt = 0;
+  /** The title the program set (OSC 0 or 2), which some agents use to show their state. */
+  title = '';
   exit: Exit | null = null;
   contextLosses = 0;
   private webgl: WebglAddon | null = null;
@@ -90,6 +92,7 @@ export class TerminalTab {
       fontSize: opts.fontSize ?? 12,
       theme: { background: '#1e1e1e', foreground: '#cccccc' },
     });
+    this.term.onTitleChange((title) => { this.title = title; });
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = '11';
     // Links open in the browser (the shell routes window.open outside the app).

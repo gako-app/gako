@@ -89,7 +89,15 @@ terminals alive across app restarts; split panes.
    *Finished, unseen:* output that lasted at least 1.5 s after the user's last keystroke, then
    stopped (or the program exited), while that terminal wasn't in front of a focused window. The
    keystroke rule keeps the echo of typing from counting as work. Reading an agent's own signals
-   (waiting for input, for instance) is the next step, after recording what each agent emits.
+   (waiting for input, for instance) is the next step.
+   *What the agents send (recorded 2026-10-06 with `GAKO_RECORD_DIR` and
+   `bench/measure/agent_signals.py`):* Claude Code titles itself with a spinner (◐ ◑) while working
+   and ✳ otherwise, the same when finished and when waiting for approval, with no bell. Codex uses a
+   braille spinner while working, a plain title when idle, and `[ ! ] Action Required` (blinking
+   once a second, so output alone reads it as working) while waiting for approval. OpenCode keeps a
+   fixed title but asks whether the terminal supports OSC 99 notifications, which xterm.js doesn't
+   answer. Pi sends nothing beyond a fixed title. Not built yet: states from titles, a Claude Code
+   hook (through `--settings`) to tell approvals apart, and answering OpenCode's OSC 99 query.
 2. **New tabs:** a menu picks the program (shell, or a configured agent found on the PATH) and the
    folder (the base folder or a repo; the repo of the selected file comes first).
 3. **Settings:** `agents` (name and command; Claude Code, Codex, OpenCode and Pi by default, each offered
