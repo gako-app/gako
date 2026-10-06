@@ -8,7 +8,8 @@ search and navigation. It never edits code; editing is handed off to an external
 
 1. [docs/PLAN.md](docs/PLAN.md): goal, scope, stack, build order, known traps and decision rules.
    It's the single source of truth.
-2. The brief for the current phase. **Current phase: 0**, see [docs/PHASE0.md](docs/PHASE0.md).
+2. The brief for the current phase. **Phase 0 is done** (see [docs/PHASE0.md](docs/PHASE0.md)): the
+   app shell is Electron. **Next: phase 1**, whose brief isn't written yet.
 
 ## Rules
 
@@ -18,8 +19,8 @@ search and navigation. It never edits code; editing is handed off to an external
 - **Stay in scope.** The app never owns editing: Monaco stays `readOnly` everywhere. Don't add
   anything from PLAN.md's "never owns" list or "Ideas for later" without being asked.
 - **Reuse, don't rebuild:** Monaco, xterm.js, ripgrep's crates, the `git` CLI.
-- **Frontend code never calls shell APIs** (Tauri or Electron) directly. It goes through the
-  transport layer described in PHASE0.md.
+- **Frontend code never calls shell APIs** (Electron's, or Tauri's) directly. It goes through the
+  transport layer described in PHASE0.md, so the shell stays replaceable.
 - **Cross-platform from the start:** macOS (primary), Windows (required at work), Linux. Don't use
   platform-specific paths, shells or tools without a fallback for the other two.
 - **Ask before** installing system-wide tools or toolchains, downloading anything outside the
@@ -35,5 +36,6 @@ search and navigation. It never edits code; editing is handed off to an external
 ## Repository layout
 
 See PHASE0.md for the full layout. In short: `core/` (Rust), `frontend/` (TypeScript + Vite),
-`shells/tauri/`, `shells/electron/`, `bench/` (fixtures, measurement scripts, committed results),
+`shells/electron/` (the app shell), `shells/tauri/` (phase 0's other shell, kept unmaintained for
+re-measuring), `bench/` (fixtures, measurement scripts, committed results),
 `docs/`.

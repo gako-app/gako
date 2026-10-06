@@ -9,7 +9,7 @@ decision rule are in [PLAN.md](../../docs/PLAN.md).
 | Scroll that diff | ≥ 50 fps, no stalls (frames > 50 ms) | run 1: 26 fps, 2 stalls, max frame 55 ms · run 2: 28 fps, 0 stalls, max frame 47 ms | **FAIL** |
 | Scroll the 5 MB file | ≥ 50 fps, no stalls (frames > 50 ms) | run 1: 44 fps, 1 stalls, max frame 59 ms · run 2: 49 fps, 0 stalls, max frame 33 ms | **FAIL** |
 | Open the 5 MB file (warm) | < 1 s | median 197 ms, max 231 ms | **pass** |
-| Keystroke to echo in a terminal tab | < 30 ms | idle shell: median 13.0 ms, p95 14.0 ms; tui-load: median 13.0 ms, p95 33.0 ms | **pass** |
+| Keystroke to echo in a terminal tab | < 30 ms | idle shell: median 13.0 ms, p95 14.0 ms; tui-load: median 13.0 ms, p95 33.0 ms | **FAIL** |
 | Four agent TUIs + 50 MB dump in a fifth tab | nothing lost or garbled, other tabs responsive, dump no slower than VS Code | 5 checks all intact; echo in an agent tab: median 16.0 ms, p95 23.0 ms; hidden tab during dump: median 21.0 ms; dump 4,750 ms vs VS Code 9,425 ms | **pass** |
 | Dump 250 MB ×3 into one tab (lines, long lines, combining + emoji) | memory flat once scrollback is full; each dump no slower than VS Code | normal: 19.1 s vs VS Code 45.0 s; memory 307 MB → 325 MB → 333 MB (second half moves 8.4 MB, flat); intact<br>long: 12.6 s vs VS Code 40.6 s; memory 222 MB → 283 MB → 278 MB (second half moves 4.5 MB, flat); intact<br>emoji: 88.7 s vs VS Code 81.2 s; memory 448 MB → 566 MB → 1,113 MB (second half moves 597.6 MB, NOT FLAT); intact | **FAIL** |
 | Hide and show terminal tabs repeatedly during the four-TUI load | no blank or garbled terminals; memory doesn't creep | 220 tab switches, 0 WebGL context losses, TUIs intact, memory trend 5.48 MB/min | **FAIL** |

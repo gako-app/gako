@@ -93,7 +93,7 @@ class Report:
                  f"idle shell: median {fmt(idle and idle['median'], ' ms', 1)}, p95 {fmt(idle and idle['p95'], ' ms', 1)}"
                  + (f"; tui-load: median {fmt(echo['one tui-load']['median'], ' ms', 1)}, p95 {fmt(echo['one tui-load']['p95'], ' ms', 1)}"
                     if "one tui-load" in echo else ""),
-                 (idle["p95"] < 30 and idle["timeouts"] == 0) if idle else None)
+                 all(e["p95"] < 30 and e["timeouts"] == 0 for e in (idle, echo.get("one tui-load")) if e) if idle else None)
         self.load_row()
         self.dump_row()
         self.cycle_row()

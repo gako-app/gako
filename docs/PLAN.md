@@ -151,7 +151,7 @@ project to months rather than years.
 
 | Piece | Choice |
 |---|---|
-| App shell | Tauri 2, with the core in Rust |
+| App shell | Electron, with the core in Rust as a separate process (decided after phase 0; see *Host decision*) |
 | Terminal | xterm.js + `portable-pty` (ConPTY on Windows) |
 | Viewer and diff | Monaco (VS Code's own editor and diff viewer), read-only |
 | Highlighting | Monaco's built-in highlighting with TextMate grammars |
@@ -181,22 +181,56 @@ scratch.
 
 ## Host decision and the hedge
 
-**Tauri 2 first, Electron as a documented fallback.**
+**Electron, decided on 2026-10-06 after phase 0.** The plan started as "Tauri 2 first, Electron as
+a documented fallback"; the measurements changed that.
 
-The Tauri-vs-Electron question can't be settled on paper. It depends on how Monaco's diff view
-behaves in WKWebView (macOS), WebView2 (Windows), and WebKitGTK (Linux) on your real machines.
-Phase 0 settles it cheaply.
+**What the plan assumed:** pages that work in WebKit-based web views almost always work in Chromium,
+so falling back from Tauri to Electron is cheap, while building on Electron first risks shipping on
+"Electron's much larger memory baseline". The known risk was WebKitGTK on Linux.
 
-**Why Tauri first:** pages that work in WebKit-based web views almost always work in Chromium, so
-falling back from Tauri to Electron is cheap. Building on Electron first means that if you never
-port, you've shipped on Electron's much larger memory baseline — which is most of what you're trying
-to escape. Risk lands late either way; better it lands against the narrower target.
+**What phase 0 measured** on macOS and Linux
+([results](../bench/results/), summarized under *Phase 0: pass/fail criteria*):
 
-**Main risk:** Tauri on Linux uses WebKitGTK, which is noticeably slower. Windows (WebView2) and
-macOS (WKWebView) are fine.
+- **The memory premise didn't hold.** The same frontend in Electron used less memory than in Tauri
+  on both platforms when idle (204 vs 345 MB on macOS, 147 vs 240 MB on Linux), and both used 12–29%
+  of VS Code's. The bloat this project escapes is VS Code's workbench and extensions, not Chromium.
+- **WebKitGTK was the risk the plan named, and it showed:** Tauri on Linux failed both scroll rows
+  (about 28 and 49 fps against 50), its agent-TUI echo (p95 33 ms against 30) and the emoji dump's
+  time against VS Code. Electron passed all of them.
+- Every row Electron failed, Tauri failed too (the combining-and-emoji dump's memory; see the
+  very-long-lines trap). That's frontend work in either shell.
 
-**Mitigation:** keep the frontend independent of the app shell. UI code never calls Tauri directly;
-everything goes through one internal interface, so Electron can replace Tauri without a rewrite.
+**The written choice.** The pre-registered rule gives the Windows work machine the deciding vote
+and treats a Tauri failure only on Linux as "still Tauri". Windows wasn't measured: running the
+suite there wasn't practical at the time. Weighting macOS and Linux equally instead, the rule's
+own main clause applies (Tauri fails a non-memory measure that Electron passes, and Electron passes
+memory), so the choice is **Electron**. This departs from the rule as written, deliberately, for
+those two reasons.
+
+**What Windows leaves open.** Electron is the lower-risk choice there, since VS Code runs the same
+stack (Electron, xterm.js, ConPTY) on Windows every day. But the terminal under load through
+ConPTY, and memory and speed on the work machine itself, are unmeasured. Phase 1 must be tried on
+the Windows work machine early, and `bench/` can still run there if anything looks wrong.
+
+**The costs accepted with Electron:**
+
+- **Chromium updates are ours to ship.** Electron releases a new major version every 8 weeks and
+  supports the latest three, so each version gets about 24 weeks. Budget an upgrade every couple of
+  months, and plan auto-update into the first release. *(Checked 2026-10-06: Electron's release
+  timelines page.)*
+- **Install size:** roughly 100 MB to download and about 250 MB installed, against about 10 MB for
+  Tauri. Disk, not memory.
+- **Linux packaging:** Ubuntu 24.04 restricts the user namespaces Chromium's sandbox uses, so
+  Electron's `chrome-sandbox` helper must be root-owned and setuid (or covered by an AppArmor
+  profile) in every Linux package.
+- **An extra Node process and a permanent loopback socket.** Electron's main process is Node.js,
+  doing nothing but manage the window and the core. Electron can't call Rust directly, so the
+  WebSocket to the core (loopback only, one-time token) stays.
+
+**The hedge, kept:** the frontend stays shell-independent. UI code never calls Electron APIs; it
+goes through the `Transport` interface, and the shell only manages the window and the core. The
+Tauri shell stays in `shells/tauri/`, unmaintained, so the comparison can be re-run if WebKitGTK or
+the Windows numbers ever argue for it.
 
 **Shape that interface for streams, not only request and response.** It has to carry two-way,
 long-lived message streams: terminal output needs that from phase 0, and language servers would
@@ -204,12 +238,11 @@ need it in phase 5. Designing it that way now means phase 5 doesn't rework the b
 avoid rework.
 
 **The Rust core runs as its own process, and the frontend talks to it over a local WebSocket.**
-Both shells start the same `gako-core` binary and hand the frontend its address and a one-time
-token. The shells only manage windows and the core's lifetime. This is the only way the Tauri and
-Electron builds in phase 0 differ in nothing but the web view, which is what the comparison needs.
-Electron can't call Rust directly the way Tauri can, and a native Node add-on would give the two
-shells different transports. Details are in [PHASE0.md](PHASE0.md). Moving Tauri to its native IPC
-later is an optimization to measure, not a default.
+The shell starts the `gako-core` binary and hands the frontend its address and a one-time token;
+it only manages windows and the core's lifetime. In phase 0 this was what let the Tauri and
+Electron builds differ in nothing but the web view. With Electron it's also the only option that
+keeps the core in Rust: Electron can't call Rust directly, and a native Node add-on would tie the
+core to Node's ABI. Details are in [PHASE0.md](PHASE0.md).
 
 ---
 
@@ -273,7 +306,7 @@ Each phase should be useful on its own.
 | Phase | Deliverable | Replaces |
 |---|---|---|
 | **Trial** | One week of real work in the real work layout, including reviewing agent edits that span several repos: two days with VS Code's own panel limited to the repos in use, then five with the built-in Git extension disabled and a multi-repo extension view. Log frictions and fine sessions as they happen. Runs alongside phase 0, not before it | Nothing (tests the premise) |
-| **0** | **Feasibility test, on macOS, the real Windows work machine and Linux:** Monaco diff and viewer inside Tauri, **plus** xterm.js + `portable-pty` (ConPTY on Windows) running several real agent TUIs at once: throughput, redraw, resize, clean shutdown | Nothing (decides Tauri vs. Electron, and whether the terminal plan holds) |
+| **0** | **Done 2026-10-06 (macOS and Linux; Windows not run): chose Electron.** **Feasibility test, on macOS, the real Windows work machine and Linux:** Monaco diff and viewer inside Tauri, **plus** xterm.js + `portable-pty` (ConPTY on Windows) running several real agent TUIs at once: throughput, redraw, resize, clean shutdown | Nothing (decides Tauri vs. Electron, and whether the terminal plan holds) |
 | **1** | Multi-repo git panel, changed-repos-only tree, one review queue, Monaco diff, commit history and `git show` | The Source Control sidebar |
 | **2** | Terminal tabs, one per agent, with a status strip | The terminal window |
 | **3** | File explorer and read-only file viewer, with "open in editor" | The Explorer |
@@ -410,7 +443,7 @@ the point of the project.
 - Tauri fails only on Linux → **still Tauri**. Linux is the least-used platform; note the issue and
   revisit if Linux use grows.
 
-**Results so far** *(2026-10-06; the Windows work machine still to run)*:
+**Results** *(2026-10-06; the Windows work machine wasn't run)*:
 macOS ([Tauri](../bench/results/macos-tauri-2026-10-06.md),
 [Electron](../bench/results/macos-electron-2026-10-06.md),
 [VS Code](../bench/results/macos-vscode-2026-10-06.md)) and Linux, Ubuntu 24.04 on a ThinkPad with
@@ -432,7 +465,8 @@ Intel graphics ([Tauri](../bench/results/linux-tauri-2026-10-06.md),
   not creep (0.83 MB/min); the Linux runs haven't been repeated at that length.
 - Electron's normal-dump memory on Linux moved 14.7 MB in the dump's second half, just over the
   10 MB "flat" line, while ending where it plateaued (242 → 243 MB): borderline, not a trend.
-- The decision waits for the Windows work machine, as the rule says.
+- **Outcome:** Windows wasn't run. With macOS and Linux weighted equally, the decision is
+  **Electron**, recorded with its reasons and costs under *Host decision and the hedge*.
 
 **Phase 0 is cheap insurance:** about a week to find out whether Tauri renders the diff view smoothly
 and whether the terminal holds up under several live agents on Windows, before anything is built on
@@ -561,11 +595,9 @@ bloat. Phase 1 and 2 use will show which case you're in.
 
 ## Open questions before coding
 
-1. **Is the work Windows machine a physical desktop, or a remote or virtual one (VDI/RDP)?** This
-   gates the host choice. If resources are constrained, the lighter Tauri shell matters more — but
-   if WebView2 is also degraded, Electron becomes more attractive than this plan assumes. Phase 0's
-   measurements on that machine settle it; running `dxdiag` first is an optional one-minute check of
-   its graphics and hardware acceleration.
+1. **Is the work Windows machine a physical desktop, or a remote or virtual one (VDI/RDP)?** It no
+   longer gates the host choice (Electron was chosen without it), but it decides how phase 1 will
+   feel at work. Running `dxdiag` is a one-minute check of its graphics and hardware acceleration.
 2. **Do phases 1 and 2 replace enough to drop VS Code day to day**, or will the app run alongside it
    until phase 3 or 4?
 3. **How should nested repos be handled** in the work layout? Are they all listed in the base repo's
@@ -601,5 +633,5 @@ date and method):
   FAQ and Zed docs.
 
 **How this plan changes from here:** `PLAN.md` is the single source. Further edits should come from
-results (phase 0 measurements, the trial week, the bloat log), not from more drafting. Phase 0's
-working brief is [PHASE0.md](PHASE0.md).
+results (the trial week, the bloat log, phase 1 on the Windows work machine), not from more
+drafting. Phase 0's brief and what came of it are in [PHASE0.md](PHASE0.md).

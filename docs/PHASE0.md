@@ -4,6 +4,9 @@ The working brief for phase 0. Read [PLAN.md](PLAN.md) first: it holds the goal,
 table, the memory method and the decision rule. This file says what to build to produce those
 numbers, and who does which part.
 
+**Status: done on 2026-10-06, with the Windows run skipped. Electron was chosen.** See *Outcome* at
+the end, and PLAN.md's *Host decision and the hedge*.
+
 ## What phase 0 answers
 
 1. **Tauri or Electron?** Same frontend, same core, two shells, measured on macOS, the Windows work
@@ -141,6 +144,31 @@ and steps.
   choice is recorded too.
 - PLAN.md updated with anything the results changed: scrollback default, water marks, bytes per
   cell, the WebGL context limit.
+
+## Outcome
+
+Against *Done means*:
+
+- **Results files:** macOS and Linux, each with both shells and the VS Code baseline, in
+  [`bench/results/`](../bench/results/). **The Windows work machine wasn't run**; running the
+  suite there wasn't practical at the time.
+- **Decision:** Electron, as a written choice that departs from the rule (which gives Windows the
+  deciding vote). Recorded in PLAN.md with the reasons and the costs accepted.
+- **PLAN.md updated** with what the results changed: the macOS memory metric and process walk, the
+  terminal-size pin, and the confirmed combining-character trap. The scrollback default (1,000
+  rows) and the water marks (512 KB / 128 KB) held, so they stay. Bytes per cell and the WebGL
+  context limit weren't measured; zero context losses showed in about 1,800 tab switches across
+  all cycle runs with four agent tabs.
+
+**Does the terminal plan hold?** On macOS and Linux, yes. No byte was lost or garbled in any run;
+keystroke-to-echo stayed under 30 ms in Electron, also under load; backpressure kept memory flat for
+line-oriented and long-line output; and no process outlived a closed tab, a quit or a crash.
+Combining characters are the exception, for xterm.js's storage rather than our pipeline: a byte
+budget per tab is phase 2 work. ConPTY on Windows is untested.
+
+**Not done, carried forward:** the real-agent sanity run (`claude`, `codex`) and the
+minimize-and-restore check during tab cycling. Both belong with phase 2's terminal tabs, and with
+the first use on the Windows work machine.
 
 ## Out of scope for phase 0
 
