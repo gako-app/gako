@@ -799,6 +799,7 @@ def main() -> None:
     ap.add_argument("--load-seconds", type=int, default=240)
     ap.add_argument("--dump-pause", type=int, default=30)
     ap.add_argument("--cycle-seconds", type=int, default=240)
+    ap.add_argument("--renderer", choices=["webgl", "dom"], help="pin Gako's terminal renderer (default webgl)")
     ap.add_argument("--no-root-sampler", action="store_true",
                     help="Linux: sample memory without root (Chromium's sandboxed processes then go uncounted)")
     ap.add_argument("--cols", type=int, help="pin the terminal size instead of probing VS Code's")
@@ -812,6 +813,8 @@ def main() -> None:
     USE_ROOT_SAMPLER = USE_ROOT_SAMPLER and not args.no_root_sampler
     if USE_ROOT_SAMPLER:
         RootSampler.get()
+    if args.renderer:
+        PINNED["renderer"] = args.renderer
     pin_terminal_size(args, probe=args.probe)
     if args.app == "suite":
         suite(args)

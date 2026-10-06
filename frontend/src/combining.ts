@@ -1,52 +1,87 @@
-// Caps runs of combining marks in terminal output.
+// Drops pathological runs of combining marks from terminal output.
 //
-// xterm.js stores a character's combining marks as a growing string on its cell, so a long run (a
-// dump of "zalgo" text, say) makes a tab's memory grow with the amount of output, not just with its
-// scrollback; the WebGL renderer adds a glyph per distinct stack. Real text stays far below 8 marks
-// per character, so cutting longer runs loses nothing readable. See docs/PHASE2.md.
+// Long runs of combining marks on one character ("zalgo" text) cost memory twice: xterm.js stores
+// a character's marks as a growing string on its cell, and the WebGL renderer caches every distinct
+// stack of marks as its own glyph, in the GPU process. Phase 2 measured both (see docs/PHASE2.md):
+// cutting runs to 8 marks still let the GPU process grow to 8 GB on a dump of random stacks, while
+// keeping at most one mark held it near 100 MB. Real writing stays within 4 marks per character
+// (Vietnamese, Thai, Hebrew with points, Indic scripts), so a run longer than that is dropped whole,
+// keeping the base character: what's left can't create unbounded glyph variety.
 
 const MARK = /^\p{M}$/u;
 
 export class CombiningCap {
   private decoder = new TextDecoder();
-  private trailing = 0;
-  private run: RegExp;
+  /** Marks at the end of the previous chunk, held back: the run may continue past the limit. */
+  private held = '';
+  private heldCount = 0;
+  /** The current run is already too long: drop marks until it ends. */
+  private overflow = false;
+  private longRun: RegExp;
   private max: number;
 
   constructor(max: number) {
     this.max = max;
-    this.run = new RegExp(`(\\p{M}{${max}})\\p{M}+`, 'gu');
+    this.longRun = new RegExp(`\\p{M}{${max + 1},}`, 'gu');
   }
 
-  /** Decodes a chunk of UTF-8 output (split sequences are carried over) and caps its runs. */
+  /** Decodes a chunk of UTF-8 output (split sequences are carried over) and drops long runs. */
   apply(bytes: Uint8Array): string {
     let s = this.decoder.decode(bytes, { stream: true });
     if (!s) return s;
-    // A run that started in an earlier chunk keeps counting.
-    if (this.trailing) {
-      const lead = /^\p{M}+/u.exec(s);
-      if (lead) {
-        const marks = Array.from(lead[0]);
-        const keep = marks.slice(0, Math.max(0, this.max - this.trailing)).join('');
-        if (lead[0].length === s.length) {
-          this.trailing += marks.length;
-          return keep;
-        }
-        s = keep + s.slice(lead[0].length);
+    let out = '';
+    if (this.heldCount || this.overflow) {
+      const lead = /^\p{M}+/u.exec(s)?.[0] ?? '';
+      const n = Array.from(lead).length;
+      if (lead.length === s.length) {
+        this.absorb(lead, n);
+        return '';
       }
+      if (!this.overflow && this.heldCount + n <= this.max) out += this.held + lead;
+      this.held = '';
+      this.heldCount = 0;
+      this.overflow = false;
+      s = s.slice(lead.length);
     }
-    s = s.replace(this.run, '$1');
-    this.trailing = trailingMarks(s);
-    return s;
+    const [tail, count] = trailingMarks(s);
+    out += s.slice(0, s.length - tail.length).replace(this.longRun, '');
+    if (count) this.absorb(tail, count);
+    return out;
+  }
+
+  /** Marks held back at the end of the output so far: the run may yet continue. */
+  get holding(): boolean {
+    return this.heldCount > 0;
+  }
+
+  /** Writes out held marks once no more output is coming (the run turned out short). */
+  flush(): string {
+    const out = this.held;
+    this.held = '';
+    this.heldCount = 0;
+    return out;
+  }
+
+  private absorb(marks: string, n: number): void {
+    if (this.overflow) return;
+    if (this.heldCount + n > this.max) {
+      this.overflow = true;
+      this.held = '';
+      this.heldCount = 0;
+    } else {
+      this.held += marks;
+      this.heldCount += n;
+    }
   }
 }
 
-/** Caps a whole string at once (for checking expected output). */
+/** The same rule over a whole string (for checking expected output). */
 export function capCombining(text: string, max: number): string {
-  return max ? text.replace(new RegExp(`(\\p{M}{${max}})\\p{M}+`, 'gu'), '$1') : text;
+  return max ? text.replace(new RegExp(`\\p{M}{${max + 1},}`, 'gu'), '') : text;
 }
 
-function trailingMarks(s: string): number {
+/** The run of marks at the end of `s`, and how many marks it holds. */
+function trailingMarks(s: string): [string, number] {
   let n = 0;
   let i = s.length;
   while (i > 0) {
@@ -56,5 +91,5 @@ function trailingMarks(s: string): number {
     n++;
     i -= len;
   }
-  return n;
+  return [s.slice(i), n];
 }

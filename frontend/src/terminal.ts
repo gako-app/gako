@@ -66,6 +66,7 @@ export class TerminalTab {
   private exitWaiters: ((e: Exit) => void)[] = [];
   private echo: PendingEcho | null = null;
   private cap: CombiningCap | null;
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private resizeObserver: ResizeObserver | null = null;
 
   constructor(
@@ -116,7 +117,11 @@ export class TerminalTab {
     this.received += data.length;
     this.hash = fnv1a(this.hash, data);
     this.lastOutputAt = performance.now();
-    this.term.write(this.cap ? this.cap.apply(data) : data, () => {
+    const text = this.cap ? this.cap.apply(data) : data;
+    if (this.flushTimer) clearTimeout(this.flushTimer);
+    // Marks held back at the end of a chunk are written once no more output follows.
+    if (this.cap?.holding) this.flushTimer = setTimeout(() => this.term.write(this.cap!.flush()), 30);
+    this.term.write(text, () => {
       this.t.send({ t: 'ack', term: this.id, n: data.length });
       if (this.echo) this.checkEcho();
     });

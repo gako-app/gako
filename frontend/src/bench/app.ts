@@ -56,7 +56,7 @@ export function config(hello: Hello, shell: string): Config {
     scrollback: num('GAKO_SCROLLBACK', 1000),
     renderer: env.GAKO_RENDERER === 'dom' ? 'dom' : 'webgl',
     // The app's default (settings.terminalMaxCombining); GAKO_MAX_COMBINING=0 measures without it.
-    maxCombining: num('GAKO_MAX_COMBINING', 8),
+    maxCombining: num('GAKO_MAX_COMBINING', 4),
     env,
   };
 }

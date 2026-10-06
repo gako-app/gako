@@ -543,6 +543,12 @@ terminal), that shows up before anything else is built.
     7 GB. The line-oriented and long-line dumps stay flat in both Gako shells. So the row cap holds
     for ordinary output, and the combining-character case needs a byte bound
     ([results](../bench/results/)).
+  - **Resolved in phase 2 (2026-10-06):** the bound that works isn't on bytes or length but on
+    variety. Each distinct stack of marks becomes a WebGL glyph in the GPU process, so cutting runs
+    to 8 marks made it worse (8 GB). Dropping any run of more than 4 marks whole keeps the dump flat
+    at about 400 MB, and 8× faster than VS Code. Measurements and reasoning in
+    [PHASE2.md](PHASE2.md); results in
+    [macos-electron-phase2-2026-10-06.md](../bench/results/macos-electron-phase2-2026-10-06.md).
 - **WebGL terminals have a ceiling on tab count.** Browsers limit live WebGL contexts (reportedly
   about 16 in Chromium, and WebKit has its own limit; verify the current numbers), and xterm.js's
   WebGL renderer uses one per terminal. Past the limit, the oldest contexts are dropped and those

@@ -85,7 +85,7 @@ export class Terminals {
       renderer: (s?.terminalRenderer === 'dom' ? 'dom' : 'webgl') as Renderer,
       fontSize: s?.terminalFontSize,
       fontFamily: s?.terminalFontFamily,
-      maxCombining: s?.terminalMaxCombining ?? 8,
+      maxCombining: s?.terminalMaxCombining ?? 4,
       cmd: program.cmd,
       cwd: folder.path,
     });

@@ -35,8 +35,12 @@ pub struct Settings {
     pub terminal_renderer: String,
     pub terminal_font_size: f64,
     pub terminal_font_family: String,
-    /// Combining marks kept per character; longer runs are cut (0: no limit). See PHASE2.md.
+    /// Combining marks allowed per character; a longer run is dropped whole (0: no limit). See
+    /// PHASE2.md.
     pub terminal_max_combining: usize,
+    /// The command that opens a file, with `{file}`, `{line}` and `{column}` placeholders. Unset:
+    /// VS Code, then Zed, then the system's default app. See PHASE3.md.
+    pub editor: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -64,7 +68,8 @@ impl Default for Settings {
             terminal_renderer: "webgl".into(),
             terminal_font_size: if cfg!(target_os = "macos") { 12.0 } else { 14.0 },
             terminal_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
-            terminal_max_combining: 8,
+            terminal_max_combining: 4,
+            editor: None,
         }
     }
 }

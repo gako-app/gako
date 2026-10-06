@@ -5,8 +5,11 @@ The working brief for phase 2: terminal tabs, one per agent, with a status strip
 traps*). Phase 0 already proved the terminal pipeline (PTYs, backpressure, xterm.js, WebGL release
 on hide); this phase turns it into the app's terminal.
 
-**Status: in progress (2026-10-06).** Decisions were taken without a review round, at the user's
-request; they're listed at the end and can be changed.
+**Status: built and measured on macOS (2026-10-06)**: every row of phase 0's table re-run with the
+app's terminal code passes, the combining-and-emoji dump included
+([results](../bench/results/macos-electron-phase2-2026-10-06.md)). Still to do, at the end: the
+real-agent run with `claude` and `codex`, and Windows and Linux. Decisions were taken without a
+review round, at the user's request; they're listed at the end and can be changed.
 
 ## What phase 2 delivers
 
@@ -16,8 +19,9 @@ request; they're listed at the end and can be changed.
 - **A status strip** in the status bar: one chip per tab with its name and state, working (output in
   the last two seconds), quiet, or exited (with the exit code). Clicking a chip shows its tab.
 - **Terminals sized to the window** (phase 0 used a fixed size for measuring), resized with it.
-- **The combining-character cap** from phase 0's results: runs of combining marks longer than 8 on
-  one character are cut, which keeps a tab's memory bounded (see *Results that shaped this phase*).
+- **The combining-character limit** from phase 0's results: a run of more than 4 combining marks on
+  one character is dropped whole, keeping the character, which keeps a tab's memory bounded (see
+  *Results that shaped this phase*).
 - **The user's shell environment:** apps started from the Dock or Start menu don't get the PATH a
   login shell sets up, so `claude` and `codex` wouldn't be found. The core reads the login shell's
   environment once at startup, as VS Code does, and uses it for terminals and git.
@@ -36,8 +40,25 @@ scrollback, 112 columns) shows what grew in phase 0's third dump:
 | The same, capped at 16 marks | 18 MB |
 | The same, capped at 8 marks | 8 MB |
 
-So the cause is long combining-mark runs, not emoji. Real text stays far below 8 marks per
-character, and a run beyond that isn't legible, so the cap loses nothing anyone could read.
+So xterm.js's own cost comes from long combining-mark runs, not emoji. But cutting runs to 8 marks
+then backfired in the real app. Re-running phase 0's third dump in Electron with the WebGL renderer
+(memory over the whole process tree; the growth was all in Chromium's GPU process):
+
+| Emoji dump | Time | Peak memory | GPU process |
+|---|---|---|---|
+| No limit (phase 0) | 19.5 s | 1.3 GB | 0.6 GB |
+| Runs cut to 8 marks | 7.2 s | 6.2 GB, 8 GB afterwards | 7.8 GB |
+| Runs cut to 8, glyph atlas cleared at 256 MB | 10.9 s | 12.8 GB | 12.5 GB |
+| Runs cut to 8, DOM renderer | 165 s | 0.6 GB | 0.2 GB |
+| At most 1 mark kept | 4.4 s | 0.5 GB | 0.1 GB |
+| **Runs over 4 dropped whole** | **4.7 s** | **0.45 GB, flat** | **0.1 GB** |
+
+The WebGL renderer caches every distinct stack of marks as a glyph in its texture atlas, held by the
+GPU process. Illegible 300-mark stacks happen not to be cached, but cut to 8 random marks they're
+small enough, and almost every one is new, so the cache grows without end; clearing the atlas
+doesn't hand the memory back. What bounds it is limiting the variety, not the length. Real writing
+stays within 4 marks per character (Vietnamese, Thai, Hebrew with points, Indic scripts), and a
+longer run is noise, so a run over 4 is dropped whole and the character it sat on is kept.
 
 ## Out of scope for phase 2
 
@@ -61,6 +82,6 @@ terminals alive across app restarts; split panes.
    folder (the base folder or a repo; the repo of the selected file comes first).
 3. **Settings:** `agents` (name and command; Claude Code and Codex by default),
    `terminalScrollback` (1,000), `terminalRenderer` (`webgl` or `dom`), `terminalFontSize` (12),
-   `terminalFontFamily`, `terminalMaxCombining` (8; 0 turns the cap off).
+   `terminalFontFamily`, `terminalMaxCombining` (4; 0 turns the limit off).
 4. **Closing a tab** with a running program asks first. An exited tab stays open, with its output,
    until closed, and can be restarted.
