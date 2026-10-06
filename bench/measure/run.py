@@ -1,7 +1,7 @@
 """Runs phase 0's measurements and writes the raw results.
 
     uv run measure/run.py APP SCENARIO [options]
-    uv run measure/run.py suite [--apps tauri,electron,vscode]
+    uv run measure/run.py suite [--apps vscode,tauri,electron]
 
 APP is tauri, electron or vscode. SCENARIOS:
 
@@ -119,18 +119,18 @@ class Sampler(threading.Thread):
         super().__init__(daemon=True)
         self.root, self.interval = root, interval
         self.samples: list[dict] = []
-        self._stop = threading.Event()
+        self._halt = threading.Event()
 
     def run(self) -> None:
-        while not self._stop.is_set():
+        while not self._halt.is_set():
             s = proctree.sample(self.root, now_ms())
             if s.procs:
                 self.samples.append({"t": s.t, "total": s.total, "byRole": s.by_role, "n": len(s.procs),
                                      "procs": s.procs})
-            self._stop.wait(self.interval)
+            self._halt.wait(self.interval)
 
     def stop(self) -> list[dict]:
-        self._stop.set()
+        self._halt.set()
         self.join()
         return self.samples
 
@@ -667,7 +667,8 @@ def main() -> None:
     ap.add_argument("scenario", nargs="?", choices=list(SCENARIOS))
     ap.add_argument("--settings", choices=["matched", "default"], default=None,
                     help="VS Code: matched pins the terminal settings to Gako's; default keeps your own settings")
-    ap.add_argument("--apps", default="tauri,electron,vscode", help="for suite")
+    ap.add_argument("--apps", default="vscode,tauri,electron",
+                    help="for suite; VS Code first, so its baseline is checked before Gako runs (PLAN.md)")
     ap.add_argument("--settle", type=float, default=120, help="seconds to settle before sampling (PLAN.md: 120)")
     ap.add_argument("--window", type=float, default=60, help="seconds of samples after settling")
     ap.add_argument("--repeat", type=int, default=5, help="coldstart launches")
