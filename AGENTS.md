@@ -9,7 +9,7 @@ search and navigation. It never edits code; editing is handed off to an external
 1. [docs/PLAN.md](docs/PLAN.md): goal, scope, stack, build order, known traps and decision rules.
    It's the single source of truth.
 2. The brief for the current phase. **Phase 0 is done** (see [docs/PHASE0.md](docs/PHASE0.md)): the
-   app shell is Electron. **Next: phase 1**, whose brief isn't written yet.
+   app shell is Electron. **Current phase: 1**, see [docs/PHASE1.md](docs/PHASE1.md).
 
 ## Rules
 
