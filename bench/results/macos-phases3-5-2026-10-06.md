@@ -21,5 +21,7 @@ this code: [macos-phase1-rerun-phase5-2026-10-06.md](macos-phase1-rerun-phase5-2
 Searches, in order: a function name, a common fragment (`timeout: 1`), and text that appears nowhere.
 Search counts every file it reads, including the 9,000 untracked JSON files in the layouts.
 
-Not yet measured: the stress layout's UI re-run of phase 1's table (the window kept being covered by
-other apps, which stops it drawing; it runs in the final pass with the Mac left alone).
+Phase 1's UI table re-run with this code passes on both layouts, except, as in phase 1, the first
+edit after the idle period on the stress layout (624 ms against 500; the other nine took 234–264 ms):
+FSEvents delivers the first change after a quiet spell late. Memory with the symbol index and search
+loaded: 275 MB, 31% of VS Code's on the same layout.
