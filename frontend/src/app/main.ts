@@ -106,6 +106,9 @@ class App {
     this.terminals.onCollapse = () => this.layout.apply();
     app.prepend(this.sidebar.el, this.layout.leftRail, this.main, this.terminals.el, this.statusbar, this.toasts);
     installTooltips();
+    // Asked by the shell before the window closes (it warns when agents would be stopped). Only
+    // information goes out this way; the frontend still calls no shell APIs.
+    (window as unknown as { gakoRunning: () => string[] }).gakoRunning = () => this.terminals.running();
     this.showWelcome();
     t.onEvent((ev) => {
       if (ev.t === 'repoStatus') this.onStatus(ev.repo, ev.status as Status | undefined, ev.error);

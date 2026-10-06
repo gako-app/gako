@@ -18,3 +18,18 @@ npm run app -- /path/to/your/base/folder
 
 This builds the frontend and the core, then opens the folder in Gako. Without a folder, Gako
 reopens the last one, or asks.
+
+## Package it
+
+```bash
+npm run package
+```
+
+This builds the frontend and the core and packages them with the Electron shell for this platform
+into `dist/`: `Gako.app` on macOS (copy it to `/Applications`), a `Gako` folder with `Gako.exe` on
+Windows, and a `gako` folder on Linux. A packaged Gako opens the folder given on its command line
+(`open -a Gako --args /path/to/folder` on macOS), or the last one it had open. It isn't signed, so
+it's for the machine it was built on.
+
+The icon's source is `shells/electron/build/icon.svg`; `npm run icons -w shells/electron` renders
+the files packaging uses from it.

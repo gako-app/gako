@@ -114,6 +114,11 @@ export class Terminals {
     this.programs = [{ name: `Shell (${shellName})` }, ...agents.filter((a) => a.path).map((a) => ({ name: a.name, cmd: a.command }))];
   }
 
+  /** The programs still running, as "Claude Code in gako", for the shell's question on quitting. */
+  running(): string[] {
+    return this.tabs.filter((t) => !t.term.exit).map((t) => `${t.program.name} in ${t.folder.name}`);
+  }
+
   /** True when the documents are in front, not a terminal. */
   get reviewActive(): boolean {
     return this.active === null;

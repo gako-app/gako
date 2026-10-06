@@ -38,7 +38,8 @@ pub struct State {
     token: String,
     flow: FlowConfig,
     env: BTreeMap<String, String>,
-    log: Mutex<File>,
+    /// The event log, when there is one (see main.rs).
+    log: Option<Mutex<File>>,
     next_term: AtomicU32,
     terminals: Mutex<HashMap<u32, Arc<Terminal>>>,
 }
@@ -47,20 +48,25 @@ impl State {
     pub fn new(
         root: PathBuf,
         token: String,
-        log_path: &Path,
+        log_path: Option<&Path>,
         flow: FlowConfig,
         env: BTreeMap<String, String>,
     ) -> Result<State> {
-        if let Some(dir) = log_path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        let log = OpenOptions::new().create(true).append(true).open(log_path)?;
+        let log = match log_path {
+            Some(path) => {
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir)?;
+                }
+                Some(Mutex::new(OpenOptions::new().create(true).append(true).open(path)?))
+            }
+            None => None,
+        };
         Ok(State {
             root,
             token,
             flow,
             env,
-            log: Mutex::new(log),
+            log,
             next_term: AtomicU32::new(1),
             terminals: Mutex::new(HashMap::new()),
         })
@@ -78,10 +84,11 @@ impl State {
     }
 
     fn log_record(&self, mut rec: Value) {
+        let Some(log) = &self.log else { return };
         if let Value::Object(map) = &mut rec {
             map.insert("coreTs".into(), json!(epoch_ms()));
         }
-        let mut log = self.log.lock().unwrap();
+        let mut log = log.lock().unwrap();
         let _ = writeln!(log, "{rec}");
         let _ = log.flush();
     }

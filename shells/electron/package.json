@@ -1,11 +1,16 @@
 {
   "name": "@gako/electron",
+  "productName": "Gako",
+  "version": "0.1.0",
   "private": true,
   "main": "main.cjs",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "icons": "electron scripts/icons.cjs",
+    "package": "node scripts/package.mjs"
   },
   "devDependencies": {
+    "@electron/packager": "^20.3.0",
     "electron": "^44.5.1"
   }
 }

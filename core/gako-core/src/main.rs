@@ -37,13 +37,16 @@ fn main() -> Result<()> {
         Ok(t) if !t.is_empty() => t,
         _ => random_token()?,
     };
+    // The repository when run from it; the packaged app passes the user's home folder instead.
     let root = match std::env::var_os("GAKO_ROOT") {
         Some(r) => PathBuf::from(r),
         None => find_root().context("cannot find the repository root; set GAKO_ROOT")?,
     };
+    // The event log feeds bench/: kept in the repository, or wherever GAKO_LOG says; the packaged
+    // app keeps none.
     let log_path = match std::env::var_os("GAKO_LOG") {
-        Some(p) => PathBuf::from(p),
-        None => root.join("bench").join("out").join("logs").join("gako.jsonl"),
+        Some(p) => Some(PathBuf::from(p)),
+        None => is_repo(&root).then(|| root.join("bench").join("out").join("logs").join("gako.jsonl")),
     };
     let flow = FlowConfig {
         high: env_usize("GAKO_FLOW_HIGH", 512 * 1024),
@@ -58,7 +61,7 @@ fn main() -> Result<()> {
         .collect();
 
     shellenv::start();
-    let state = Arc::new(State::new(root, token.clone(), &log_path, flow, env)?);
+    let state = Arc::new(State::new(root, token.clone(), log_path.as_deref(), flow, env)?);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -140,11 +143,14 @@ fn env_usize(name: &str, default: usize) -> usize {
 }
 
 /// Walks up from the executable and the working directory to the folder holding `docs/PLAN.md`.
+fn is_repo(p: &Path) -> bool {
+    p.join("docs").join("PLAN.md").is_file() && p.join("core").is_dir()
+}
+
 fn find_root() -> Option<PathBuf> {
-    let is_root = |p: &Path| p.join("docs").join("PLAN.md").is_file() && p.join("core").is_dir();
     let starts = [std::env::current_exe().ok(), std::env::current_dir().ok()];
     starts
         .into_iter()
         .flatten()
-        .find_map(|start| start.ancestors().find(|p| is_root(p)).map(Path::to_path_buf))
+        .find_map(|start| start.ancestors().find(|p| is_repo(p)).map(Path::to_path_buf))
 }
