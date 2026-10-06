@@ -16,9 +16,10 @@ can be changed.
   `.gitignore` excludes are dimmed, and `.git` folders aren't shown.
 - **A read-only viewer**: clicking a file opens it in Monaco with syntax highlighting, never
   editable. Binary files and files over 50 MB get a message instead.
-- **Open in editor**: from the viewer, the diff view and the tree, the file opens in the configured
-  editor at the current line. With nothing configured, Gako uses VS Code (`code -g`) or Zed if
-  either is on the PATH, and otherwise the operating system's default app for the file.
+- **Open in editor**: from the viewer, the diff view and the tree (a hover button and the context
+  menu), the file opens in the user's editor at the cursor's line, or the top of the view. Gako finds
+  the editors it knows (VS Code and its Insiders build, VSCodium, Cursor, Windsurf, Zed, Sublime
+  Text) on the PATH or where their installers put them, and the header's ▾ picks between them.
 - **The tree stays current**: the workspace watcher already sees every change; expanded folders that
   changed reload by themselves.
 
@@ -39,7 +40,13 @@ image previews.
 
 1. **Ignored files are shown, dimmed**, as VS Code does, since build output and logs are often what
    you want to look at; `.git` folders are hidden.
-2. **Editor setting:** `editor` is a command line with `{file}`, `{line}` and `{column}` placeholders,
-   for example `["code", "-g", "{file}:{line}:{column}"]` or `["zed", "{file}:{line}"]`. Unset, Gako
-   picks VS Code, then Zed, then the system's default app.
+2. **Editor setting:** `editor` is a known editor's id (`"vscode"`, `"zed"`, `"cursor"`…) or a
+   command line with `{file}`, `{line}` and `{column}` placeholders, for example
+   `["nvim-qt", "+{line}", "{file}"]`. Unset, Gako uses the first known editor installed. An editor
+   picked in the app is remembered on that machine and wins over the setting.
+   *Changed after the user's first trial (2026-10-06):* the original fallback to the operating
+   system's default app opened PNGs in Preview, offered to run shell scripts and ignored the line.
+   It happened because VS Code's `code` command isn't on the PATH until it's installed from VS Code's
+   command palette, so Gako now also looks inside the installed apps, and never falls back to the
+   default app: with no editor found, it says so.
 3. **Large folders** list their first 5,000 entries, with a note that more exist.

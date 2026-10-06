@@ -1,11 +1,12 @@
 // The read-only file viewer: one Monaco editor that never edits, with "open in editor" at the
-// cursor's line.
+// cursor's line (or the top of the view).
 
 import { languageFor, monaco } from '../monaco';
 import { basename, h } from './dom';
 import type { FileContent } from './model';
 import type { Reveal } from './search';
 import type { Navigator } from './navigate';
+import { type Editors, spotIn } from './editors';
 
 export class Viewer {
   readonly el = h('section', { class: 'diff' });
@@ -19,7 +20,7 @@ export class Viewer {
 
   constructor(
     private read: (path: string) => Promise<FileContent>,
-    private openInEditor: (path: string, line: number, column: number) => void,
+    private editors: Editors,
     private relative: (path: string) => string,
   ) {
     this.el.append(this.header, this.notice, this.host);
@@ -39,7 +40,7 @@ export class Viewer {
     this.path = path;
     this.header.replaceChildren(
       h('div', { class: 'diff-title' }, h('span', { class: 'diff-name' }, basename(path)), h('span', { class: 'dim' }, ` ${this.relative(path)}`)),
-      h('div', { class: 'diff-actions' }, h('button', { onclick: () => this.open(), title: 'Open in your editor at the cursor' }, 'Open in editor')),
+      h('div', { class: 'diff-actions' }, this.editors.button(() => (this.path ? spotIn(this.editor, this.path) : null))),
     );
     const content = await this.read(path);
     if (ticket !== this.ticket) return;
@@ -70,11 +71,5 @@ export class Viewer {
 
   attachNavigation(nav: Navigator): void {
     nav.attach(this.editor, () => this.path);
-  }
-
-  private open(): void {
-    if (!this.path) return;
-    const pos = this.editor.getPosition();
-    this.openInEditor(this.path, pos?.lineNumber ?? 1, pos?.column ?? 1);
   }
 }

@@ -80,7 +80,8 @@ terminals alive across app restarts; split panes.
    per terminal. The status strip lives in the status bar.
 2. **New tabs:** a menu picks the program (shell, or a configured agent found on the PATH) and the
    folder (the base folder or a repo; the repo of the selected file comes first).
-3. **Settings:** `agents` (name and command; Claude Code and Codex by default),
+3. **Settings:** `agents` (name and command; Claude Code, Codex, OpenCode and Pi by default, each offered
+   only if it's on the PATH),
    `terminalScrollback` (1,000), `terminalRenderer` (`webgl` or `dom`), `terminalFontSize` (12),
    `terminalFontFamily`, `terminalMaxCombining` (4; 0 turns the limit off).
 4. **Closing a tab** with a running program asks first. An exited tab stays open, with its output,

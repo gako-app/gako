@@ -325,6 +325,15 @@ async fn request(
                 .collect();
             Ok(json!({"shell": crate::pty::default_shell_name(), "agents": agents}))
         }
+        "editors" => {
+            // The editors "open in editor" can use, and the one to use unless the user picks.
+            let setting = match workspace {
+                Some(ws) => ws.settings.editor.clone(),
+                None => settings::load(settings::user_file().as_deref(), None)?.editor,
+            };
+            let (found, default) = tokio::task::spawn_blocking(move || crate::editors::offered(setting.as_ref())).await?;
+            Ok(json!({"editors": found, "default": default}))
+        }
         "workspaceOpen" => {
             let user = settings::user_file();
             let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;
@@ -422,8 +431,14 @@ async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Resul
         "openInEditor" => {
             let line = params["line"].as_u64().unwrap_or(1) as u32;
             let column = params["column"].as_u64().unwrap_or(1) as u32;
-            let cmd = crate::files::editor_command(ws.settings.editor.as_deref(), &path, line, column);
-            crate::files::spawn_editor(&cmd)?;
+            let choice = params["editor"].as_str().map(str::to_string);
+            let setting = ws.settings.editor.clone();
+            let cmd = tokio::task::spawn_blocking(move || -> Result<Vec<String>> {
+                let cmd = crate::editors::command(setting.as_ref(), choice.as_deref(), &path, line, column)?;
+                crate::editors::spawn(&cmd)?;
+                Ok(cmd)
+            })
+            .await??;
             Ok(json!({"command": cmd}))
         }
         _ => anyhow::bail!("unknown method {method}"),

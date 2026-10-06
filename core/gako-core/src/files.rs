@@ -103,49 +103,6 @@ pub async fn read(path: &Path, limit: usize) -> Result<FileContent> {
     Ok(FileContent { text, size, binary, truncated: size > limit })
 }
 
-/// The command that opens `file` at `line` and `column` in the user's editor: the `editor` setting
-/// with its placeholders filled in, else VS Code, else Zed, else the system's default app.
-pub fn editor_command(setting: Option<&[String]>, file: &Path, line: u32, column: u32) -> Vec<String> {
-    let template: Vec<String> = match setting {
-        Some(t) if !t.is_empty() => t.to_vec(),
-        _ => {
-            if crate::shellenv::which("code").is_some() {
-                vec!["code".into(), "-g".into(), "{file}:{line}:{column}".into()]
-            } else if crate::shellenv::which("zed").is_some() {
-                vec!["zed".into(), "{file}:{line}:{column}".into()]
-            } else if cfg!(target_os = "macos") {
-                vec!["open".into(), "{file}".into()]
-            } else if cfg!(windows) {
-                vec!["explorer.exe".into(), "{file}".into()]
-            } else {
-                vec!["xdg-open".into(), "{file}".into()]
-            }
-        }
-    };
-    let file = file.to_string_lossy();
-    template
-        .iter()
-        .map(|a| a.replace("{file}", &file).replace("{line}", &line.max(1).to_string()).replace("{column}", &column.max(1).to_string()))
-        .collect()
-}
-
-/// Starts the editor and doesn't wait for it (a thread reaps it when it exits).
-pub fn spawn_editor(cmd: &[String]) -> Result<()> {
-    let Some((program, args)) = cmd.split_first() else { bail!("the editor command is empty") };
-    let resolved = crate::shellenv::which(program).unwrap_or_else(|| PathBuf::from(program));
-    let mut child = std::process::Command::new(resolved)
-        .args(args)
-        .envs(crate::shellenv::get())
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()?;
-    std::thread::spawn(move || {
-        let _ = child.wait();
-    });
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,13 +147,5 @@ mod tests {
         std::fs::create_dir(root.join("in")).unwrap();
         assert!(inside(&[root.join("in")], &root.join("in")).is_ok());
         assert!(inside(&[root.join("in")], &root.join("in/../")).is_err());
-    }
-
-    #[test]
-    fn editor_templates() {
-        let cmd = editor_command(Some(&["zed".into(), "{file}:{line}".into()]), Path::new("/w/a.rs"), 12, 3);
-        assert_eq!(cmd, vec!["zed", "/w/a.rs:12"]);
-        let cmd = editor_command(Some(&["code".into(), "-g".into(), "{file}:{line}:{column}".into()]), Path::new("/w/b.ts"), 0, 0);
-        assert_eq!(cmd, vec!["code", "-g", "/w/b.ts:1:1"]);
     }
 }

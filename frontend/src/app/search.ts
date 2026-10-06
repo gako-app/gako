@@ -60,7 +60,7 @@ export class SearchView {
     private t: Transport,
     private open: (path: string, reveal: Reveal) => void,
   ) {
-    const toggle = (key: keyof SearchView['toggles'], label: string, title: string) => {
+    const toggle = (key: keyof SearchView['toggles'], label: string | HTMLElement, title: string) => {
       const b = h('button', { class: 'toggle', title, onclick: () => { this.toggles[key] = !this.toggles[key]; b.classList.toggle('on'); this.schedule(0); } }, label);
       this.toggleButtons.set(key, b);
       return b;
@@ -68,7 +68,7 @@ export class SearchView {
     this.el.append(
       h('div', { class: 'search-form' },
         h('div', { class: 'search-row' }, this.input,
-          toggle('caseSensitive', 'Aa', 'Match case'), toggle('wholeWord', 'ab', 'Match whole word'), toggle('regex', '.*', 'Regular expression')),
+          toggle('caseSensitive', 'Aa', 'Match case'), toggle('wholeWord', h('span', { class: 'whole-word' }, 'ab'), 'Match whole word'), toggle('regex', '.*', 'Regular expression')),
         this.include, this.exclude,
         h('label', { class: 'dim small' }, (() => {
           const c = h('input', { type: 'checkbox', onchange: () => { this.toggles.includeIgnored = c.checked; this.schedule(0); } });

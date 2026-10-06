@@ -38,9 +38,10 @@ pub struct Settings {
     /// Combining marks allowed per character; a longer run is dropped whole (0: no limit). See
     /// PHASE2.md.
     pub terminal_max_combining: usize,
-    /// The command that opens a file, with `{file}`, `{line}` and `{column}` placeholders. Unset:
-    /// VS Code, then Zed, then the system's default app. See PHASE3.md.
-    pub editor: Option<Vec<String>>,
+    /// The editor files open in: a known editor's id (`"vscode"`, `"zed"`…), or a command with
+    /// `{file}`, `{line}` and `{column}` placeholders. Unset: the first known editor installed. See
+    /// PHASE3.md and editors.rs.
+    pub editor: Option<crate::editors::EditorSetting>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -63,6 +64,8 @@ impl Default for Settings {
             agents: vec![
                 Agent { name: "Claude Code".into(), command: vec!["claude".into()] },
                 Agent { name: "Codex".into(), command: vec!["codex".into()] },
+                Agent { name: "OpenCode".into(), command: vec!["opencode".into()] },
+                Agent { name: "Pi".into(), command: vec!["pi".into()] },
             ],
             terminal_scrollback: 1000,
             terminal_renderer: "webgl".into(),

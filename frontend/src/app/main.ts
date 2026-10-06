@@ -15,6 +15,7 @@ import { type Reveal, SearchView } from './search';
 import { GoToFile } from './gotofile';
 import { Navigator } from './navigate';
 import type { FileContent } from './model';
+import { Editors } from './editors';
 
 const LAST_BASE = 'gako.lastBase';
 
@@ -41,6 +42,7 @@ class App {
   private nav: Navigator;
   private indexInfo = '';
   private historyRepo: Repo | null = null;
+  private editors: Editors;
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
@@ -57,8 +59,9 @@ class App {
       lastMessage: async (r) => (r.status?.oid ? (await this.git.details(r.root, 'HEAD')).message : ''),
       history: (r) => this.showHistory(r),
     });
-    this.diff = new DiffPanel(this.git);
-    this.explorer = new Explorer(t, (path) => this.openFile(path), (m) => this.toast(m));
+    this.editors = new Editors(t, (m) => this.toast(m));
+    this.diff = new DiffPanel(this.git, this.editors, (spot) => this.openFile(spot.path, { line: spot.line ?? 1, columns: [], column: spot.column }));
+    this.explorer = new Explorer(t, this.editors, (path) => this.openFile(path), (m) => this.toast(m), (path) => this.relative(path));
     this.sidebar.explorer = this.explorer;
     this.search = new SearchView(t, (path, reveal) => this.openFile(path, reveal));
     this.sidebar.search = this.search;
@@ -75,7 +78,7 @@ class App {
     });
     this.viewer = new Viewer(
       (path) => this.t.request<FileContent>('fileRead', { path }),
-      (path, line, column) => this.openInEditor(path, line, column),
+      this.editors,
       (path) => this.relative(path),
     );
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
@@ -163,6 +166,7 @@ class App {
       this.renderStatusbar();
       this.showWelcome();
       this.sidebar.focus();
+      this.editors.load().catch((e) => this.toast(String(e.message ?? e)));
       this.log('workspaceOpened', { repos: this.repos.length });
       const agents = await this.t.request<{ shell: string; agents: { name: string; command: string[]; path: string | null }[] }>('agents');
       await this.terminals.configure(opened.settings, agents.shell, agents.agents);
@@ -226,7 +230,7 @@ class App {
     const worktree = item.target.right?.rev === 'worktree' ? item.target.right.path : null;
     this.diff.show(item.target, {
       repoName: this.name(r),
-      openInEditor: worktree ? (line, column) => this.openInEditor(this.join(r.root, worktree), line, column) : undefined,
+      file: worktree ? this.join(r.root, worktree) : undefined,
       prev: prev ? () => this.sidebar.step(-1) : undefined,
       next: next ? () => this.sidebar.step(1) : undefined,
       stage: canStage ? () => this.act(() => this.git.stage(r.root, [item.entry.path])) : undefined,
@@ -257,10 +261,6 @@ class App {
   private openFile(path: string, reveal?: Reveal): void {
     this.setMode('file');
     this.viewer.show(path, false, reveal).catch((e) => this.toast(String(e.message ?? e)));
-  }
-
-  private openInEditor(path: string, line: number, column: number): void {
-    this.t.request('openInEditor', { path, line, column }).catch((e) => this.toast(String(e.message ?? e)));
   }
 
   private join(root: string, rel: string): string {

@@ -6,6 +6,9 @@ import { basename, dirname, fill, h } from './dom';
 import type { DiffTarget, FileContent, Side } from './model';
 import type { Git } from './git';
 import type { Navigator } from './navigate';
+import { type Editors, type Spot, spotIn } from './editors';
+
+const INLINE = 'gako.diffInline';
 
 const KIND_LABEL: Record<DiffTarget['kind'], string> = {
   unstaged: 'Index ↔ working tree',
@@ -21,8 +24,8 @@ export interface DiffActions {
   stage?: () => void;
   unstage?: () => void;
   back?: () => void;
-  /** Opens the shown file in the user's editor at a line. */
-  openInEditor?: (line: number, column: number) => void;
+  /** The working-tree file shown on the right, which can be opened in the viewer or an editor. */
+  file?: string;
   repoName: string;
 }
 
@@ -34,15 +37,17 @@ export class DiffPanel {
   private editor: monaco.editor.IStandaloneDiffEditor;
   target: DiffTarget | null = null;
   private loading = 0;
+  private inline = false;
 
-  constructor(private git: Git) {
+  constructor(private git: Git, private editors: Editors, private openFile: (spot: Spot) => void) {
+    try { this.inline = localStorage.getItem(INLINE) === '1'; } catch { /* storage unavailable */ }
     this.el.append(this.header, this.notice, this.host);
     this.editor = monaco.editor.createDiffEditor(this.host, {
       readOnly: true,
       domReadOnly: true,
       originalEditable: false,
       automaticLayout: true,
-      renderSideBySide: true,
+      renderSideBySide: !this.inline,
       hideUnchangedRegions: { enabled: true },
       theme: 'vs-dark',
       fontSize: 12,
@@ -98,19 +103,29 @@ export class DiffPanel {
         renamed ? h('span', { class: 'dim' }, ` (renamed from ${renamed.slice(0, -3)})`) : null),
       h('div', { class: 'diff-kind dim', title: `left: ${sideLabel(t.left)}, right: ${sideLabel(t.right)}` }, what),
       h('div', { class: 'diff-actions' },
-        a.openInEditor ? h('button', { onclick: () => this.openAtCursor(a.openInEditor!), title: 'Open in your editor at the cursor' }, 'Open in editor') : null,
+        a.file ? h('button', { onclick: () => this.openFile(this.spot(a.file!)), title: 'Show the whole file, at this line' }, 'Open file') : null,
+        a.file ? this.editors.button(() => this.spot(a.file!)) : null,
         a.stage ? h('button', { onclick: a.stage, title: 'Stage this file' }, 'Stage') : null,
         a.unstage ? h('button', { onclick: a.unstage, title: 'Unstage this file' }, 'Unstage') : null,
-        h('button', { onclick: () => this.toggleInline(), title: 'Side by side or inline' }, 'Inline'),
+        this.modeSwitch(),
         h('button', { onclick: a.prev, disabled: !a.prev, title: 'Previous file (↑)' }, '↑'),
         h('button', { onclick: a.next, disabled: !a.next, title: 'Next file (↓)' }, '↓')),
     );
   }
 
-  private openAtCursor(open: (line: number, column: number) => void): void {
-    const pos = this.editor.getModifiedEditor().getPosition();
-    const top = this.editor.getModifiedEditor().getVisibleRanges()[0]?.startLineNumber ?? 1;
-    open(pos?.lineNumber ?? top, pos?.column ?? 1);
+  /** Where the right side is: the cursor's line if it's on screen, else the top of the view. */
+  private spot(path: string): Spot {
+    return spotIn(this.editor.getModifiedEditor(), path);
+  }
+
+  /** Side by side or inline, showing which one is on. */
+  private modeSwitch(): HTMLElement {
+    const option = (inline: boolean, label: string) => h('button', {
+      class: inline === this.inline ? 'on' : '', 'aria-pressed': String(inline === this.inline),
+      onclick: () => this.setInline(inline),
+    }, label);
+    return h('span', { class: 'segmented', role: 'group', title: 'How the diff is laid out' },
+      option(false, 'Side by side'), option(true, 'Inline'));
   }
 
   /** Navigation on both sides; `abs` turns a repo-relative path into a full one. */
@@ -124,9 +139,15 @@ export class DiffPanel {
     nav.attach(this.editor.getModifiedEditor(), side('right'));
   }
 
-  private toggleInline(): void {
-    const inline = this.el.classList.toggle('inline');
+  private setInline(inline: boolean): void {
+    this.inline = inline;
+    try { localStorage.setItem(INLINE, inline ? '1' : '0'); } catch { /* storage unavailable */ }
     this.editor.updateOptions({ renderSideBySide: !inline });
+    for (const b of this.header.querySelectorAll('.segmented button')) {
+      const on = (b.textContent === 'Inline') === inline;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
   }
 
   clear(message: string): void {

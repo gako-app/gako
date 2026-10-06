@@ -40,7 +40,7 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .sidebar-list { flex: 1; overflow: auto; outline: none; padding-bottom: 20px; }
 
 .repo-header, .review-repo { display: flex; align-items: center; gap: 2px; padding: 4px 6px; font-weight: 600; position: sticky; top: 0; background: var(--panel); z-index: 1; border-top: 1px solid var(--border); }
-.repo-header:hover button.icon, .group:hover button.icon, .file:hover button.icon { visibility: visible; }
+.repo-header:hover button.icon, .group:hover button.icon, .file:hover button.icon, .tree-row:hover button.icon { visibility: visible; }
 .twisty { background: none; border: none; padding: 0 2px; width: 16px; color: var(--dim); }
 .repo-name { white-space: nowrap; }
 .branch { font-weight: normal; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-left: 6px; font-size: 12px; }
@@ -102,6 +102,14 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .menu-item:hover { background: var(--select) !important; }
 .menu-item.selected { background: #37373d; }
 .menu-item.selected::before { content: '✓ '; }
+.menu-separator { height: 1px; margin: 4px 0; background: var(--border); }
+.split { display: inline-flex; }
+.split > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split > .split-more { border-left: none; border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 2px 5px; }
+.segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.segmented > button { border: none; border-radius: 0; color: var(--dim); }
+.segmented > button + button { border-left: 1px solid var(--border); }
+.segmented > button.on { background: var(--accent); color: #fff; }
 .diff, .history { display: flex; flex-direction: column; min-height: 0; }
 .diff-header { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--panel); white-space: nowrap; }
 .diff-title { overflow: hidden; text-overflow: ellipsis; }
@@ -159,6 +167,7 @@ button.icon { background: none; border: none; padding: 0 4px; color: var(--dim);
 .search-input:focus, .search-glob:focus, .goto-input:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
 .toggle { background: none; border: 1px solid transparent; color: var(--dim); padding: 0 5px; font: 12px Menlo, Consolas, monospace; }
 .toggle.on { border-color: var(--accent); color: var(--text); background: #0e3a5a; }
+.toggle .whole-word { text-decoration: underline; text-underline-offset: 3px; }
 .toggle.wide { font: 12px system-ui, sans-serif; }
 .scope-kinds { display: flex; gap: 2px; flex-wrap: wrap; }
 .scope-repos { display: flex; flex-direction: column; max-height: 160px; overflow: auto; padding: 2px 4px; }

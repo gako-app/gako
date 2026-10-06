@@ -1,10 +1,13 @@
 // The Files view: the base folder as a tree, loaded folder by folder, with Git state on files and
-// ignored entries dimmed. Expanded folders reload when the core reports changes in them.
+// ignored entries dimmed. Expanded folders reload when the core reports changes in them. Any entry
+// opens in the user's editor from its hover button or its context menu.
 
 import type { Transport } from '../transport';
 import { h } from './dom';
 import type { Repo } from './model';
 import { LETTER } from './model';
+import type { Editors } from './editors';
+import { type MenuItem, showMenu } from './menu';
 
 interface Entry {
   name: string;
@@ -42,8 +45,10 @@ export class Explorer {
 
   constructor(
     private t: Transport,
+    private editors: Editors,
     private openFile: (path: string) => void,
     private onError: (message: string) => void,
+    private relative: (path: string) => string,
   ) {
     t.onEvent((ev) => {
       if (ev.t !== 'filesChanged') return;
@@ -123,6 +128,23 @@ export class Explorer {
     }
   }
 
+  private contextMenu(e: MouseEvent, entry: Entry): void {
+    e.preventDefault();
+    this.selected = entry.path;
+    this.render();
+    const spot = { path: entry.path };
+    const editors: MenuItem[] = this.editors.items(spot);
+    // With no editor found, the one item explains why when it's used.
+    if (editors.length === 0) editors.push({ label: this.editors.label(), run: () => this.editors.open(spot) });
+    const copy = (text: string) => navigator.clipboard.writeText(text).catch((err) => this.onError(String(err.message ?? err)));
+    showMenu({ x: e.clientX, y: e.clientY }, [
+      ...editors,
+      'separator',
+      { label: 'Copy path', run: () => copy(entry.path) },
+      { label: 'Copy relative path', run: () => copy(this.relative(entry.path)) },
+    ]);
+  }
+
   /** ↑ ↓ move, → opens a folder, ← closes it (or goes to its parent), Enter opens. */
   key(e: KeyboardEvent): boolean {
     const i = this.rows.findIndex((r) => r.entry.path === this.selected);
@@ -176,12 +198,17 @@ export class Explorer {
           style: `padding-left:${8 + depth * 12}px`,
           title: entry.path,
           onclick: () => this.activate(row),
+          oncontextmenu: (e: MouseEvent) => this.contextMenu(e, entry),
         },
         h('span', { class: 'twist' }, isDir ? (open ? '▾' : '▸') : ''),
         h('span', { class: 'fname' }, entry.name),
         entry.repo ? h('span', { class: 'badge repo' }, 'repo') : null,
         entry.kind === 'symlink' ? h('span', { class: 'dim' }, ' ↗') : null,
         h('span', { class: 'spacer' }),
+        h('button', {
+          class: 'icon', title: this.editors.label(),
+          onclick: (e: Event) => { e.stopPropagation(); this.editors.open({ path: entry.path }); },
+        }, '↗'),
         letter ? h('span', { class: 'letter' }, letter) : this.dirty.has(entry.path) ? h('span', { class: 'dirty-dot' }, '•') : null));
         if (open) walk(entry.path, depth + 1);
       }
