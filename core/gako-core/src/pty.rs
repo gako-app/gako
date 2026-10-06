@@ -40,6 +40,8 @@ pub enum Event {
     /// Terminal id (4 bytes, big endian) followed by the output bytes.
     Data(Vec<u8>),
     Exit(ExitInfo),
+    /// A JSON control message (replies go through the same queue, so they stay in order).
+    Text(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -134,6 +136,7 @@ pub struct Terminal {
     input: Mutex<Option<std_mpsc::Sender<Vec<u8>>>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     flow: Arc<Flow>,
+    start: Mutex<Option<std_mpsc::Sender<()>>>,
 }
 
 impl Terminal {
@@ -181,6 +184,7 @@ impl Terminal {
         });
 
         let (input_tx, input_rx) = std_mpsc::channel::<Vec<u8>>();
+        let (start_tx, start_rx) = std_mpsc::channel::<()>();
         std::thread::Builder::new().name(format!("pty-{id}-in")).spawn(move || {
             while let Ok(bytes) = input_rx.recv() {
                 if writer.write_all(&bytes).and_then(|_| writer.flush()).is_err() {
@@ -195,6 +199,7 @@ impl Terminal {
             input: Mutex::new(Some(input_tx)),
             killer: Mutex::new(killer),
             flow: flow.clone(),
+            start: Mutex::new(Some(start_tx)),
         });
 
         let (status_tx, status_rx) = std_mpsc::channel::<Option<u32>>();
@@ -211,6 +216,8 @@ impl Terminal {
 
         let chunk_size = config.chunk;
         std::thread::Builder::new().name(format!("pty-{id}-out")).spawn(move || {
+            // Output waits until the reply announcing this terminal is queued (see `start`).
+            let _ = start_rx.recv();
             let mut buf = vec![0u8; chunk_size];
             loop {
                 let n = match reader.read(&mut buf) {
@@ -233,6 +240,14 @@ impl Terminal {
         })?;
 
         Ok(term)
+    }
+
+    /// Lets the reader forward output. Called once the `termOpen` reply is queued, so the frontend
+    /// knows the terminal id before its first bytes arrive.
+    pub fn start(&self) {
+        if let Some(start) = self.start.lock().unwrap().take() {
+            let _ = start.send(());
+        }
     }
 
     pub fn write(&self, bytes: Vec<u8>) {
@@ -258,6 +273,7 @@ impl Terminal {
 
     /// Kills the child and releases the PTY. The reader thread then reports the exit.
     pub fn close(&self) {
+        self.start();
         let _ = self.killer.lock().unwrap().kill();
         self.flow.close();
         self.input.lock().unwrap().take();

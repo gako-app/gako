@@ -36,6 +36,10 @@ cargo build --release --manifest-path core/Cargo.toml
 cargo build --release --manifest-path shells/tauri/src-tauri/Cargo.toml
 ```
 
+Rebuild the Tauri shell after every frontend build: it embeds the frontend when it's compiled
+(Electron loads it at run time). `run.py` refuses to run a Tauri build that's older than the
+frontend build.
+
 The first Electron start downloads the Electron runtime (checked against the checksums pinned in
 the `electron` package).
 

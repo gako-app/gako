@@ -48,8 +48,11 @@ EXE = ".exe" if PLATFORM == "windows" else ""
 TUI_LOAD = ROOT / "core" / "target" / "release" / f"tui-load{EXE}"
 MB = 1024 * 1024
 
-# Pinned settings, recorded with every result.
+# Pinned settings, recorded with every result. The terminal size is replaced by what VS Code's
+# terminals actually get on this machine (see pin_terminal_size): VS Code's size can't be set, and
+# on a small screen 200 columns don't fit, so Gako matches VS Code rather than the other way round.
 PINNED = {"cols": 200, "rows": 50, "scrollback": 1000, "renderer": "webgl", "fontSize": 12}
+SIZE_FILE = OUT / f"terminal-size-{PLATFORM}.json"
 
 
 # --- small helpers ------------------------------------------------------------------------------
@@ -206,7 +209,11 @@ def versions(app: str) -> dict:
 
 def gako_command(app: str) -> list[str]:
     if app == "tauri":
-        return [str(ROOT / "shells" / "tauri" / "src-tauri" / "target" / "release" / f"gako-tauri{EXE}")]
+        exe = ROOT / "shells" / "tauri" / "src-tauri" / "target" / "release" / f"gako-tauri{EXE}"
+        # Tauri embeds the frontend at build time; Electron loads it at run time.
+        if exe.stat().st_mtime < (ROOT / "frontend" / "dist" / "index.html").stat().st_mtime:
+            raise SystemExit("the Tauri build is older than the frontend build: rebuild shells/tauri")
+        return [str(exe)]
     dist = ROOT / "node_modules" / "electron" / "dist"
     exe = {"macos": dist / "Electron.app" / "Contents" / "MacOS" / "Electron",
            "windows": dist / "electron.exe", "linux": dist / "electron"}[PLATFORM]
@@ -312,10 +319,10 @@ class Run:
         self.logfile = self.dir / "log.jsonl"
         self.result: dict = {
             "runId": self.id, "platform": PLATFORM, "app": app, "scenario": scenario, "settings": settings,
-            "date": dt.date.today().isoformat(), "pinned": PINNED, "versions": versions(app),
+            "date": dt.date.today().isoformat(), "pinned": dict(PINNED), "versions": versions(app),
             "settle": args.settle, "window": args.window,
         }
-        self.proc: subprocess.Popen | None = None
+        self.proc = None
 
     # gako ---------------------------------------------------------------------------------------
 
@@ -332,8 +339,7 @@ class Run:
                "GAKO_RENDERER": PINNED["renderer"], "GAKO_COLS": str(PINNED["cols"]), "GAKO_ROWS": str(PINNED["rows"]),
                **(extra_env or {})}
         t0 = now_ms()
-        self.proc = subprocess.Popen(gako_command(self.app), env=env, cwd=ROOT,
-                                     stdout=open(self.dir / "app.stdout", "w"), stderr=subprocess.STDOUT)
+        self.proc = proctree.spawn(gako_command(self.app), env, ROOT, self.dir / "app.stdout")
         return t0
 
     # vscode -------------------------------------------------------------------------------------
@@ -357,8 +363,8 @@ class Run:
         ws = self.vscode_workspace(tasks)
         exe, _ = vscode_paths()
         t0 = now_ms()
-        self.proc = subprocess.Popen([str(exe), "--user-data-dir", str(user_data), "--new-window", str(ws)],
-                                     stdout=open(self.dir / "app.stdout", "w"), stderr=subprocess.STDOUT)
+        self.proc = proctree.spawn([str(exe), "--user-data-dir", str(user_data), "--new-window", str(ws)],
+                                   dict(os.environ), ROOT, self.dir / "app.stdout")
         return t0
 
     def vscode_cli(self, *args: str) -> None:
@@ -608,6 +614,36 @@ def run_one(app: str, scenario: str, settings: str, args: argparse.Namespace) ->
     return run.dir
 
 
+def probe_vscode_size(args: argparse.Namespace) -> tuple[int, int]:
+    """Opens VS Code with two agent terminals for a few seconds and returns the size they report."""
+    run = Run("vscode", "sizeprobe", "matched", args)
+    tasks = [run.task(f"Agent {i}", ["run", "--seconds", "12", "--seed", str(i), "--report", str(run.dir / f"tui-{i}.json")])
+             for i in (1, 2)]
+    run.launch_vscode(tasks)
+    reports = wait_for(lambda: [r for i in (1, 2) if (r := run.report(f"tui-{i}.json"))] or None, 120, "the size probe",
+                       run.proc)
+    time.sleep(2)
+    kill_tree(run.proc.pid)
+    shutil.rmtree(run.user_data, ignore_errors=True)
+    shutil.rmtree(run.dir, ignore_errors=True)
+    cols = max(r["cols"] for r in reports)
+    rows = max(r["rows"] for r in reports)
+    return cols, rows
+
+
+def pin_terminal_size(args: argparse.Namespace, probe: bool) -> None:
+    if args.cols and args.rows:
+        size = {"cols": args.cols, "rows": args.rows, "source": "command line"}
+    elif SIZE_FILE.exists() and not probe:
+        size = json.loads(SIZE_FILE.read_text())
+    else:
+        cols, rows = probe_vscode_size(args)
+        size = {"cols": cols, "rows": rows, "source": f"VS Code probe {dt.datetime.now():%Y-%m-%d %H:%M}"}
+        SIZE_FILE.write_text(json.dumps(size))
+    PINNED.update(cols=size["cols"], rows=size["rows"], sizeSource=size["source"])
+    log(f"terminal size {size['cols']}x{size['rows']} ({size['source']})")
+
+
 def suite(args: argparse.Namespace) -> None:
     apps = args.apps.split(",")
     plan = []
@@ -638,8 +674,11 @@ def main() -> None:
     ap.add_argument("--load-seconds", type=int, default=240)
     ap.add_argument("--dump-pause", type=int, default=30)
     ap.add_argument("--cycle-seconds", type=int, default=240)
+    ap.add_argument("--cols", type=int, help="pin the terminal size instead of probing VS Code's")
+    ap.add_argument("--rows", type=int)
     ap.add_argument("--quit", choices=["term", "kill"], default="term", help="lifecycle: how to quit the app")
     args = ap.parse_args()
+    pin_terminal_size(args, probe=args.app == "suite" and "vscode" in args.apps.split(","))
     if args.app == "suite":
         suite(args)
         return

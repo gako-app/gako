@@ -156,3 +156,60 @@ def footprint(pids: list[int]) -> dict | None:
         "total": data.get("total footprint"),
         "processes": [{"pid": p["pid"], "name": p["name"], "footprint": p["footprint"]} for p in data.get("processes", [])],
     }
+
+
+class Spawned:
+    """The parts of subprocess.Popen the runner uses, for a process started by `spawn`."""
+
+    def __init__(self, pid: int):
+        self.pid = pid
+        self.returncode: int | None = None
+
+    def poll(self) -> int | None:
+        if self.returncode is None:
+            import os
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            if pid:
+                self.returncode = os.waitstatus_to_exitcode(status)
+        return self.returncode
+
+    def send_signal(self, sig: int) -> None:
+        import os
+        if self.poll() is None:
+            os.kill(self.pid, sig)
+
+    def terminate(self) -> None:
+        import signal
+        self.send_signal(signal.SIGTERM)
+
+    def kill(self) -> None:
+        import signal
+        self.send_signal(signal.SIGKILL)
+
+
+def spawn(argv: list[str], env: dict[str, str], cwd: Path, output: Path):
+    """Starts an app the way macOS starts apps: responsible for itself, not for whoever ran this
+    script. Otherwise a terminal (or the tool running this script) stays the "responsible process"
+    of the app and of its WebKit helpers, and the tree walk above can't find them. Elsewhere this
+    is plain subprocess.Popen."""
+    if not MACOS:
+        return subprocess.Popen(argv, env=env, cwd=cwd, stdout=open(output, "w"), stderr=subprocess.STDOUT)
+    import os
+    vp = ctypes.c_void_p
+    attr, actions, pid = vp(), vp(), ctypes.c_int()
+    _lib.posix_spawnattr_init(ctypes.byref(attr))
+    _lib.responsibility_spawnattrs_setdisclaim(ctypes.byref(attr), 1)
+    _lib.posix_spawn_file_actions_init(ctypes.byref(actions))
+    _lib.posix_spawn_file_actions_addchdir_np(ctypes.byref(actions), str(cwd).encode())
+    _lib.posix_spawn_file_actions_addopen(ctypes.byref(actions), 1, str(output).encode(),
+                                          os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    _lib.posix_spawn_file_actions_adddup2(ctypes.byref(actions), 1, 2)
+    c_argv = (ctypes.c_char_p * (len(argv) + 1))(*[a.encode() for a in argv], None)
+    env_list = [f"{k}={v}".encode() for k, v in env.items()]
+    c_env = (ctypes.c_char_p * (len(env_list) + 1))(*env_list, None)
+    err = _lib.posix_spawn(ctypes.byref(pid), argv[0].encode(), ctypes.byref(actions), ctypes.byref(attr), c_argv, c_env)
+    _lib.posix_spawn_file_actions_destroy(ctypes.byref(actions))
+    _lib.posix_spawnattr_destroy(ctypes.byref(attr))
+    if err:
+        raise OSError(err, f"posix_spawn {argv[0]}: {os.strerror(err)}")
+    return Spawned(pid.value)

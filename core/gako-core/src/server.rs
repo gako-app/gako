@@ -157,22 +157,19 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
     .await?;
 
     let (mut sink, mut source) = ws.split();
+    // One queue for everything sent, so a reply is never overtaken by output it announces.
     let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
-    let (text_tx, mut text_rx) = mpsc::unbounded_channel::<String>();
 
     let writer = tokio::spawn(async move {
-        loop {
-            let msg = tokio::select! {
-                Some(ev) = rx.recv() => match ev {
-                    Event::Data(frame) => Message::binary(frame),
-                    Event::Exit(info) => {
-                        let mut v = serde_json::to_value(&info).unwrap_or_default();
-                        v["t"] = "exit".into();
-                        Message::text(v.to_string())
-                    }
-                },
-                Some(text) = text_rx.recv() => Message::text(text),
-                else => break,
+        while let Some(ev) = rx.recv().await {
+            let msg = match ev {
+                Event::Data(frame) => Message::binary(frame),
+                Event::Exit(info) => {
+                    let mut v = serde_json::to_value(&info).unwrap_or_default();
+                    v["t"] = "exit".into();
+                    Message::text(v.to_string())
+                }
+                Event::Text(text) => Message::text(text),
             };
             if sink.send(msg).await.is_err() {
                 break;
@@ -224,7 +221,12 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                             Ok(r) => json!({"t": "res", "id": id, "r": r}),
                             Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
                         };
-                        let _ = text_tx.send(reply.to_string());
+                        let _ = tx.send(Event::Text(reply.to_string()));
+                        if m == "termOpen"
+                            && let Some(t) = reply["r"]["term"].as_u64().and_then(|id| mine.get(&(id as u32)))
+                        {
+                            t.start();
+                        }
                     }
                 }
             }
@@ -239,7 +241,6 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
         t.close();
     }
     drop(tx);
-    drop(text_tx);
     let _ = writer.await;
     Ok(())
 }
