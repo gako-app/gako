@@ -25,6 +25,7 @@ class App {
   private renderQueued = false;
   private mode: 'welcome' | 'diff' | 'history' = 'welcome';
   private historyRepo: Repo | null = null;
+  private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
   constructor(t: Transport, env: Record<string, string>) {
@@ -49,8 +50,10 @@ class App {
       else if (ev.t === 'repoTouched') this.refreshOpenDiff([ev.repo]);
       else if (ev.t === 'repos') this.onRepos(ev.repos as RepoInfo[]);
       else if (ev.t === 'scanDone') {
-        this.scanInfo = `scanned ${ev.repos} repositories in ${Math.round(ev.ms)} ms`;
-        this.log('scanDone', { ms: ev.ms, repos: ev.repos });
+        // From asking for the workspace to every repo's status: discovery and the first scan.
+        const sinceOpen = performance.now() - this.openedAt;
+        this.scanInfo = `scanned ${ev.repos} repositories in ${Math.round(sinceOpen)} ms`;
+        this.log('scanDone', { ms: ev.ms, sinceOpenMs: sinceOpen, repos: ev.repos });
         this.renderStatusbar();
       }
     });
@@ -69,6 +72,7 @@ class App {
 
   async open(base?: string): Promise<void> {
     try {
+      this.openedAt = performance.now();
       const opened = await this.git.open(base);
       this.opened = opened;
       try { localStorage.setItem(LAST_BASE, opened.base); } catch { /* storage unavailable */ }

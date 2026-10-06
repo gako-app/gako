@@ -31,6 +31,11 @@ pub struct Changes {
 pub fn watch(paths: &[PathBuf], debounce: Duration, tx: UnboundedSender<Vec<PathBuf>>) -> Result<Watcher> {
     let mut debouncer = new_debouncer(debounce, None, move |result: DebounceEventResult| {
         if let Ok(events) = result {
+            if std::env::var_os("GAKO_DEBUG_WATCH").is_some()
+                && let Some(first) = events.first()
+            {
+                eprintln!("watch: batch of {} events, first arrived {} ms ago", events.len(), first.time.elapsed().as_millis());
+            }
             let paths: Vec<PathBuf> = events.into_iter().flat_map(|e| e.event.paths).collect();
             if !paths.is_empty() {
                 let _ = tx.send(paths);

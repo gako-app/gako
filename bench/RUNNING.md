@@ -93,6 +93,22 @@ baseline. Commit those files.
 never after). Run the VS Code baseline first, look at its numbers, record any adjustment in
 PLAN.md, then run Gako.
 
+## Phase 1: the Git panel
+
+The `panel` scenario runs the real app (not the phase 0 harness) on a generated layout: `work`
+(25 repos, 1–2 levels deep, three with 3,000 untracked files) or `stress` (100 repos, up to 4 levels
+deep). Each run works on a fresh copy of the layout. It measures the first scan, how long a file
+edit, a revert and a commit from a terminal take to show in the UI, and CPU and memory while
+nothing changes. VS Code on the same layout gives the CPU and memory baseline.
+
+```bash
+cd bench
+for app in vscode electron; do for l in work stress; do uv run measure/run.py $app panel --layout $l; done; done
+uv run measure/report.py
+```
+
+`report.py` writes `bench/results/<platform>-phase1-<date>.md` with PHASE1.md's thresholds.
+
 ## 6. The VS Code baseline
 
 `run.py vscode …` starts VS Code with its own `--user-data-dir` under the run's folder, so your

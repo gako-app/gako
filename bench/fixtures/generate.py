@@ -12,6 +12,8 @@ Writes:
   dumps/long.txt             250 MB of very long lines with few newlines
   dumps/emoji.txt            250 MB of combining-character runs mixed with emoji sequences
   dumps/load.log             50 MB log for the four-TUI load test
+  layouts/work/              phase 1: 25 repos, 1-2 levels deep, three with 3,000 untracked files
+  layouts/stress/            phase 1: 100 repos, up to 4 levels deep (scan depth set to 4)
   manifest.json              paths, sizes and what a checker needs to verify each dump
 """
 
@@ -28,7 +30,7 @@ import time
 import zlib
 from pathlib import Path
 
-VERSION = 1
+VERSION = 2
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "bench" / "out" / "fixtures"
 MB = 1024 * 1024
@@ -226,6 +228,56 @@ def gen_workspace() -> dict:
             "diffFile": "workspace/platform/services/catalog/src/inventory.ts"}
 
 
+# --- phase 1 layouts ---------------------------------------------------------------------------
+
+def make_repo(repo: Path, rng: random.Random, files: int, dirty: bool, big_untracked: int = 0) -> None:
+    (repo / "src").mkdir(parents=True)
+    (repo / "README.md").write_text(f"# {repo.name}\n")
+    for f in range(files):
+        write_lines(repo / "src" / f"{rng.choice(NOUNS)}{f}.ts", code_lines(rng, rng.randint(20, 120)))
+    git(repo, "init", "-q")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", f"Initial {repo.name}")
+    if dirty:
+        tracked = sorted((repo / "src").glob("*.ts"))
+        for f in rng.sample(tracked, min(len(tracked), rng.randint(1, 4))):
+            with f.open("a") as fh:
+                fh.write("// edited by an agent\n")
+        (repo / "src" / "new_by_agent.ts").write_text("export const added = true;\n")
+    if big_untracked:
+        cache = repo / "tmp" / "cache"
+        cache.mkdir(parents=True)
+        for i in range(big_untracked):
+            (cache / f"entry-{i:05}.json").write_text(f'{{"i": {i}}}\n')
+
+
+def gen_layout(name: str, groups: list[str], count: int, depth_choices: list[int], scan_depth: int, seed: int) -> dict:
+    """A base repo holding `count` - 1 nested repos at the given depths, about a third with changes."""
+    rng = random.Random(seed)
+    base = OUT / "layouts" / name
+    base.mkdir(parents=True)
+    (base / "README.md").write_text(f"# {name}\n")
+    git(base, "init", "-q")
+    nested: list[str] = []
+    for i in range(count - 1):
+        depth = rng.choice(depth_choices)
+        parts = [rng.choice(groups)] + [f"area{rng.randint(1, 3)}" for _ in range(depth - 2)] + [f"{rng.choice(NOUNS)}-svc-{i:03}"]
+        rel = "/".join(parts[-depth:]) if depth == 1 else "/".join(parts)
+        nested.append(rel)
+    # The base repo ignores its nested repos (PLAN.md's open question 3: both cases occur; Gako
+    # filters them out of the base repo's status either way).
+    (base / ".gitignore").write_text("".join(f"/{r}/\n" for r in nested))
+    if scan_depth != 2:
+        (base / ".gako").mkdir()
+        (base / ".gako" / "settings.json").write_text(json.dumps({"scanDepth": scan_depth}) + "\n")
+    git(base, "add", "-A")
+    git(base, "commit", "-q", "-m", "Layout")
+    big = set(rng.sample(range(len(nested)), 3))
+    for i, rel in enumerate(nested):
+        make_repo(base / rel, rng, rng.randint(8, 30), dirty=rng.random() < 0.35, big_untracked=3000 if i in big else 0)
+    return {"base": f"layouts/{name}", "repos": count, "scanDepth": scan_depth, "nested": nested}
+
+
 # --- dumps --------------------------------------------------------------------------------------
 
 LEVELS = [("INFO ", "32"), ("DEBUG", "36"), ("WARN ", "33"), ("ERROR", "31")]
@@ -356,6 +408,8 @@ def main() -> None:
         ("long", lambda: write_long(OUT / "dumps" / "long.txt", 250 * MB, 2)),
         ("emoji", lambda: write_emoji(OUT / "dumps" / "emoji.txt", 250 * MB, 3)),
         ("load", lambda: write_log(OUT / "dumps" / "load.log", 50 * MB, 4)),
+        ("layoutWork", lambda: gen_layout("work", ["services", "libs", "tools"], 25, [1, 2, 2], 2, 25)),
+        ("layoutStress", lambda: gen_layout("stress", ["team-a", "team-b", "team-c", "platform"], 100, [2, 3, 4], 4, 100)),
     ]
     for name, step in steps:
         t = time.perf_counter()

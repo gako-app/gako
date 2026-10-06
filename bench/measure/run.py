@@ -12,6 +12,8 @@ APP is tauri, electron or vscode. SCENARIOS:
   dump       three 250 MB dumps into one tab: memory over time, dump times, integrity
   cycle      hide and show terminal tabs under the four-agent load (Gako only)
   lifecycle  resize, close a tab, quit: no orphaned processes (Gako only)
+  panel      phase 1: the app on a generated layout (--layout work|stress): first scan, edits and
+             commits shown, CPU and memory while idle (VS Code: CPU and memory only)
 
 Each run writes bench/out/runs/<run id>/result.json; measure/report.py turns those into
 bench/results/<platform>-<app>-<date>.md. See bench/RUNNING.md.
@@ -368,8 +370,10 @@ class Run:
     def wait_event(self, ev: str, timeout: float) -> dict:
         return wait_for(lambda: (self.events(ev) or [None])[0], timeout, f"'{ev}'", self.proc)
 
-    def launch_gako(self, extra_env: dict | None = None) -> float:
-        env = {**os.environ, "GAKO_SCENARIO": self.scenario, "GAKO_RUN_ID": self.id, "GAKO_LOG": str(self.logfile),
+    def launch_gako(self, extra_env: dict | None = None, app_page: bool = False) -> float:
+        # The app page runs without GAKO_SCENARIO; the shells load the bench harness when it's set.
+        scenario = {} if app_page else {"GAKO_SCENARIO": self.scenario}
+        env = {**os.environ, **scenario, "GAKO_RUN_ID": self.id, "GAKO_LOG": str(self.logfile),
                "GAKO_OUT_DIR": str(self.dir), "GAKO_SCROLLBACK": str(PINNED["scrollback"]),
                "GAKO_RENDERER": PINNED["renderer"], "GAKO_COLS": str(PINNED["cols"]), "GAKO_ROWS": str(PINNED["rows"]),
                **(extra_env or {})}
@@ -379,23 +383,23 @@ class Run:
 
     # vscode -------------------------------------------------------------------------------------
 
-    def vscode_workspace(self, tasks: list[dict]) -> Path:
+    def vscode_workspace(self, tasks: list[dict], folder: Path | None = None) -> Path:
         ws = self.dir / "bench.code-workspace"
         ws.write_text(json.dumps({
-            "folders": [{"path": str(FIXTURES / "workspace" / "platform")}],
+            "folders": [{"path": str(folder or FIXTURES / "workspace" / "platform")}],
             "tasks": {"version": "2.0.0", "tasks": tasks},
         }, indent=2))
         return ws
 
-    def launch_vscode(self, tasks: list[dict]) -> float:
+    def launch_vscode(self, tasks: list[dict], folder: Path | None = None, extra_settings: dict | None = None) -> float:
         # A short path: VS Code's IPC socket lives in here, and socket paths are limited to ~100 bytes.
         user_data = Path(tempfile.mkdtemp(prefix="gako-vscode-"))
         (user_data / "User").mkdir(parents=True)
-        settings = vscode_settings(self.settings)
+        settings = {**vscode_settings(self.settings), **(extra_settings or {})}
         (user_data / "User" / "settings.json").write_text(json.dumps(settings, indent=2))
         self.result["vscodeSettings"] = settings
         self.user_data = user_data
-        ws = self.vscode_workspace(tasks)
+        ws = self.vscode_workspace(tasks, folder)
         exe, _ = vscode_paths()
         t0 = now_ms()
         self.proc = proctree.spawn([str(exe), "--user-data-dir", str(user_data), "--new-window", str(ws)],
@@ -630,8 +634,88 @@ def run_lifecycle(run: Run) -> None:
     run.finish(extra_pids=everything)
 
 
+def cpu_percent(samples: list[dict]) -> float | None:
+    """Average CPU use of the whole tree over the samples, in percent of one core."""
+    if len(samples) < 2:
+        return None
+    return (samples[-1]["cpu"] - samples[0]["cpu"]) / ((samples[-1]["t"] - samples[0]["t"]) / 1000) * 100
+
+
+def git_cli(repo: Path, *args: str) -> None:
+    subprocess.run(["git", "-c", "user.name=Gako Bench", "-c", "user.email=bench@gako.app", "-c", "commit.gpgsign=false",
+                    "-c", "core.hooksPath=" + os.devnull, *args], cwd=repo, check=True, capture_output=True)
+
+
+def run_panel(run: Run) -> None:
+    m = manifest()
+    layout = m["layoutWork" if run.args.layout == "work" else "layoutStress"]
+    run.result["layout"] = {"name": run.args.layout, "repos": layout["repos"], "scanDepth": layout["scanDepth"]}
+    run.result["scenario"] = f"panel-{run.args.layout}"  # work and stress are reported separately
+    # A fresh copy, so edits and commits never touch the fixtures.
+    base = Path(tempfile.mkdtemp(prefix=f"gako-{run.args.layout}-")) / "base"
+    shutil.copytree(FIXTURES / layout["base"], base, symlinks=True)
+    base = base.resolve()
+    try:
+        if run.app == "vscode":
+            run.launch_vscode([run.stamp_task()], base, {"git.repositoryScanMaxDepth": layout["scanDepth"]})
+            sampler = Sampler(run.proc.pid, 5)
+            sampler.start()
+            start = wait_for(lambda: run.report("stamp.json"), 120, "the stamp task", run.proc)["epochMs"]
+        else:
+            run.launch_gako({"GAKO_BASE": str(base)}, app_page=True)
+            sampler = Sampler(run.proc.pid, 5)
+            sampler.start()
+            scan = run.wait_event("scanDone", 300)
+            run.result["scan"] = {"sinceOpenMs": scan["sinceOpenMs"], "coreMs": scan["ms"], "repos": scan["repos"]}
+            log(f"first scan: {scan['repos']} repos in {scan['sinceOpenMs']:.0f} ms")
+            start = scan["epochMs"]
+        run.result["memory"] = run.measure_window(start, sampler)
+        idle = window(sampler.samples, start + run.args.settle * 1000, now_ms())
+        run.result["cpuIdlePercent"] = cpu_percent(idle)
+        log(f"idle CPU {run.result['cpuIdlePercent']:.2f}% of a core")
+
+        if run.app != "vscode":
+            def shown_after(repo: Path, t0: float) -> float:
+                rec = wait_for(lambda: next((r for r in run.events("statusRendered")
+                                             if r["epochMs"] > t0 and str(repo) in r.get("repos", [])), None),
+                               30, f"{repo.name} to be shown", run.proc, 0.05)
+                return rec["epochMs"] - t0
+
+            rng = __import__("random").Random(1)
+            repos = [base / rel for rel in rng.sample(layout["nested"], 10)]
+            edits, reverts, commits = [], [], []
+            for repo in repos:
+                readme = repo / "README.md"
+                t0 = now_ms()
+                with readme.open("a") as f:
+                    f.write("edited during the bench\n")
+                edits.append(shown_after(repo, t0))
+                time.sleep(0.5)
+                t0 = now_ms()
+                git_cli(repo, "checkout", "--", "README.md")
+                reverts.append(shown_after(repo, t0))
+                time.sleep(0.5)
+            for repo in repos[:5]:
+                readme = repo / "README.md"
+                with readme.open("a") as f:
+                    f.write("committed during the bench\n")
+                git_cli(repo, "add", "README.md")
+                time.sleep(1)
+                t0 = now_ms()
+                git_cli(repo, "commit", "-q", "-m", "Bench commit")
+                commits.append(shown_after(repo, t0))
+                time.sleep(0.5)
+            summ = lambda v: {"median": statistics.median(v), "max": max(v), "values": v}  # noqa: E731
+            run.result["latency"] = {"edit": summ(edits), "revert": summ(reverts), "commit": summ(commits)}
+            log(f"edit shown: median {statistics.median(edits):.0f} ms, max {max(edits):.0f} ms; "
+                f"commit shown: median {statistics.median(commits):.0f} ms")
+        run.finish(sampler)
+    finally:
+        shutil.rmtree(base.parent, ignore_errors=True)
+
+
 SCENARIOS = {"coldstart": run_coldstart, "idle": run_idle, "ui": run_ui, "load": run_load, "dump": run_dump,
-             "cycle": run_cycle, "lifecycle": run_lifecycle}
+             "cycle": run_cycle, "lifecycle": run_lifecycle, "panel": run_panel}
 GAKO_ONLY = {"ui", "cycle", "lifecycle"}
 
 
@@ -717,6 +801,7 @@ def main() -> None:
                     help="Linux: sample memory without root (Chromium's sandboxed processes then go uncounted)")
     ap.add_argument("--cols", type=int, help="pin the terminal size instead of probing VS Code's")
     ap.add_argument("--rows", type=int)
+    ap.add_argument("--layout", choices=["work", "stress"], default="work", help="panel: which generated layout")
     ap.add_argument("--quit", choices=["term", "kill"], default="term", help="lifecycle: how to quit the app")
     args = ap.parse_args()
     global USE_ROOT_SAMPLER

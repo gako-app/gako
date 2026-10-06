@@ -125,21 +125,28 @@ class Sample:
     # Processes in the tree whose memory couldn't be read. Never dropped silently: on Linux,
     # Chromium's sandboxed processes (renderers, zygotes) are unreadable except by root.
     unreadable: list[dict]
+    # User plus system CPU seconds used so far by the processes in the tree.
+    cpu: float = 0.0
 
     def as_dict(self) -> dict:
         return {"t": self.t, "total": self.total, "byRole": self.by_role, "n": len(self.procs), "procs": self.procs,
-                "unreadable": self.unreadable}
+                "unreadable": self.unreadable, "cpu": self.cpu}
 
 
 def sample(root: int, t: float) -> Sample:
     procs, unreadable = [], []
     by_role: dict[str, int] = {}
     total = 0
+    cpu = 0.0
     for p in tree(root):
         try:
             name = p.name()
+            times = p.cpu_times()
+            cpu += times.user + times.system
         except (psutil.NoSuchProcess, psutil.ZombieProcess):
             continue
+        except psutil.AccessDenied:
+            pass
         try:
             mem = unique_memory(p)
         except (psutil.NoSuchProcess, psutil.ZombieProcess):
@@ -155,7 +162,7 @@ def sample(root: int, t: float) -> Sample:
         total += mem
         by_role[r] = by_role.get(r, 0) + mem
         procs.append({"pid": p.pid, "name": name, "role": r, "mem": mem})
-    return Sample(t=t, total=total, by_role=by_role, procs=procs, unreadable=unreadable)
+    return Sample(t=t, total=total, by_role=by_role, procs=procs, unreadable=unreadable, cpu=cpu)
 
 
 def serve() -> None:
