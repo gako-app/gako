@@ -201,7 +201,20 @@ class Report:
                 self.row(f"{label} ({'matched settings' if settings == 'matched' else 'out of the box'})", rule,
                          f"{fmt(a, ' MB')} vs VS Code {fmt(b, ' MB')}" + (f" ({a / b:.0%})" if a and b else ""), ok)
 
+    def method_notes(self) -> None:
+        pinned = next((r.get("pinned", {}) for (app, _, _), r in self.runs.items() if app == self.app), {})
+        if pinned.get("sizeSource"):
+            self.notes.append(f"Terminal size {pinned['cols']}×{pinned['rows']} in both apps: VS Code's terminal size can't be "
+                              f"set, so Gako is pinned to what VS Code's terminals get on this machine ({pinned['sizeSource']}).")
+        self.notes.append("Keystroke to echo runs from xterm.js's input to the render showing the echo; it leaves out the "
+                          "browser's key dispatch and the last compositor frame. VS Code has no equivalent timing.")
+        self.notes.append("VS Code's cold start is measured to its first task starting, which waits for the extension host; "
+                          "it's an upper bound for its usable window, not the same moment as Gako's.")
+        if self.platform == "macos" and self.app == "tauri":
+            self.notes.append("WebKit rounds `performance.now()` to whole milliseconds.")
+
     def markdown(self) -> str:
+        self.method_notes()
         meta = next((r for (app, _, _), r in self.runs.items() if app == self.app), {})
         v = meta.get("versions", {})
         lines = [

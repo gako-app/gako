@@ -358,14 +358,22 @@ the point of the project.
 - **Walk each app's process tree from its own root process.** Tauri's web view runs in separate
   processes (`msedgewebview2.exe` on Windows, WebKit helpers on macOS), and VS Code is many processes
   too, so the main process alone undercounts both. Never collect processes by name: on Windows,
-  `msedgewebview2.exe` also belongs to Teams, Outlook and other apps.
+  `msedgewebview2.exe` also belongs to Teams, Outlook and other apps. On macOS, WebKit's web
+  content, GPU and networking processes are XPC services whose parent is launchd, not the app; the
+  walk follows macOS's "responsible process" link to them, and the app must be launched as
+  responsible for itself (a script's or terminal's child isn't, so its WebKit processes would be
+  attributed elsewhere). *(Found in phase 0, 2026-10-06: without this, Tauri measured 41 MB instead
+  of 345 MB.)*
 - **Close other WebView2 and Electron apps first**, so nothing else shares the count.
 - **Let each app settle before sampling:** two minutes after the workspace finishes loading for the
   idle row, and two minutes into the load for the load row. Both runtimes clean up memory at
   different times, so cold-start readings mislead.
 - **Same tool and metric for both apps:** unique memory per process (USS, via the `psutil` script
-  in `bench/`), summed over the process tree. On Windows that matches private working set; on macOS,
-  cross-check against `footprint`. Record the tool and version with the results.
+  in `bench/`), summed over the process tree. On Windows that matches private working set. On
+  macOS USS can't be read: psutil needs root for it, and not even root may read Apple's WebKit
+  processes. There the metric is each process's physical footprint (what Activity Monitor shows),
+  cross-checked against `footprint`. *(Found in phase 0, 2026-10-06.)* Record the tool and version
+  with the results.
 - **Pin the terminal settings that change memory, in both apps, and record them:** scrollback
   (VS Code's `terminal.integrated.scrollback`) and the terminal renderer (VS Code's
   `terminal.integrated.gpuAcceleration`, and the matching xterm.js renderer in Gako: WebGL or DOM).
@@ -373,7 +381,9 @@ the point of the project.
 - **Pin the terminal size** (for example 200 columns × 50 rows) in both apps, for every row of the
   table. Terminal width multiplies scrollback memory, and it's the one input that changes without
   touching a setting: a maximized window in one run and a smaller one in the next aren't
-  comparable.
+  comparable. VS Code's terminal size can't be set, and on a small screen it can't reach 200 × 50
+  (about 112 × 54 on a 1,280-point-wide MacBook screen), so pin Gako to the size VS Code's terminals
+  actually get on that machine, and record it. *(Phase 0, 2026-10-06.)*
 
 **Decision rule:**
 
@@ -399,6 +409,20 @@ the point of the project.
   same machine," and pick whichever shell does better there.
 - Tauri fails only on Linux → **still Tauri**. Linux is the least-used platform; note the issue and
   revisit if Linux use grows.
+
+**Results so far** *(macOS, 2026-10-06; Windows and Linux still to run)*:
+[Tauri](../bench/results/macos-tauri-2026-10-06.md),
+[Electron](../bench/results/macos-electron-2026-10-06.md),
+[VS Code baseline](../bench/results/macos-vscode-2026-10-06.md).
+
+- Both shells pass every row except one: memory isn't flat during the combining-and-emoji dump
+  (see the very-long-lines trap). VS Code fails it too, far worse. Under the rule above, a measure
+  both shells fail is a frontend problem, if it repeats on every platform.
+- Memory is far below VS Code's in both shells: idle 345 MB (Tauri) and 204 MB (Electron) against
+  1,495 MB; under load 329 MB and 365 MB against 1,388 MB (1,640 MB with the user's own
+  settings, which set a 100,000-line scrollback).
+- On this machine the Electron shell idles lower than Tauri, and dumps about twice as fast. The
+  decision waits for the Windows work machine, as the rule says.
 
 **Phase 0 is cheap insurance:** about a week to find out whether Tauri renders the diff view smoothly
 and whether the terminal holds up under several live agents on Windows, before anything is built on
@@ -469,6 +493,12 @@ terminal), that shows up before anything else is built.
     stores as growing strings attached to a single cell. The same storage almost certainly covers
     emoji sequences joined with zero-width joiners, flags and skin-tone modifiers. Phase 0's third
     dump covers both.
+  - **Confirmed on macOS (phase 0, 2026-10-06):** the combining-and-emoji dump grows memory in
+    every app tested: Tauri from about 760 MB to 1.25 GB during the dump (still about 490 MB above
+    its earlier level afterwards), Electron to about 1.45 GB, and VS Code's own terminal to about
+    7 GB. The line-oriented and long-line dumps stay flat in both Gako shells. So the row cap holds
+    for ordinary output, and the combining-character case needs a byte bound
+    ([results](../bench/results/)).
 - **WebGL terminals have a ceiling on tab count.** Browsers limit live WebGL contexts (reportedly
   about 16 in Chromium, and WebKit has its own limit; verify the current numbers), and xterm.js's
   WebGL renderer uses one per terminal. Past the limit, the oldest contexts are dropped and those

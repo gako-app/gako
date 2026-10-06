@@ -101,8 +101,8 @@ real profile is untouched, and with your usual extensions. Its `settings.json` i
 - **your own `settings.json`**, plus
 - **automation settings** (both modes): automatic tasks on, workspace trust off, no startup
   editor, no window restore, maximized window, no updates or extension updates, telemetry off,
-  `git.repositoryScanMaxDepth: 2` (so the nested repos are found) and a maximized terminal panel
-  (so the terminal is close to 200 × 50, like Gako's).
+  `git.repositoryScanMaxDepth: 2` (so the nested repos are found) and terminals in the editor
+  area (so each terminal gets the full window, as in Gako).
 - **matched mode** also pins `terminal.integrated.scrollback: 1000`,
   `terminal.integrated.gpuAcceleration: "on"` and `terminal.integrated.fontSize: 12`. **Default**
   ("out of the box") mode keeps your own values.
@@ -121,8 +121,10 @@ opens:
   pauses, the same command Gako's dump scenario types into its shell.
 - **coldstart:** launch until the first task starts.
 
-VS Code's terminal size can't be pinned exactly: the agents report the size they saw, and the
-baseline results file lists it. Diff and file open times and keystroke-to-echo are measured in
+VS Code's terminal size can't be set. `run.py suite` first opens VS Code briefly to see what size
+its terminals get on this machine, and pins Gako's terminals to that size (saved in
+`bench/out/terminal-size-<platform>.json`; `--cols` and `--rows` override it). The agents in the
+load run also report the size they saw, listed in the baseline results file. Diff and file open times and keystroke-to-echo are measured in
 Gako only, because VS Code exposes no equivalent timing.
 
 ## 7. By hand
@@ -141,7 +143,8 @@ Gako only, because VS Code exposes no equivalent timing.
 - **Memory** (`measure/proctree.py`): the app's whole process tree from its root process, never
   by process name. On macOS, WebKit's helper processes are XPC services whose parent is launchd,
   so the walk also follows macOS's "responsible process" link, which is how Activity Monitor
-  groups them. The metric is USS on Windows (private working set) and Linux, and the physical
+  groups them. For that link to point at the app, `run.py` starts every app with responsibility
+  disclaimed, as macOS does for apps it launches itself. The metric is USS on Windows (private working set) and Linux, and the physical
   footprint on macOS (psutil can't read USS there without root, and can't read it at all for
   Apple's WebKit processes); on macOS `footprint` is also run on the same processes as a
   cross-check. Two minutes of settling, then one minute of samples; the median is reported.
