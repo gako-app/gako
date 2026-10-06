@@ -112,6 +112,37 @@ def kill_tree(root: int, pids: set[int] | None = None, grace: float = 10) -> lis
     return left
 
 
+class RootSampler:
+    """On Linux, only root can read the memory of Chromium's sandboxed processes. This starts one
+    sampling helper as root (asking for the sudo password once, up front) and keeps it for the
+    whole invocation; the apps themselves keep running as the user."""
+
+    _instance: RootSampler | None = None
+
+    def __init__(self) -> None:
+        log("memory sampling on Linux needs root, to read Chromium's sandboxed processes")
+        if subprocess.run(["sudo", "-v"]).returncode != 0:
+            raise SystemExit("sudo failed; run with --no-root-sampler to measure without root (undercounts)")
+        self.proc = subprocess.Popen(["sudo", "-n", sys.executable, str(Path(proctree.__file__)), "--serve"],
+                                     stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        self.lock = threading.Lock()
+
+    @classmethod
+    def get(cls) -> RootSampler:
+        if cls._instance is None:
+            cls._instance = RootSampler()
+        return cls._instance
+
+    def sample(self, root: int, t: float) -> dict:
+        with self.lock:
+            self.proc.stdin.write(f"{root} {t}\n")
+            self.proc.stdin.flush()
+            return json.loads(self.proc.stdout.readline())
+
+
+USE_ROOT_SAMPLER = PLATFORM == "linux" and os.geteuid() != 0
+
+
 class Sampler(threading.Thread):
     """Samples the app's memory every `interval` seconds until stopped."""
 
@@ -123,10 +154,12 @@ class Sampler(threading.Thread):
 
     def run(self) -> None:
         while not self._halt.is_set():
-            s = proctree.sample(self.root, now_ms())
-            if s.procs:
-                self.samples.append({"t": s.t, "total": s.total, "byRole": s.by_role, "n": len(s.procs),
-                                     "procs": s.procs})
+            if USE_ROOT_SAMPLER:
+                s = RootSampler.get().sample(self.root, now_ms())
+            else:
+                s = proctree.sample(self.root, now_ms()).as_dict()
+            if s["procs"]:
+                self.samples.append(s)
             self._halt.wait(self.interval)
 
     def stop(self) -> list[dict]:
@@ -148,7 +181,9 @@ def mem_summary(samples: list[dict]) -> dict | None:
         for r, v in s["byRole"].items():
             roles.setdefault(r, []).append(v)
     last = samples[-1]
+    unreadable = {(u["name"], u["pid"]) for s in samples for u in s.get("unreadable", [])}
     return {
+        "unreadable": sorted(f"{name} ({pid})" for name, pid in unreadable),
         "n": len(samples),
         "medianMB": statistics.median(totals) / MB,
         "minMB": min(totals) / MB,
@@ -649,7 +684,7 @@ def suite(args: argparse.Namespace) -> None:
     plan = []
     for app in apps:
         modes = ["matched", "default"] if app == "vscode" else ["default"]
-        for scenario in ["coldstart", "idle", "ui", "load", "dump", "cycle", "lifecycle"]:
+        for scenario in args.scenarios.split(","):
             if app == "vscode" and scenario in GAKO_ONLY:
                 continue
             for mode in modes if scenario in ("idle", "load") else modes[:1]:
@@ -667,6 +702,9 @@ def main() -> None:
     ap.add_argument("scenario", nargs="?", choices=list(SCENARIOS))
     ap.add_argument("--settings", choices=["matched", "default"], default=None,
                     help="VS Code: matched pins the terminal settings to Gako's; default keeps your own settings")
+    ap.add_argument("--scenarios", default="coldstart,idle,ui,load,dump,cycle,lifecycle", help="for suite")
+    ap.add_argument("--probe", action="store_true",
+                    help="measure VS Code's terminal size again (otherwise the size measured last time is reused)")
     ap.add_argument("--apps", default="vscode,tauri,electron",
                     help="for suite; VS Code first, so its baseline is checked before Gako runs (PLAN.md)")
     ap.add_argument("--settle", type=float, default=120, help="seconds to settle before sampling (PLAN.md: 120)")
@@ -675,11 +713,17 @@ def main() -> None:
     ap.add_argument("--load-seconds", type=int, default=240)
     ap.add_argument("--dump-pause", type=int, default=30)
     ap.add_argument("--cycle-seconds", type=int, default=240)
+    ap.add_argument("--no-root-sampler", action="store_true",
+                    help="Linux: sample memory without root (Chromium's sandboxed processes then go uncounted)")
     ap.add_argument("--cols", type=int, help="pin the terminal size instead of probing VS Code's")
     ap.add_argument("--rows", type=int)
     ap.add_argument("--quit", choices=["term", "kill"], default="term", help="lifecycle: how to quit the app")
     args = ap.parse_args()
-    pin_terminal_size(args, probe=args.app == "suite" and "vscode" in args.apps.split(","))
+    global USE_ROOT_SAMPLER
+    USE_ROOT_SAMPLER = USE_ROOT_SAMPLER and not args.no_root_sampler
+    if USE_ROOT_SAMPLER:
+        RootSampler.get()
+    pin_terminal_size(args, probe=args.probe)
     if args.app == "suite":
         suite(args)
         return

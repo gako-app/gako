@@ -202,6 +202,13 @@ class Report:
                          f"{fmt(a, ' MB')} vs VS Code {fmt(b, ' MB')}" + (f" ({a / b:.0%})" if a and b else ""), ok)
 
     def method_notes(self) -> None:
+        for (app, scenario, settings), r in sorted(self.runs.items()):
+            if app not in (self.app, "vscode"):
+                continue
+            names = sorted({u["name"] for smp in r.get("samples", []) for u in smp.get("unreadable", [])})
+            if names:
+                self.notes.append(f"**Memory incomplete** in {app} {scenario} ({settings}): couldn't read "
+                                  f"{', '.join(names)}, so that run undercounts.")
         pinned = next((r.get("pinned", {}) for (app, _, _), r in self.runs.items() if app == self.app), {})
         if pinned.get("sizeSource"):
             self.notes.append(f"Terminal size {pinned['cols']}×{pinned['rows']} in both apps: VS Code's terminal size can't be "

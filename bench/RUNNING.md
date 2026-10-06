@@ -121,8 +121,8 @@ opens:
   pauses, the same command Gako's dump scenario types into its shell.
 - **coldstart:** launch until the first task starts.
 
-VS Code's terminal size can't be set. `run.py suite` first opens VS Code briefly to see what size
-its terminals get on this machine, and pins Gako's terminals to that size (saved in
+VS Code's terminal size can't be set. The first run on a machine (or any run with `--probe`)
+opens VS Code briefly to see what size its terminals get there, and pins Gako's terminals to that size (saved in
 `bench/out/terminal-size-<platform>.json`; `--cols` and `--rows` override it). The agents in the
 load run also report the size they saw, listed in the baseline results file. Diff and file open times and keystroke-to-echo are measured in
 Gako only, because VS Code exposes no equivalent timing.
@@ -148,6 +148,10 @@ Gako only, because VS Code exposes no equivalent timing.
   footprint on macOS (psutil can't read USS there without root, and can't read it at all for
   Apple's WebKit processes); on macOS `footprint` is also run on the same processes as a
   cross-check. Two minutes of settling, then one minute of samples; the median is reported.
+- **On Linux, memory is read as root.** Chromium marks its sandboxed processes (renderers,
+  zygotes) unreadable to the user who owns them, so `run.py` asks for your sudo password once and
+  runs only its sampling helper as root; the apps run as you. Every sample also lists any process
+  it couldn't read, and the results file flags such runs as undercounting.
 - **Timings** come from the frontend's log (`performance.now()` from request to the first render
   after the result) and from `tui-load`'s reports.
 - **Integrity**: every byte the frontend receives is hashed and compared with the core's hash of

@@ -57,7 +57,9 @@ def unique_memory(p: psutil.Process) -> int:
     if _rusage is not None:
         info = _RusageInfoV2()
         if _rusage(p.pid, 2, ctypes.byref(info)) != 0:
-            raise psutil.NoSuchProcess(p.pid)
+            if not psutil.pid_exists(p.pid):
+                raise psutil.NoSuchProcess(p.pid)
+            raise psutil.AccessDenied(p.pid)
         return info.phys_footprint
     return p.memory_full_info().uss
 
@@ -120,23 +122,48 @@ class Sample:
     total: int
     by_role: dict[str, int]
     procs: list[dict]
+    # Processes in the tree whose memory couldn't be read. Never dropped silently: on Linux,
+    # Chromium's sandboxed processes (renderers, zygotes) are unreadable except by root.
+    unreadable: list[dict]
+
+    def as_dict(self) -> dict:
+        return {"t": self.t, "total": self.total, "byRole": self.by_role, "n": len(self.procs), "procs": self.procs,
+                "unreadable": self.unreadable}
 
 
 def sample(root: int, t: float) -> Sample:
-    procs = []
+    procs, unreadable = [], []
     by_role: dict[str, int] = {}
     total = 0
     for p in tree(root):
         try:
             name = p.name()
+        except (psutil.NoSuchProcess, psutil.ZombieProcess):
+            continue
+        try:
             mem = unique_memory(p)
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        except (psutil.NoSuchProcess, psutil.ZombieProcess):
+            continue
+        except psutil.AccessDenied:
+            try:
+                rss = p.memory_info().rss
+            except psutil.Error:
+                rss = None
+            unreadable.append({"pid": p.pid, "name": name, "rss": rss})
             continue
         r = role(p, name)
         total += mem
         by_role[r] = by_role.get(r, 0) + mem
         procs.append({"pid": p.pid, "name": name, "role": r, "mem": mem})
-    return Sample(t=t, total=total, by_role=by_role, procs=procs)
+    return Sample(t=t, total=total, by_role=by_role, procs=procs, unreadable=unreadable)
+
+
+def serve() -> None:
+    """`python proctree.py --serve`, run as root by the runner on Linux: reads a root pid and a
+    timestamp per line from stdin, answers with one sample as a JSON line."""
+    for line in sys.stdin:
+        pid, t = line.split()
+        print(json.dumps(sample(int(pid), float(t)).as_dict()), flush=True)
 
 
 def footprint(pids: list[int]) -> dict | None:
@@ -213,3 +240,7 @@ def spawn(argv: list[str], env: dict[str, str], cwd: Path, output: Path):
     if err:
         raise OSError(err, f"posix_spawn {argv[0]}: {os.strerror(err)}")
     return Spawned(pid.value)
+
+
+if __name__ == "__main__" and sys.argv[1:] == ["--serve"]:
+    serve()
