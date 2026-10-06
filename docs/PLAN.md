@@ -410,19 +410,29 @@ the point of the project.
 - Tauri fails only on Linux → **still Tauri**. Linux is the least-used platform; note the issue and
   revisit if Linux use grows.
 
-**Results so far** *(macOS, 2026-10-06; Windows and Linux still to run)*:
-[Tauri](../bench/results/macos-tauri-2026-10-06.md),
+**Results so far** *(2026-10-06; the Windows work machine still to run)*:
+macOS ([Tauri](../bench/results/macos-tauri-2026-10-06.md),
 [Electron](../bench/results/macos-electron-2026-10-06.md),
-[VS Code baseline](../bench/results/macos-vscode-2026-10-06.md).
+[VS Code](../bench/results/macos-vscode-2026-10-06.md)) and Linux, Ubuntu 24.04 on a ThinkPad with
+Intel graphics ([Tauri](../bench/results/linux-tauri-2026-10-06.md),
+[Electron](../bench/results/linux-electron-2026-10-06.md),
+[VS Code](../bench/results/linux-vscode-2026-10-06.md)).
 
-- Both shells pass every row except one: memory isn't flat during the combining-and-emoji dump
-  (see the very-long-lines trap). VS Code fails it too, far worse. Under the rule above, a measure
-  both shells fail is a frontend problem, if it repeats on every platform.
-- Memory is far below VS Code's in both shells: idle 345 MB (Tauri) and 204 MB (Electron) against
-  1,495 MB; under load 329 MB and 365 MB against 1,388 MB (1,640 MB with the user's own
-  settings, which set a 100,000-line scrollback).
-- On this machine the Electron shell idles lower than Tauri, and dumps about twice as fast. The
-  decision waits for the Windows work machine, as the rule says.
+- **Memory is far below VS Code's in both shells, on both platforms**, idle and under load (12–29%
+  of VS Code's). No shell fails a memory row.
+- **Combining-and-emoji dump:** memory isn't flat in either shell on either platform, and not in
+  VS Code. A measure both shells fail everywhere is a frontend problem under the rule above (see
+  the very-long-lines trap). On Linux, Tauri's emoji dump is also slower than VS Code's (89 s vs
+  81 s).
+- **Tauri on Linux (WebKitGTK) fails both scroll rows:** about 28 fps on the diff and 49 fps on
+  the 5 MB file, against 50. Electron holds 60 fps there. Tauri failing only on Linux is "still
+  Tauri" under the rule.
+- **Tab cycling** showed memory trends of 4–5.5 MB/min in 4-minute runs on Linux (both shells) and
+  for Electron on macOS. On macOS a 15-minute Electron run showed it was garbage-collection swing,
+  not creep (0.83 MB/min); the Linux runs haven't been repeated at that length.
+- Electron's normal-dump memory on Linux moved 14.7 MB in the dump's second half, just over the
+  10 MB "flat" line, while ending where it plateaued (242 → 243 MB): borderline, not a trend.
+- The decision waits for the Windows work machine, as the rule says.
 
 **Phase 0 is cheap insurance:** about a week to find out whether Tauri renders the diff view smoothly
 and whether the terminal holds up under several live agents on Windows, before anything is built on
