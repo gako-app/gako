@@ -44,6 +44,8 @@ interface Tab {
   titled: boolean;
   /** The title last drawn. */
   shownTitle: string;
+  /** When the last notification taken into account arrived. */
+  noticeAt: number;
 }
 
 /** Output within this long counts as working. */
@@ -128,7 +130,7 @@ export class Terminals {
     });
     const banner = h('div', { class: 'term-banner', hidden: true });
     term.el.append(banner);
-    const tab: Tab = { term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false, titled: false, shownTitle: '' };
+    const tab: Tab = { term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false, titled: false, shownTitle: '', noticeAt: 0 };
     this.tabs.push(tab);
     // Shown before it starts, so the program starts at the size of the window.
     this.select(tab);
@@ -202,6 +204,13 @@ export class Terminals {
     let changed = false;
     for (const tab of this.tabs) {
       const state = this.stateOf(tab, now);
+      // A notification is the program asking for the user, whatever its state.
+      const notice = tab.term.notice;
+      if (notice && notice.at > tab.noticeAt) {
+        tab.noticeAt = notice.at;
+        if (!this.watching(tab)) tab.unseen = true;
+        changed = true;
+      }
       if (tab.term.title !== tab.shownTitle) {
         tab.shownTitle = tab.term.title;
         changed = true;
@@ -220,6 +229,9 @@ export class Terminals {
 
   private stateText(tab: Tab): string {
     const code = tab.term.exit?.code;
+    // A notification sent since the user last typed says best what the agent wants.
+    const notice = tab.term.notice;
+    if (notice && notice.at > tab.term.lastInputAt && tab.state !== 'working' && !tab.term.exit) return notice.text;
     switch (tab.state) {
       case 'working': return 'working';
       case 'waiting': return 'waiting for you';

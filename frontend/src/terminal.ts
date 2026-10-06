@@ -15,6 +15,7 @@ import '@xterm/xterm/css/xterm.css';
 
 import { FNV_OFFSET, fnv1a } from './check';
 import { CombiningCap } from './combining';
+import { Notifications } from './app/agentstate';
 import type { CoreEvent, TermStats, Transport } from './transport';
 
 export type Renderer = 'webgl' | 'dom';
@@ -62,6 +63,9 @@ export class TerminalTab {
   lastInputAt = 0;
   /** The title the program set (OSC 0 or 2), which some agents use to show their state. */
   title = '';
+  /** The last desktop notification the program sent (OSC 9, 99 or 777), and when. */
+  notice: { text: string; at: number } | null = null;
+  private notifications = new Notifications();
   exit: Exit | null = null;
   contextLosses = 0;
   private webgl: WebglAddon | null = null;
@@ -93,6 +97,14 @@ export class TerminalTab {
       theme: { background: '#1e1e1e', foreground: '#cccccc' },
     });
     this.term.onTitleChange((title) => { this.title = title; });
+    for (const code of [9, 99, 777]) {
+      this.term.parser.registerOscHandler(code, (data) => {
+        const action = this.notifications.handle(code, data);
+        if (action && 'reply' in action) this.t.sendBytes(this.id, encoder.encode(action.reply));
+        else if (action) this.notice = { text: action.notice, at: performance.now() };
+        return true;
+      });
+    }
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = '11';
     // Links open in the browser (the shell routes window.open outside the app).

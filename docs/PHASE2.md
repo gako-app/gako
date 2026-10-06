@@ -100,8 +100,12 @@ terminals alive across app restarts; split panes.
    2026-10-06, `frontend/src/app/agentstate.ts`): once a program shows a spinner or one of these
    markers in its title, its title decides between working, waiting for you (yellow, and marked
    like a finished turn) and quiet; output alone no longer counts for it. The agent bar shows the
-   title's topic next to the state. Not built yet: a Claude Code hook (through `--settings`) to tell
-   its approvals apart, and answering OpenCode's OSC 99 query.
+   title's topic next to the state. *Notifications:* a desktop notification
+   sent through the terminal (OSC 9, OSC 777 or kitty's OSC 99, whose support query Gako now
+   answers) marks the agent and shows its text. Answering made no difference to OpenCode 1.18 with
+   its defaults: it sent nothing at the end of a turn or for a permission request (tried
+   2026-10-06), so OpenCode and Pi still rely on output alone. Not built yet: a Claude Code hook
+   (through `--settings`) to tell its approvals apart from finished turns.
 2. **New tabs:** a menu picks the program (shell, or a configured agent found on the PATH) and the
    folder (the base folder or a repo; the repo of the selected file comes first).
 3. **Settings:** `agents` (name and command; Claude Code, Codex, OpenCode and Pi by default, each offered

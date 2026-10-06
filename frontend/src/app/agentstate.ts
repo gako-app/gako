@@ -34,3 +34,52 @@ export function titleTopic(title: string): string {
   while (SPINNER.test(t) || IDLE_MARK.test(t)) t = t.replace(SPINNER, '').replace(IDLE_MARK, '').replace(/^\s*\|\s*/, '');
   return t.trim();
 }
+
+// Desktop notifications an agent sends through the terminal: OSC 9 (iTerm2's), OSC 777 (rxvt's
+// `notify`) and OSC 99 (kitty's, which OpenCode asks about before using). Gako doesn't raise system
+// notifications; a notification marks the agent as wanting the user, with its text.
+
+/** What to do with an OSC sequence: reply to the program, or show a notice. */
+export type OscAction = { reply: string } | { notice: string } | null;
+
+/** Reassembles notifications sent in parts (kitty's `d=0`), per terminal. */
+export class Notifications {
+  private pending = new Map<string, string[]>();
+
+  handle(code: number, data: string): OscAction {
+    if (code === 9) {
+      // `9;4;…` is ConEmu's progress report, not a notification.
+      return /^4;/.test(data) || !data.trim() ? null : { notice: data.trim() };
+    }
+    if (code === 777) {
+      const [kind, title = '', body = ''] = data.split(';');
+      return kind === 'notify' ? { notice: [title, body].filter(Boolean).join(': ') } : null;
+    }
+    if (code !== 99) return null;
+    const semi = data.indexOf(';');
+    if (semi < 0) return null;
+    const meta = new Map(data.slice(0, semi).split(':').filter(Boolean).map((kv) => {
+      const i = kv.indexOf('=');
+      return [kv.slice(0, i), kv.slice(i + 1)] as [string, string];
+    }));
+    const id = meta.get('i') ?? '';
+    const part = meta.get('p') ?? 'title';
+    if (part === '?') {
+      // What Gako takes: a title and a body, whether or not the window has focus.
+      return { reply: `\x1b]99;i=${id}:p=?;p=title,body:o=always,unfocused:u=0,1,2\x1b\\` };
+    }
+    let payload = data.slice(semi + 1);
+    if (meta.get('e') === '1') {
+      try { payload = new TextDecoder().decode(Uint8Array.from(atob(payload), (c) => c.charCodeAt(0))); } catch { payload = ''; }
+    }
+    if (part !== 'title' && part !== 'body') return null;
+    const parts = this.pending.get(id) ?? [];
+    if (payload) parts.push(payload);
+    if (meta.get('d') === '0') {
+      this.pending.set(id, parts);
+      return null;
+    }
+    this.pending.delete(id);
+    return parts.length ? { notice: parts.join(': ') } : null;
+  }
+}
