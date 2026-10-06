@@ -5,14 +5,17 @@
 // or one of its repos. Hidden terminals release their WebGL context (TerminalTab does that). An
 // exited one keeps its output until it's closed or restarted.
 //
-// States come from output alone: working (output in the last two seconds), quiet, exited or failed
-// (a non-zero exit code). A terminal that finishes a stretch of work while you aren't looking at it
-// is marked until you do: its name turns bold and a blue mark appears.
+// States: working, waiting for you, quiet, exited or failed (a non-zero exit code). An agent that
+// shows its state in the terminal title (Claude Code, Codex: see agentstate.ts) is read from it;
+// for the others, working means output in the last two seconds. A terminal that finishes a stretch
+// of work, or starts waiting for you, while you aren't looking at it is marked until you do: its
+// name turns bold and a blue mark appears.
 
 import { type Renderer, TerminalTab } from '../terminal';
 import type { CoreEvent, Transport } from '../transport';
 import { h } from './dom';
 import type { Settings } from './model';
+import { readTitle, titleHasState, titleTopic } from './agentstate';
 
 export interface Program {
   name: string;
@@ -25,7 +28,7 @@ export interface Folder {
   name: string;
 }
 
-type State = 'working' | 'quiet' | 'exited' | 'failed';
+type State = 'working' | 'waiting' | 'quiet' | 'exited' | 'failed';
 
 interface Tab {
   term: TerminalTab;
@@ -37,6 +40,10 @@ interface Tab {
   busySince: number;
   /** Finished something while nobody was looking. */
   unseen: boolean;
+  /** The program shows its state in the title, so output alone doesn't mean working. */
+  titled: boolean;
+  /** The title last drawn. */
+  shownTitle: string;
 }
 
 /** Output within this long counts as working. */
@@ -121,7 +128,7 @@ export class Terminals {
     });
     const banner = h('div', { class: 'term-banner', hidden: true });
     term.el.append(banner);
-    const tab: Tab = { term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false };
+    const tab: Tab = { term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false, titled: false, shownTitle: '' };
     this.tabs.push(tab);
     // Shown before it starts, so the program starts at the size of the window.
     this.select(tab);
@@ -175,6 +182,12 @@ export class Terminals {
   private stateOf(tab: Tab, now: number): State {
     const exit = tab.term.exit;
     if (exit) return exit.code ? 'failed' : 'exited';
+    const title = tab.term.title;
+    if (titleHasState(title)) tab.titled = true;
+    if (tab.titled) {
+      const t = readTitle(title);
+      return t === 'idle' ? 'quiet' : t;
+    }
     return now - tab.term.lastOutputAt < WORKING_MS ? 'working' : 'quiet';
   }
 
@@ -189,11 +202,15 @@ export class Terminals {
     let changed = false;
     for (const tab of this.tabs) {
       const state = this.stateOf(tab, now);
+      if (tab.term.title !== tab.shownTitle) {
+        tab.shownTitle = tab.term.title;
+        changed = true;
+      }
       if (state === tab.state) continue;
       if (state === 'working') tab.busySince = tab.term.lastOutputAt;
       const worked = tab.term.lastOutputAt - Math.max(tab.busySince, tab.term.lastInputAt);
       const finished = (tab.state === 'working' && state === 'quiet' && worked >= BUSY_MIN_MS) ||
-        state === 'exited' || state === 'failed';
+        state === 'waiting' || state === 'exited' || state === 'failed';
       if (finished && !this.watching(tab)) tab.unseen = true;
       tab.state = state;
       changed = true;
@@ -205,6 +222,7 @@ export class Terminals {
     const code = tab.term.exit?.code;
     switch (tab.state) {
       case 'working': return 'working';
+      case 'waiting': return 'waiting for you';
       case 'quiet': return tab.unseen ? 'finished' : 'quiet';
       case 'exited': return 'exited';
       case 'failed': return `failed${code === null || code === undefined ? '' : ` (${code})`}`;
@@ -228,7 +246,7 @@ export class Terminals {
     }
     this.list.replaceChildren(...this.tabs.map((tab) => h('div', {
       class: `agent ${tab === this.active ? 'active' : ''} ${tab.unseen ? 'unseen' : ''}`,
-      title: `${tab.program.name} in ${tab.folder.path}: ${this.stateText(tab)}`,
+      title: `${tab.program.name} in ${tab.folder.path}: ${this.stateText(tab)}${tab.term.title ? `\n${tab.term.title}` : ''}`,
       onclick: () => this.select(tab),
     },
     h('span', { class: `dot ${tab.state}` }),
@@ -236,7 +254,7 @@ export class Terminals {
       ? h('span', { class: 'agent-initials' }, initials(tab.program.name))
       : h('span', { class: 'agent-text' },
         h('span', { class: 'agent-name' }, tab.program.name),
-        h('span', { class: 'agent-detail' }, `${tab.folder.name} · ${this.stateText(tab)}`)),
+        h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || tab.folder.name} · ${this.stateText(tab)}`)),
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
     this.collapsed ? null : h('span', { class: 'close', title: 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'))));
   }

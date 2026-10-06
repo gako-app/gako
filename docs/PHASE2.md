@@ -96,8 +96,12 @@ terminals alive across app restarts; split panes.
    braille spinner while working, a plain title when idle, and `[ ! ] Action Required` (blinking
    once a second, so output alone reads it as working) while waiting for approval. OpenCode keeps a
    fixed title but asks whether the terminal supports OSC 99 notifications, which xterm.js doesn't
-   answer. Pi sends nothing beyond a fixed title. Not built yet: states from titles, a Claude Code
-   hook (through `--settings`) to tell approvals apart, and answering OpenCode's OSC 99 query.
+   answer. Pi sends nothing beyond a fixed title. *States from titles* (built
+   2026-10-06, `frontend/src/app/agentstate.ts`): once a program shows a spinner or one of these
+   markers in its title, its title decides between working, waiting for you (yellow, and marked
+   like a finished turn) and quiet; output alone no longer counts for it. The agent bar shows the
+   title's topic next to the state. Not built yet: a Claude Code hook (through `--settings`) to tell
+   its approvals apart, and answering OpenCode's OSC 99 query.
 2. **New tabs:** a menu picks the program (shell, or a configured agent found on the PATH) and the
    folder (the base folder or a repo; the repo of the selected file comes first).
 3. **Settings:** `agents` (name and command; Claude Code, Codex, OpenCode and Pi by default, each offered
