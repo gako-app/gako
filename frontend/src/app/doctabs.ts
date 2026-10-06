@@ -86,6 +86,20 @@ export class DocTabs {
     return this.inFront ? this.active?.key ?? null : null;
   }
 
+  /** Closes the active tab (⌘W); false if there's none. */
+  closeActive(): boolean {
+    if (!this.active) return false;
+    this.close(this.active);
+    return true;
+  }
+
+  /** Shows the next (1) or previous (-1) tab, wrapping round (Ctrl+Tab). */
+  cycle(delta: number): void {
+    if (!this.docs.length) return;
+    const i = this.active ? this.docs.indexOf(this.active) : -1;
+    this.activate(this.docs[(i + delta + this.docs.length) % this.docs.length]);
+  }
+
   private activate(doc: Doc, fresh = false): void {
     if (doc === this.active && this.inFront && !fresh) return;
     const back = !this.inFront && doc === this.active && !fresh;

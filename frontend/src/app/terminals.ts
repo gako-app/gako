@@ -154,6 +154,18 @@ export class Terminals {
   }
 
   /** Shows a terminal in the main area, or, with null, gives the main area back to the documents. */
+  /** Closes the terminal in front (⌘W), asking first if its program is still running. */
+  closeActive(): void {
+    if (this.active) this.close(this.active);
+  }
+
+  /** Shows the next (1) or previous (-1) terminal, wrapping round (Ctrl+Tab). */
+  cycle(delta: number): void {
+    if (!this.tabs.length) return;
+    const i = this.active ? this.tabs.indexOf(this.active) : -1;
+    this.select(this.tabs[(i + delta + this.tabs.length) % this.tabs.length]);
+  }
+
   select(tab: Tab | null): void {
     const was = this.active;
     this.active?.term.hide();
