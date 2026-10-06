@@ -20,6 +20,14 @@ export interface DocSpec {
   tooltip: string;
   /** Draws it in the main area, with the scroll position saved when it was last left, if any. */
   show(saved: unknown): void;
+  /** What reopens it after a restart (plain data, kept with the session). */
+  persist: unknown;
+}
+
+/** The open tabs, as kept between runs. */
+export interface DocsSnapshot {
+  docs: { persist: unknown; pinned: boolean }[];
+  active: number;
 }
 
 interface Doc extends DocSpec {
@@ -46,7 +54,22 @@ export class DocTabs {
   /** False while a terminal is in front. */
   private inFront = true;
 
+  /** Told whenever the set of tabs or the active one changes, so the session can be saved. */
+  onChange: (() => void) | null = null;
+
   constructor(private hooks: DocHooks) {}
+
+  snapshot(): DocsSnapshot {
+    return { docs: this.docs.map((d) => ({ persist: d.persist, pinned: d.pinned })), active: this.active ? this.docs.indexOf(this.active) : -1 };
+  }
+
+  /** Puts back tabs from a snapshot (only the active one is drawn). */
+  restore(docs: { spec: DocSpec; pinned: boolean }[], active: number): void {
+    this.docs = docs.map(({ spec, pinned }) => ({ ...spec, pinned, saved: undefined }));
+    const doc = this.docs[active] ?? this.docs[0];
+    if (doc) this.activate(doc, true);
+    else this.render();
+  }
 
   /** Opens `spec` in its tab, in the preview tab, or in a new tab with `pin`. */
   open(spec: DocSpec, pin = false): void {
@@ -127,6 +150,7 @@ export class DocTabs {
   }
 
   private render(): void {
+    this.onChange?.();
     this.bar.replaceChildren(...this.docs.map((d) => h('div', {
       class: `doc-tab ${d === this.active && this.inFront ? 'active' : ''} ${d.pinned ? '' : 'preview'}`,
       title: `${d.tooltip}${d.pinned ? '' : '\nPreview: double-click to keep it open'}`,

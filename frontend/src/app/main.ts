@@ -16,11 +16,28 @@ import { GoToFile } from './gotofile';
 import { Navigator } from './navigate';
 import type { FileContent } from './model';
 import { Editors } from './editors';
-import { DocTabs } from './doctabs';
+import { type DocSpec, DocTabs } from './doctabs';
+import type { Folder as TermFolder, Program } from './terminals';
 import { Layout } from './layout';
 import { installTooltips } from './tooltip';
 
 const LAST_BASE = 'gako.lastBase';
+/** The open tabs and terminals, per base folder: `gako.session:<base>`. */
+const SESSION = 'gako.session:';
+
+/** What reopens a tab after a restart. */
+type Persist =
+  | { diff: string }
+  | { file: string }
+  | { history: string }
+  | { commit: { root: string; target: DiffTarget } };
+
+interface Session {
+  docs: { persist: Persist; pinned: boolean }[];
+  active: number;
+  terms: { program: Program; folder: TermFolder }[];
+  activeTerm: number;
+}
 
 class App {
   private git: Git;
@@ -104,6 +121,10 @@ class App {
     const app = document.getElementById('app')!;
     this.layout = new Layout(app, this.sidebar.el, this.terminals);
     this.terminals.onCollapse = () => this.layout.apply();
+    this.docs.onChange = () => this.saveSession();
+    this.terminals.onChange = () => this.saveSession();
+    // The last change before the window goes is saved at once.
+    window.addEventListener('pagehide', () => this.saveSession(true));
     app.prepend(this.sidebar.el, this.layout.leftRail, this.main, this.terminals.el, this.statusbar, this.toasts);
     installTooltips();
     // Asked by the shell before the window closes (it warns when agents would be stopped). Only
@@ -125,6 +146,8 @@ class App {
         this.log('indexReady', { files: ev.files, symbols: ev.symbols, ms: ev.ms });
         this.renderStatusbar();
       } else if (ev.t === 'scanDone') {
+        this.onScanned?.();
+        this.onScanned = null;
         // From asking for the workspace to every repo's status: discovery and the first scan.
         const sinceOpen = performance.now() - this.openedAt;
         this.scanInfo = `scanned ${ev.repos} repositories in ${Math.round(sinceOpen)} ms`;
@@ -191,6 +214,7 @@ class App {
   async open(base?: string): Promise<void> {
     try {
       this.openedAt = performance.now();
+      this.scanned = new Promise((resolve) => { this.onScanned = resolve; });
       const opened = await this.git.open(base);
       this.opened = opened;
       try { localStorage.setItem(LAST_BASE, opened.base); } catch { /* storage unavailable */ }
@@ -210,6 +234,8 @@ class App {
       this.log('workspaceOpened', { repos: this.repos.length });
       const agents = await this.t.request<{ shell: string; agents: { name: string; command: string[]; path: string | null }[] }>('agents');
       await this.terminals.configure(opened.settings, agents.shell, agents.agents);
+      // Only into an empty window: opening another folder keeps what's open.
+      if (this.terminals.snapshot().terms.length === 0 && this.docs.snapshot().docs.length === 0) await this.restoreSession();
     } catch (e) {
       this.showOpenForm(base, String((e as Error).message ?? e));
     }
@@ -265,15 +291,20 @@ class App {
 
   /** Opens an item's diff in the preview tab, or in a tab of its own with `pin`. */
   private openItem(item: Item, pin = false): void {
+    this.docs.open(this.diffSpec(item), pin);
+  }
+
+  private diffSpec(item: Item): DocSpec {
     const kind = item.target.kind;
-    this.docs.open({
+    return {
       key: `diff:${item.key}`,
       kind: 'diff',
       title: basename(item.entry.path),
       detail: `${this.name(item.repo)}${kind === 'staged' ? ' · staged' : kind === 'conflict' ? ' · conflict' : ''}`,
       tooltip: `${this.name(item.repo)} › ${item.entry.path}`,
       show: (saved) => this.showItem(item.key, saved),
-    }, pin);
+      persist: { diff: item.key } satisfies Persist,
+    };
   }
 
   /** Draws the diff for a sidebar key, as the file stands now. */
@@ -298,7 +329,11 @@ class App {
   }
 
   private openCommitDiff(target: DiffTarget, repo: Repo): void {
-    this.docs.open({
+    this.docs.open(this.commitSpec(target, repo));
+  }
+
+  private commitSpec(target: DiffTarget, repo: Repo): DocSpec {
+    return {
       key: `commit:${repo.root}\x1f${target.hash}\x1f${target.path}`,
       kind: 'diff',
       title: basename(target.path),
@@ -309,11 +344,16 @@ class App {
         this.diff.show(target, { repoName: this.name(repo), back: () => this.showHistory(repo) }, false, saved)
           .catch((e) => this.toast(String(e.message ?? e)));
       },
-    });
+      persist: { commit: { root: repo.root, target } } satisfies Persist,
+    };
   }
 
   private showHistory(r: Repo): void {
-    this.docs.open({
+    this.docs.open(this.historySpec(r));
+  }
+
+  private historySpec(r: Repo): DocSpec {
+    return {
       key: `history:${r.root}`,
       kind: 'history',
       title: 'History',
@@ -324,7 +364,8 @@ class App {
         this.setMode('history');
         this.history.show(r).catch((e) => this.toast(String(e.message ?? e)));
       },
-    });
+      persist: { history: r.root } satisfies Persist,
+    };
   }
 
   private setMode(mode: App['mode']): void {
@@ -337,8 +378,12 @@ class App {
 
   /** Opens a file in the preview tab (or its own with `pin`), at `reveal` if given. */
   private openFile(path: string, reveal?: Reveal, pin = false): void {
+    this.docs.open(this.fileSpec(path, reveal), pin);
+  }
+
+  private fileSpec(path: string, reveal?: Reveal): DocSpec {
     const rel = this.relative(path).replaceAll('\\', '/');
-    this.docs.open({
+    return {
       key: `file:${path}`,
       kind: 'file',
       title: basename(path),
@@ -350,7 +395,71 @@ class App {
         this.viewer.show(path, false, saved === undefined ? reveal : undefined, saved ?? undefined)
           .catch((e) => this.toast(String(e.message ?? e)));
       },
-    }, pin);
+      persist: { file: path } satisfies Persist,
+    };
+  }
+
+  /** A tab from its note, if what it showed is still there (a diff needs its file still changed). */
+  private specFor(p: Persist): DocSpec | null {
+    const repo = (root: string) => this.repos.find((r) => r.root === root);
+    if ('diff' in p) {
+      const item = this.sidebar.resolve(p.diff);
+      return item ? this.diffSpec(item) : null;
+    }
+    if ('file' in p) return this.fileSpec(p.file);
+    if ('history' in p) {
+      const r = repo(p.history);
+      return r ? this.historySpec(r) : null;
+    }
+    const r = repo(p.commit.root);
+    return r ? this.commitSpec(p.commit.target, r) : null;
+  }
+
+  /** Resolved by the first full scan of the open workspace, when every repo's status is known. */
+  private scanned: Promise<void> = Promise.resolve();
+  private onScanned: (() => void) | null = null;
+  private saveTimer: ReturnType<typeof setTimeout> | null = null;
+  private restoring = false;
+
+  /** Saves the open tabs and terminals for this base folder, soon (changes come in bursts). */
+  private saveSession(now = false): void {
+    if (this.restoring || !this.opened) return;
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = null;
+    const save = () => {
+      const docs = this.docs.snapshot();
+      const terms = this.terminals.snapshot();
+      const session: Session = { docs: docs.docs as Session['docs'], active: docs.active, terms: terms.terms, activeTerm: terms.active };
+      try { localStorage.setItem(SESSION + this.opened!.base, JSON.stringify(session)); } catch { /* storage unavailable */ }
+    };
+    if (now) save();
+    else this.saveTimer = setTimeout(save, 400);
+  }
+
+  /** Reopens the tabs and terminals this base folder had last time: terminals start the same
+   * program in the same folder, as a new session. */
+  private async restoreSession(): Promise<void> {
+    let session: Session | null = null;
+    try { session = JSON.parse(localStorage.getItem(SESSION + this.opened!.base) ?? 'null'); } catch { /* storage unavailable */ }
+    if (!session) return;
+    this.restoring = true;
+    try {
+      // Terminals start at once; tabs wait for the first scan, since a diff tab comes back only if
+      // its file still has changes. A scan that takes long doesn't hold them back for ever.
+      const terms = this.terminals.restore(session.terms ?? [], session.activeTerm ?? -1);
+      await Promise.race([this.scanned, new Promise((r) => setTimeout(r, 10_000))]);
+      const docs = (session.docs ?? []).flatMap(({ persist, pinned }) => {
+        const spec = this.specFor(persist);
+        return spec ? [{ spec, pinned }] : [];
+      });
+      if (docs.length) this.docs.restore(docs, Math.max(0, session.active));
+      await terms;
+      // Restoring the tabs brought them to the front; the terminal that was in front goes back.
+      if ((session.activeTerm ?? -1) >= 0) this.terminals.restoreFront(session.activeTerm);
+    } finally {
+      this.restoring = false;
+    }
+    this.saveSession();
   }
 
   /** The repo a path is in: the one with the longest root that contains it. */

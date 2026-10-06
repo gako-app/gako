@@ -126,3 +126,9 @@ terminals alive across app restarts; split panes.
    `terminalFontFamily`, `terminalMaxCombining` (4; 0 turns the limit off).
 4. **Closing a tab** with a running program asks first. An exited tab stays open, with its output,
    until closed, and can be restarted.
+5. **Reopening** *(added 2026-10-07, at the user's request)*: Gako remembers, per base folder, the
+   tabs that were open (files, diffs whose file still has changes, histories, commits; kept or
+   preview; which was in front) and the terminals, and reopens them. A terminal comes back as the
+   same program in the same folder, but as a new session: resuming the agent's conversation was
+   left out for now (Claude Code and Pi could resume by a session id given at launch, Codex and
+   OpenCode only the last session in the folder).

@@ -69,6 +69,8 @@ export class Terminals {
   collapsed = false;
   /** Told when the bar collapses or expands, so the layout can follow. */
   onCollapse: (() => void) | null = null;
+  /** Told when terminals open, close or come to the front, so the session can be saved. */
+  onChange: (() => void) | null = null;
 
   constructor(
     private t: Transport,
@@ -114,6 +116,31 @@ export class Terminals {
     this.programs = [{ name: `Shell (${shellName})` }, ...agents.filter((a) => a.path).map((a) => ({ name: a.name, cmd: a.command }))];
   }
 
+  /** The terminals open (exited ones aren't kept), and which one is in front (-1: none). */
+  snapshot(): { terms: { program: Program; folder: Folder }[]; active: number } {
+    const open = this.tabs.filter((t) => !t.term.exit);
+    return { terms: open.map((t) => ({ program: t.program, folder: t.folder })), active: this.active ? open.indexOf(this.active) : -1 };
+  }
+
+  /** Starts the same programs again in the same folders, as new sessions; then shows the one that
+   * was in front, or gives the main area back to the documents. */
+  async restore(terms: { program: Program; folder: Folder }[], active: number): Promise<void> {
+    this.restored = [];
+    for (const { program, folder } of terms) {
+      await this.open(program, folder);
+      this.restored.push(this.tabs.at(-1));
+    }
+    this.select(this.restored[active] ?? null);
+  }
+
+  /** Brings back to the front the restored terminal that was in front. */
+  restoreFront(active: number): void {
+    const tab = this.restored[active];
+    if (tab && this.tabs.includes(tab)) this.select(tab);
+  }
+
+  private restored: (Tab | undefined)[] = [];
+
   /** The programs still running, as "Claude Code in gako", for the shell's question on quitting. */
   running(): string[] {
     return this.tabs.filter((t) => !t.term.exit).map((t) => `${t.program.name} in ${t.folder.name}`);
@@ -151,6 +178,7 @@ export class Terminals {
     }
     this.log('termOpened', { program: program.name, folder: folder.path, pid: term.pid });
     this.render();
+    this.onChange?.();
   }
 
   /** Shows a terminal in the main area, or, with null, gives the main area back to the documents. */
@@ -175,6 +203,7 @@ export class Terminals {
     tab?.term.show();
     if ((was === null) !== (tab === null)) this.onFront(tab !== null);
     this.render();
+    this.onChange?.();
   }
 
   private close(tab: Tab, force = false): void {
@@ -184,6 +213,7 @@ export class Terminals {
     tab.term.close();
     if (this.active === tab) this.select(this.tabs[i] ?? this.tabs[i - 1] ?? null);
     this.render();
+    this.onChange?.();
   }
 
   private restart(tab: Tab): void {
