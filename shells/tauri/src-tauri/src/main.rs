@@ -88,7 +88,9 @@ fn main() {
 
     let app = tauri::Builder::default()
         .setup(move |app| {
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+            // bench/ sets GAKO_SCENARIO to drive the phase 0 measurement harness.
+            let page = if std::env::var_os("GAKO_SCENARIO").is_some() { "bench.html" } else { "index.html" };
+            WebviewWindowBuilder::new(app, "main", WebviewUrl::App(page.into()))
                 .title("Gako")
                 .inner_size(1600.0, 1000.0)
                 .initialization_script(format!("window.__GAKO_BOOT__ = {boot};"))

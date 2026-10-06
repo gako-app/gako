@@ -1,16 +1,10 @@
 // Monaco views: a side-by-side diff and a file viewer. Read-only, always.
 //
-// Highlighting uses Monaco's built-in tokenizer for TypeScript only; no language service, which a
-// viewer doesn't need.
+// The bench harness's views, with built-in timing.
 
-import * as monaco from 'monaco-editor/editor/editor.api.js';
-import 'monaco-editor/languages/definitions/typescript/register.js';
-import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
-
-import { frames, summarize } from './metrics';
-import type { Transport } from './transport';
-
-self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
+import { frames, summarize } from '../metrics';
+import { monaco } from '../monaco';
+import type { Transport } from '../transport';
 
 const common = {
   readOnly: true,

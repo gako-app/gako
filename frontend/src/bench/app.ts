@@ -1,8 +1,8 @@
 // The phase 0 harness UI: a tab bar over a diff view, a file view and terminal tabs.
 
-import type { Metrics } from './metrics';
-import { TerminalTab, type Renderer, type TermOptions } from './terminal';
-import type { Transport } from './transport';
+import type { Metrics } from '../metrics';
+import { TerminalTab, type Renderer, type TermOptions } from '../terminal';
+import type { Transport } from '../transport';
 import { DiffView, FileView } from './views';
 
 export interface Hello {

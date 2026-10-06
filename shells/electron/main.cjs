@@ -28,10 +28,24 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
+// A folder on the command line (`electron . /path/to/base`, or `Gako /path/to/base` once packaged)
+// becomes the workspace to open.
+function baseFromArgs() {
+  const args = process.argv.slice(app.isPackaged ? 1 : 2);
+  return args.find((a) => !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isDirectory());
+}
+
 function startCore() {
   const token = crypto.randomBytes(32).toString('hex');
+  const base = baseFromArgs();
   const core = spawn(coreBin, [], {
-    env: { ...process.env, GAKO_TOKEN: token, GAKO_SHELL_KIND: 'electron', GAKO_ROOT: root },
+    env: {
+      ...process.env,
+      GAKO_TOKEN: token,
+      GAKO_SHELL_KIND: 'electron',
+      GAKO_ROOT: root,
+      ...(base ? { GAKO_BASE: path.resolve(base) } : {}),
+    },
     stdio: ['pipe', 'pipe', 'inherit'],
     windowsHide: true,
   });
@@ -80,7 +94,8 @@ app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   });
-  win.loadURL('app://gako/index.html');
+  // bench/ sets GAKO_SCENARIO to drive the phase 0 measurement harness instead of the app.
+  win.loadURL(process.env.GAKO_SCENARIO ? 'app://gako/bench.html' : 'app://gako/index.html');
 });
 
 app.on('window-all-closed', () => app.quit());

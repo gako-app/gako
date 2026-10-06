@@ -16,7 +16,13 @@ export interface TermStats {
   maxUnacked: number;
 }
 
-export type CoreEvent = { t: 'exit'; term: number; code: number | null; stats: TermStats };
+export type CoreEvent =
+  | { t: 'exit'; term: number; code: number | null; stats: TermStats }
+  // The open workspace: a repo's status changed (or failed), the repo list changed, the first scan ended.
+  | { t: 'repoStatus'; repo: string; status?: unknown; error?: string; ms: number }
+  | { t: 'repoTouched'; repo: string }
+  | { t: 'repos'; repos: unknown[] }
+  | { t: 'scanDone'; ms: number; repos: number };
 
 export interface Transport {
   request<T = unknown>(method: string, params?: unknown): Promise<T>;

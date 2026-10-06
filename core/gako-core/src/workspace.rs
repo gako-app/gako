@@ -2,7 +2,8 @@
 //!
 //! Each repo is refreshed when its files change: at most one `git status` per repo at a time, and
 //! a change during a refresh queues exactly one more. Status changes are pushed to the frontend as
-//! `{"t":"repoStatus"}` events; the repo list as `{"t":"repos"}`; the end of the first full scan as
+//! `{"t":"repoStatus"}` events; a refresh that found the same status (files may still have changed)
+//! as `{"t":"repoTouched"}`; the repo list as `{"t":"repos"}`; the end of the first full scan as
 //! `{"t":"scanDone"}`.
 
 use std::path::{Path, PathBuf};
@@ -216,12 +217,17 @@ impl Workspace {
                 inner.states[i].last = Some(value.clone());
                 changed
             };
+            let repo_id = root.to_string_lossy().into_owned();
             if changed {
                 let mut msg = value;
                 msg["t"] = "repoStatus".into();
-                msg["repo"] = root.to_string_lossy().into_owned().into();
+                msg["repo"] = repo_id.into();
                 msg["ms"] = ms.into();
                 self.send(msg);
+            } else {
+                // Same status, but files may still have changed (a modified file edited again):
+                // an open diff in this repo has to re-read its file.
+                self.send(json!({"t": "repoTouched", "repo": repo_id}));
             }
             let mut inner = self.inner.lock().unwrap();
             let Some(i) = inner.repos.iter().position(|r| r.root == root) else { return };

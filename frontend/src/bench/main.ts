@@ -1,10 +1,10 @@
 import './style.css';
 
 import { App, config, type Hello } from './app';
-import { boot } from './boot';
-import { Metrics, ms } from './metrics';
+import { boot } from '../boot';
+import { Metrics, ms } from '../metrics';
 import { openDiff, scenarios } from './scenarios';
-import { connect } from './transport';
+import { connect } from '../transport';
 
 async function main(): Promise<void> {
   const b = boot();

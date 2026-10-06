@@ -2,9 +2,9 @@
 // reads the records these write to the log, and samples memory from outside.
 
 import type { App } from './app';
-import { checkSeqLines, checkTail, logicalLines, screenTail } from './check';
-import { frames, ms, sleep, summarize } from './metrics';
-import type { TerminalTab } from './terminal';
+import { checkSeqLines, checkTail, logicalLines, screenTail } from '../check';
+import { frames, ms, sleep, summarize } from '../metrics';
+import type { TerminalTab } from '../terminal';
 
 interface LogDump { path: string; bytes: number; kind: 'log'; lastSeq: number; trailer: string }
 interface TextDump { path: string; bytes: number; kind: 'long' | 'emoji'; tail: string; trailer: string }
