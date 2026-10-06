@@ -28,7 +28,10 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::http::StatusCode;
 
+use crate::git;
 use crate::pty::{Event, FlowConfig, OpenRequest, Terminal};
+use crate::settings;
+use crate::workspace::Workspace;
 
 pub struct State {
     root: PathBuf,
@@ -178,6 +181,7 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
     });
 
     let mut mine: HashMap<u32, Arc<Terminal>> = HashMap::new();
+    let mut workspace: Option<Arc<Workspace>> = None;
 
     while let Some(msg) = source.next().await {
         match msg? {
@@ -215,8 +219,24 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                         }
                     }
                     ClientMessage::Log { rec } => state.log_record(rec),
+                    // Git requests run on their own, so a slow one never holds up terminal traffic.
+                    ClientMessage::Req { id, m, p } if m.starts_with("git") => {
+                        let ws = workspace.clone();
+                        let tx = tx.clone();
+                        tokio::spawn(async move {
+                            let result = match ws {
+                                Some(ws) => git_request(&ws, &m, p).await,
+                                None => Err(anyhow::anyhow!("no workspace is open")),
+                            };
+                            let reply = match result {
+                                Ok(r) => json!({"t": "res", "id": id, "r": r}),
+                                Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
+                            };
+                            let _ = tx.send(Event::Text(reply.to_string()));
+                        });
+                    }
                     ClientMessage::Req { id, m, p } => {
-                        let result = request(&state, &mut mine, &tx, &m, p).await;
+                        let result = request(&state, &mut mine, &mut workspace, &tx, &m, p).await;
                         let reply = match result {
                             Ok(r) => json!({"t": "res", "id": id, "r": r}),
                             Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
@@ -248,6 +268,7 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
 async fn request(
     state: &Arc<State>,
     mine: &mut HashMap<u32, Arc<Terminal>>,
+    workspace: &mut Option<Arc<Workspace>>,
     tx: &mpsc::UnboundedSender<Event>,
     method: &str,
     params: Value,
@@ -274,6 +295,81 @@ async fn request(
             let id: u32 = serde_json::from_value(params["term"].clone())?;
             let t = mine.get(&id).ok_or_else(|| anyhow::anyhow!("no terminal {id}"))?;
             Ok(serde_json::to_value(t.stats())?)
+        }
+        "workspaceOpen" => {
+            let user = settings::user_file();
+            let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;
+            let base = match given {
+                Some(b) => b,
+                None => settings::load(user.as_deref(), None)?
+                    .base
+                    .ok_or_else(|| anyhow::anyhow!("no base folder given, and none in the settings"))?,
+            };
+            let settings = settings::load(user.as_deref(), Some(&base))?;
+            // The previous workspace, if any, stops watching when it's dropped here.
+            let ws = Workspace::open(base, settings, tx.clone())?;
+            *workspace = Some(ws.clone());
+            Ok(json!({
+                "base": ws.base,
+                "settings": ws.settings,
+                "settingsFiles": {"user": user, "workspace": settings::workspace_file(&ws.base)},
+                "repos": ws.repos(),
+                "statuses": ws.statuses(),
+            }))
+        }
+        _ => anyhow::bail!("unknown method {method}"),
+    }
+}
+
+fn param<T: serde::de::DeserializeOwned>(params: &Value, key: &str) -> Result<T> {
+    serde_json::from_value(params[key].clone()).map_err(|e| anyhow::anyhow!("parameter {key}: {e}"))
+}
+
+/// Requests against the open workspace's repos. Mutations refresh the repo's status before
+/// replying, so the frontend sees the new status no later than the reply.
+async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result<Value> {
+    let repo = ws.repo(&param::<String>(&params, "repo")?)?;
+    let g = &ws.git;
+    match method {
+        "gitFile" => {
+            let path: String = param(&params, "path")?;
+            let rev: String = param(&params, "rev")?;
+            let rev = match rev.as_str() {
+                "worktree" => git::Rev::WorkTree,
+                "index" => git::Rev::Index,
+                c => git::Rev::Commit(c),
+            };
+            Ok(serde_json::to_value(git::file(g, &repo.root, rev, &path, 50 << 20).await?)?)
+        }
+        "gitLog" => {
+            let skip = params["skip"].as_u64().unwrap_or(0) as usize;
+            let limit = params["limit"].as_u64().unwrap_or(200) as usize;
+            Ok(serde_json::to_value(git::log(g, &repo.root, skip, limit).await?)?)
+        }
+        "gitCommitDetails" => {
+            let hash: String = param(&params, "hash")?;
+            Ok(serde_json::to_value(git::show_commit(g, &repo.root, &hash).await?)?)
+        }
+        "gitStage" | "gitUnstage" => {
+            let paths: Vec<String> = param(&params, "paths")?;
+            if method == "gitStage" {
+                git::stage(g, &repo.root, &paths).await?;
+            } else {
+                let unborn = g.run(&repo.root, &["rev-parse", "--verify", "-q", "HEAD"]).await.is_err();
+                git::unstage(g, &repo.root, &paths, unborn).await?;
+            }
+            ws.refresh(&repo.root).await;
+            Ok(Value::Null)
+        }
+        "gitCommit" => {
+            let message: String = param(&params, "message")?;
+            let amend = params["amend"].as_bool().unwrap_or(false);
+            if message.trim().is_empty() {
+                anyhow::bail!("the commit message is empty");
+            }
+            let hash = git::commit(g, &repo.root, &message, amend).await?;
+            ws.refresh(&repo.root).await;
+            Ok(json!({"hash": hash}))
         }
         _ => anyhow::bail!("unknown method {method}"),
     }

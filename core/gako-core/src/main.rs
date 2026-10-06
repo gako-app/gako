@@ -5,8 +5,11 @@
 //! that present the token it was started with (`GAKO_TOKEN`). It exits when its stdin closes, which
 //! is how it notices that the parent shell has gone, even after a crash.
 
+mod git;
 mod pty;
 mod server;
+mod settings;
+mod workspace;
 
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
