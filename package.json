@@ -1,8 +1,13 @@
 {
   "name": "gako",
   "private": true,
-  "workspaces": ["frontend", "shells/electron", "shells/tauri"],
+  "workspaces": [
+    "frontend",
+    "shells/electron",
+    "shells/tauri"
+  ],
   "scripts": {
+    "app": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm start -w shells/electron --",
     "build:frontend": "npm run build -w frontend",
     "dev:frontend": "npm run dev -w frontend"
   }
