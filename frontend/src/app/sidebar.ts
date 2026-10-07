@@ -2,7 +2,8 @@
 // files; clean repos collapsed at the bottom), the file tree and search.
 //
 // Staging and committing are left to the agents; each repo offers its history, a fetch, and a pull
-// or push when its branch is behind or ahead of its upstream.
+// or push when its branch is behind or ahead of its upstream. When any are behind, a bar at the
+// top pulls them all.
 
 import { basename, dirname, fill, h } from './dom';
 import type { Explorer } from './explorer';
@@ -38,7 +39,11 @@ export interface SidebarHooks {
   /** Offers the repo's branches to switch to, in a menu under `at`. */
   branches(repo: Repo, at: HTMLElement): void;
   history(repo: Repo): void;
-  remote(repo: Repo, action: RemoteAction): Promise<void>;
+  /** Runs a fetch, pull or push; resolves to git's error, if any. With `quiet`, the error isn't
+   * shown (the caller reports it). */
+  remote(repo: Repo, action: RemoteAction, quiet?: boolean): Promise<string | null>;
+  /** Shows a message. */
+  toast(message: string): void;
   /** Hides the sidebar. */
   collapse(): void;
 }
@@ -51,6 +56,8 @@ interface Section {
 
 const GROUP_LABEL = { conflicts: 'Merge conflicts', staged: 'Staged changes', changes: 'Changes', untracked: 'Untracked' };
 const REMOTE_BUSY = { fetch: 'Fetching…', pull: 'Pulling…', push: 'Pushing…' };
+/** How many pulls "Pull all" runs at once. */
+const PULL_ALL_AT_ONCE = 4;
 
 export class Sidebar {
   readonly el = h('aside', { class: 'sidebar' });
@@ -62,6 +69,8 @@ export class Sidebar {
   private items: Item[] = [];
   /** Repos with a fetch, pull or push running. */
   private busy = new Map<string, RemoteAction>();
+  /** "Pull all" in progress: how many are done of how many. */
+  private pullingAll: { done: number; total: number } | null = null;
   view: View = 'repos';
   selected: string | null = null;
   repos: Repo[] = [];
@@ -179,27 +188,73 @@ export class Sidebar {
       s.operation ? h('span', { class: 'badge' }, s.operation.replace('cherryPick', 'cherry-pick').toUpperCase()) : null);
   }
 
-  /** The repo's buttons: pull and push when behind or ahead (with the counts), fetch, history. */
+  /** Runs a fetch, pull or push on a repo, showing it busy meanwhile; resolves to git's error. */
+  private run(r: Repo, action: RemoteAction, quiet = false): Promise<string | null> {
+    if (this.busy.has(r.root)) return Promise.resolve(null);
+    this.busy.set(r.root, action);
+    this.render();
+    return this.hooks.remote(r, action, quiet).finally(() => {
+      this.busy.delete(r.root);
+      this.render();
+    });
+  }
+
+  /** Repos whose branch is behind an upstream that still exists. */
+  private behind(): Repo[] {
+    return this.repos.filter((r) => r.status?.upstream && !r.status.upstreamGone && r.status.behind > 0);
+  }
+
+  /** Pulls every repo that's behind (fast-forward only), a few at a time, then reports the ones
+   * git refused in one message. */
+  private async pullAll(): Promise<void> {
+    if (this.pullingAll) return;
+    const repos = this.behind().filter((r) => !this.busy.has(r.root));
+    if (!repos.length) return;
+    this.pullingAll = { done: 0, total: repos.length };
+    const failed: string[] = [];
+    const queue = [...repos];
+    const worker = async () => {
+      for (let r = queue.shift(); r; r = queue.shift()) {
+        const error = await this.run(r, 'pull', true);
+        if (error) failed.push(`${this.name(r)}: ${error}`);
+        this.pullingAll!.done++;
+        this.render();
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PULL_ALL_AT_ONCE, repos.length) }, worker));
+    this.pullingAll = null;
+    this.render();
+    if (failed.length) {
+      this.hooks.toast(`Couldn't pull ${failed.length} of ${repos.length} repositor${repos.length === 1 ? 'y' : 'ies'}:\n${failed.join('\n')}`);
+    }
+  }
+
+  /** "N repositories are behind" and Pull all, while any are. */
+  private pullAllBar(): HTMLElement | null {
+    const n = this.behind().length;
+    if (this.pullingAll) {
+      return h('div', { class: 'pull-all' }, h('span', { class: 'dim' }, `Pulling… ${this.pullingAll.done} of ${this.pullingAll.total} done`));
+    }
+    if (!n) return null;
+    return h('div', { class: 'pull-all' },
+      h('span', { class: 'dim' }, `${n} repositor${n === 1 ? 'y is' : 'ies are'} behind`),
+      h('span', { class: 'spacer' }),
+      iconButton('pull', `Pull every repository that's behind (fast-forward only)`, () => this.pullAll(), { label: 'Pull all', class: 'sync' }));
+  }
+
+  /** The repo's buttons: fetch and history on hover, then pull and push when behind or ahead (with
+   * the counts), last so they stay put when the others appear. */
   private repoActions(r: Repo): HTMLElement {
     const s = r.status;
     const busy = this.busy.get(r.root);
     const upstream = s?.upstream && !s.upstreamGone ? s.upstream : null;
     const plural = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
-    const run = (action: RemoteAction) => {
-      if (this.busy.has(r.root)) return;
-      this.busy.set(r.root, action);
-      this.render();
-      this.hooks.remote(r, action).finally(() => {
-        this.busy.delete(r.root);
-        this.render();
-      });
-    };
     return h('span', { class: 'repo-actions' },
+      busy ? null : iconButton('refresh', upstream ? `Fetch from ${upstream.split('/')[0]} and refresh` : 'Fetch from the remote and refresh', () => this.run(r, 'fetch'), { class: 'hover' }),
+      iconButton('history', 'Show the history', () => this.hooks.history(r), { class: 'hover' }),
       busy ? h('span', { class: 'busy dim' }, REMOTE_BUSY[busy]) : null,
-      !busy && upstream && s!.behind ? iconButton('pull', `Pull ${plural(s!.behind)} from ${upstream} (fast-forward only)`, () => run('pull'), { label: String(s!.behind), class: 'sync' }) : null,
-      !busy && upstream && s!.ahead ? iconButton('push', `Push ${plural(s!.ahead)} to ${upstream}`, () => run('push'), { label: String(s!.ahead), class: 'sync' }) : null,
-      busy ? null : iconButton('refresh', upstream ? `Fetch from ${upstream.split('/')[0]} and refresh` : 'Fetch from the remote and refresh', () => run('fetch'), { class: 'hover' }),
-      iconButton('history', 'Show the history', () => this.hooks.history(r), { class: 'hover' }));
+      !busy && upstream && s!.behind ? iconButton('pull', `Pull ${plural(s!.behind)} from ${upstream} (fast-forward only)`, () => this.run(r, 'pull'), { label: String(s!.behind), class: 'sync' }) : null,
+      !busy && upstream && s!.ahead ? iconButton('push', `Push ${plural(s!.ahead)} to ${upstream}`, () => this.run(r, 'push'), { label: String(s!.ahead), class: 'sync' }) : null);
   }
 
   private renderRepos(changed: Repo[], clean: Repo[]): void {
@@ -220,6 +275,8 @@ export class Sidebar {
     }
     if (!changed.length && !clean.length) wanted.push(h('div', { class: 'empty dim' }, 'Looking for repositories…'));
     else if (!changed.length) wanted.unshift(h('div', { class: 'empty dim' }, 'No changes in any repository.'));
+    const bar = this.pullAllBar();
+    if (bar) wanted.unshift(bar);
     // Move nodes only where the order changed.
     const current = [...this.list.children];
     if (current.length !== wanted.length || current.some((c, i) => c !== wanted[i])) {

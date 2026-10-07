@@ -39,9 +39,44 @@ pub struct Listing {
     pub omitted: usize,
 }
 
+/// `path` made absolute with symlinks resolved, as `canonicalize` does, but without the `\\?\`
+/// prefix it adds on Windows (`\\?\C:\dev` becomes `C:\dev`) when the plain form means the same:
+/// paths are shown to the user and handed to editors and tools, which handle that prefix badly or
+/// not at all.
+pub fn canonical(path: &Path) -> std::io::Result<PathBuf> {
+    let p = path.canonicalize()?;
+    Ok(match p.to_str().and_then(plain) {
+        Some(s) => PathBuf::from(s),
+        None => p,
+    })
+}
+
+/// The plain form of a Windows verbatim path (`\\?\C:\x`, `\\?\UNC\server\share\x`), if it
+/// has one: not too long for the plain form, and with no name Windows would read differently
+/// without the prefix (`NUL`, `COM1`, a trailing dot or space).
+fn plain(p: &str) -> Option<String> {
+    let s = if let Some(rest) = p.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else {
+        let rest = p.strip_prefix(r"\\?\")?;
+        let b = rest.as_bytes();
+        if !(b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && b[2] == b'\\') {
+            return None;
+        }
+        rest.to_string()
+    };
+    const RESERVED: &[&str] = &["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
+    let bad = |name: &str| {
+        let stem = name.split('.').next().unwrap_or(name).trim_end().to_ascii_uppercase();
+        let numbered = stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit();
+        name.ends_with('.') || name.ends_with(' ') || RESERVED.contains(&stem.as_str()) || numbered
+    };
+    (s.len() < 260 && !s.split('\\').skip(1).any(|n| !n.is_empty() && bad(n))).then_some(s)
+}
+
 /// The canonical form of `path`, if it lies inside one of `roots` (also canonical).
 pub fn inside(roots: &[PathBuf], path: &Path) -> Result<PathBuf> {
-    let p = path.canonicalize()?;
+    let p = canonical(path)?;
     if roots.iter().any(|r| p.starts_with(r)) {
         Ok(p)
     } else {
@@ -106,6 +141,21 @@ pub async fn read(path: &Path, limit: usize) -> Result<FileContent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verbatim_windows_paths_lose_their_prefix_when_safe() {
+        assert_eq!(plain(r"\\?\C:\dev\projects").as_deref(), Some(r"C:\dev\projects"));
+        assert_eq!(plain(r"\\?\UNC\server\share\x").as_deref(), Some(r"\\server\share\x"));
+        // Names the plain form would read differently, paths too long for it, other prefixes,
+        // and paths that aren't verbatim at all stay as they are.
+        assert_eq!(plain(r"\\?\C:\dev\nul.txt"), None);
+        assert_eq!(plain(r"\\?\C:\dev\COM1"), None);
+        assert_eq!(plain(r"\\?\C:\dev\trailing."), None);
+        assert_eq!(plain(&format!(r"\\?\C:\{}", "a".repeat(300))), None);
+        assert_eq!(plain(r"\\?\Volume{1234}\x"), None);
+        assert_eq!(plain("/Users/me/dev"), None);
+        assert_eq!(plain(r"C:\dev"), None);
+    }
 
     fn git(dir: &Path, args: &[&str]) {
         let ok = std::process::Command::new("git").args(args).current_dir(dir).output().unwrap().status.success();

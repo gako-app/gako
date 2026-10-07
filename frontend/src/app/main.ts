@@ -84,10 +84,18 @@ class App {
       revert: (item) => this.revertItem(item),
       branches: (r, at) => this.branchMenu(r, at),
       history: (r) => this.showHistory(r),
-      remote: async (r, action) => {
-        await this.act(() => this.git.remote(r.root, action));
+      remote: async (r, action, quiet) => {
+        let error: string | null = null;
+        try {
+          await this.git.remote(r.root, action);
+        } catch (e) {
+          error = String((e as Error).message ?? e);
+          if (!quiet) this.toast(error);
+        }
         if (this.mode === 'history' && this.historyRepo?.root === r.root) this.history.refresh(r);
+        return error;
       },
+      toast: (m) => this.toast(m),
       collapse: () => this.layout.setLeftCollapsed(true),
     });
     this.editors = new Editors(t, (m) => this.toast(m));
@@ -246,7 +254,9 @@ class App {
       // Only into an empty window: opening another folder keeps what's open.
       if (this.terminals.snapshot().terms.length === 0 && this.docs.snapshot().docs.length === 0) await this.restoreSession();
     } catch (e) {
-      this.showOpenForm(base, String((e as Error).message ?? e));
+      const message = String((e as Error).message ?? e);
+      // Nothing to open yet (no folder given, none in the settings) is a first run, not an error.
+      this.showOpenForm(base, base || this.opened || !message.startsWith('no base folder') ? message : undefined);
     }
   }
 
@@ -628,8 +638,10 @@ class App {
     }
   }
 
-  /** The form for a folder's path: shown when none could be opened, and in place of a native
-   * picker. With a folder open, Cancel (or Escape) puts back what was showing. */
+  /** Where a folder is chosen: at the first run, when one can't be opened, and in place of a
+   * native picker. With the shell's picker it offers "Open folder…", and typing a path as a fallback;
+   * in a plain browser, only the path. With a folder open, Cancel (or Escape) puts back what was
+   * showing. */
   private showOpenForm(value?: string, error?: string): void {
     if (!this.terminals.reviewActive) this.terminals.select(null);
     // What Cancel goes back to: what was showing before the form (a form shown again after a
@@ -638,6 +650,7 @@ class App {
     if (!current?.classList.contains('open-form')) this.formReturn = { mode: this.mode, view: current };
     const before = this.formReturn ?? { mode: 'welcome' as const, view: null };
     this.mode = 'welcome';
+    const picker = !!this.pickFolder;
     const input = h('input', { type: 'text', class: 'path', value: value ?? '', placeholder: '/path/to/your/base/folder', spellcheck: false });
     const submit = (e: Event) => {
       e.preventDefault();
@@ -655,23 +668,36 @@ class App {
       const path = await this.pickFolder?.(input.value.trim() || this.opened?.base).catch(() => null);
       if (path) this.open(path);
     };
+    // With a picker, the path field shows only when asked for (or when a typed path failed).
+    const typed = h('div', { class: 'path-row', hidden: picker && !error },
+      input, h('button', { type: 'submit', class: picker ? '' : 'primary' }, 'Open'));
+    const first = !this.opened && !error;
     const form: HTMLFormElement = h('form', {
       class: 'welcome open-form', onsubmit: submit,
       onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape' && this.opened) cancel(); },
     },
-    h('h1', {}, 'Open a folder'),
-    h('p', { class: 'dim' }, 'The base folder holding your repositories. Gako finds the repos inside it.'),
-    h('div', { class: 'path-row' }, input, this.pickFolder ? h('button', { type: 'button', onclick: browse }, 'Browse…') : null),
-    error ? h('p', { class: 'error' }, error) : null,
-    h('div', { class: 'form-buttons' },
-      h('button', { class: 'primary', type: 'submit' }, 'Open'),
-      this.opened ? h('button', { type: 'button', onclick: cancel }, 'Cancel') : null));
+    h('h1', {}, first ? 'Welcome to Gako' : 'Open a folder'),
+    h('p', { class: 'dim' }, 'Choose the folder that holds your repositories: Gako finds every Git repository inside it.'),
+    error ? h('p', { class: 'error-box' }, error.charAt(0).toUpperCase() + error.slice(1)) : null,
+    picker ? h('div', { class: 'form-buttons' },
+      h('button', { type: 'button', class: 'primary', onclick: browse }, icon('folder-open'), 'Open folder…'),
+      this.opened ? h('button', { type: 'button', onclick: cancel }, 'Cancel') : null,
+      typed.hidden ? h('button', { type: 'button', class: 'link', onclick: (e: MouseEvent) => {
+        typed.hidden = false;
+        (e.currentTarget as HTMLElement).remove();
+        input.focus();
+      } }, 'or type its path') : null) : null,
+    typed,
+    !picker && this.opened ? h('div', { class: 'form-buttons' }, h('button', { type: 'button', onclick: cancel }, 'Cancel')) : null);
     this.review.replaceChildren(form);
-    input.focus();
+    if (!typed.hidden) input.focus();
+    else (form.querySelector('button.primary') as HTMLElement | null)?.focus();
   }
 }
 
 async function main(): Promise<void> {
+  // macOS draws its own slim scrollbars; elsewhere the styles draw them (style.css).
+  document.documentElement.classList.toggle('mac', navigator.platform.startsWith('Mac'));
   const b = boot();
   const t = await connect(b);
   const hello = await t.request<{ env: Record<string, string> }>('hello');

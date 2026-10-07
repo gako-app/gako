@@ -37,7 +37,7 @@ pub fn repo_at(dir: &Path) -> Option<Repo> {
     let text = std::fs::read_to_string(&dot_git).ok()?;
     let target = text.lines().find_map(|l| l.strip_prefix("gitdir:"))?.trim();
     let git_dir = dir.join(target);
-    let git_dir = git_dir.canonicalize().unwrap_or(git_dir);
+    let git_dir = crate::files::canonical(&git_dir).unwrap_or(git_dir);
     let parts: Vec<_> = git_dir.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
     let kind = if parts.windows(2).any(|w| w[0] == ".git" && w[1] == "worktrees") {
         RepoKind::Worktree

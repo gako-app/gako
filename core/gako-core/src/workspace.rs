@@ -61,7 +61,7 @@ impl Workspace {
         if !base.is_dir() {
             bail!("{} is not a folder", base.display());
         }
-        let base = base.canonicalize()?;
+        let base = crate::files::canonical(&base)?;
         let git = Git::new(settings.max_git_processes, Duration::from_secs(settings.git_timeout_secs));
         let ws = Arc::new(Workspace {
             base,
@@ -80,7 +80,7 @@ impl Workspace {
         let mut roots = vec![self.base.clone()];
         for extra in &self.settings.extra_folders {
             let p = if extra.is_absolute() { extra.clone() } else { self.base.join(extra) };
-            if let Ok(p) = p.canonicalize()
+            if let Ok(p) = crate::files::canonical(&p)
                 && !roots.iter().any(|r| p.starts_with(r))
             {
                 roots.push(p);
