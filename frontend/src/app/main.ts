@@ -3,7 +3,7 @@ import './style.css';
 import { boot } from '../boot';
 import { connect, type Transport } from '../transport';
 import { DiffPanel } from './diff';
-import { basename, dirname, fill, h } from './dom';
+import { basename, fill, h } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
 import type { DiffTarget, Repo, RepoInfo, Status } from './model';
@@ -20,6 +20,9 @@ import { type DocSpec, DocTabs } from './doctabs';
 import type { Folder as TermFolder, Program } from './terminals';
 import { Layout } from './layout';
 import { installTooltips } from './tooltip';
+import { icon } from './icons';
+import { confirmAction } from './confirm';
+import { showMenu } from './menu';
 
 const LAST_BASE = 'gako.lastBase';
 /** The open tabs and terminals, per base folder: `gako.session:<base>`. */
@@ -68,7 +71,7 @@ class App {
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
-  constructor(private t: Transport, env: Record<string, string>) {
+  constructor(private t: Transport, env: Record<string, string>, private pickFolder?: (defaultPath?: string) => Promise<string | null>) {
     this.git = new Git(t);
     this.log = env.GAKO_LOG
       ? (ev, data = {}) => t.send({ t: 'log', rec: { ev, epochMs: performance.timeOrigin + performance.now(), ...data } })
@@ -76,6 +79,10 @@ class App {
     this.sidebar = new Sidebar({
       open: (item, pin) => this.openItem(item, pin),
       openFile: (item) => this.openFile(this.join(item.repo.root, item.entry.path)),
+      openInEditor: (item) => this.editors.open({ path: this.join(item.repo.root, item.entry.path) }),
+      editorLabel: () => this.editors.label(),
+      revert: (item) => this.revertItem(item),
+      branches: (r, at) => this.branchMenu(r, at),
       history: (r) => this.showHistory(r),
       remote: async (r, action) => {
         await this.act(() => this.git.remote(r.root, action));
@@ -85,7 +92,8 @@ class App {
     });
     this.editors = new Editors(t, (m) => this.toast(m));
     this.diff = new DiffPanel(this.git, this.editors, (spot) => this.openFile(spot.path, { line: spot.line ?? 1, columns: [], column: spot.column }));
-    this.explorer = new Explorer(t, this.editors, (path, pin) => this.openFile(path, undefined, pin), (m) => this.toast(m), (path) => this.relative(path));
+    this.explorer = new Explorer(t, this.editors, (path, pin) => this.openFile(path, undefined, pin), (m) => this.toast(m), (path) => this.relative(path),
+      (path) => this.diffOf(path));
     this.sidebar.explorer = this.explorer;
     this.search = new SearchView(t, (path, reveal, pin) => this.openFile(path, reveal, pin));
     this.sidebar.search = this.search;
@@ -105,6 +113,7 @@ class App {
       this.editors,
       (path) => this.relative(path),
       (path) => this.baseline(path),
+      (path) => this.diffOf(path),
     );
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
     this.viewer.attachNavigation(this.nav);
@@ -300,8 +309,8 @@ class App {
       key: `diff:${item.key}`,
       kind: 'diff',
       title: basename(item.entry.path),
-      detail: `${this.name(item.repo)}${kind === 'staged' ? ' · staged' : kind === 'conflict' ? ' · conflict' : ''}`,
-      tooltip: `${this.name(item.repo)} › ${item.entry.path}`,
+      detail: '',
+      tooltip: `${this.name(item.repo)}/${item.entry.path}${kind === 'staged' ? ' (staged)' : kind === 'conflict' ? ' (conflict)' : ''}`,
       show: (saved) => this.showItem(item.key, saved),
       persist: { diff: item.key } satisfies Persist,
     };
@@ -323,9 +332,49 @@ class App {
     this.diff.show(item.target, {
       repoName: this.name(r),
       file: worktree ? this.join(r.root, worktree) : undefined,
+      revert: item.target.kind === 'conflict' ? undefined : () => this.revertItem(item),
       prev: prev ? () => this.sidebar.step(-1) : undefined,
       next: next ? () => this.sidebar.step(1) : undefined,
     }, keepView, saved).catch((e) => this.toast(String(e.message ?? e)));
+  }
+
+  /** Throws away the changes an item shows, as VS Code's "Discard Changes" does, once confirmed. */
+  private async revertItem(item: Item): Promise<void> {
+    const group = item.key.split('\x1f')[1];
+    if (group !== 'changes' && group !== 'untracked' && group !== 'staged') return;
+    const e = item.entry;
+    const name = basename(e.path);
+    const message = group === 'untracked'
+      ? `${e.path} isn't tracked by Git, so reverting it deletes it. This can't be undone.`
+      : group === 'changes'
+        ? `The changes to ${e.path}${e.index ? ' that aren\'t staged' : ''} will be lost: it goes back to ${e.index ? 'its staged version' : 'the last commit'}. This can't be undone.`
+        : e.index === 'added'
+          ? `${e.path} is new, so reverting it unstages and deletes it. This can't be undone.`
+          : `The staged changes to ${e.path}, and any made since, will be lost: it goes back to the last commit${e.origPath ? `, under its old name ${e.origPath}` : ''}. This can't be undone.`;
+    if (!await confirmAction(group === 'untracked' ? `Delete ${name}?` : `Revert ${name}?`, message, group === 'untracked' ? 'Delete' : 'Revert')) return;
+    await this.act(() => this.git.revert(item.repo.root, group, e.path, e.origPath));
+  }
+
+  /** The repo's branches in a menu; picking one switches to it (a remote one gets a local branch
+   * tracking it). Git refuses if uncommitted changes would be overwritten, and the toast says so. */
+  private async branchMenu(r: Repo, at: HTMLElement): Promise<void> {
+    let b: { local: string[]; remote: string[] };
+    try {
+      b = await this.git.branches(r.root);
+    } catch (e) {
+      this.toast(String((e as Error).message ?? e));
+      return;
+    }
+    const current = r.status?.branch ?? null;
+    const go = async (branch: string, remote: boolean) => {
+      if (branch === current) return;
+      await this.act(() => this.git.switch(r.root, branch, remote));
+      if (this.mode === 'history' && this.historyRepo?.root === r.root) this.history.refresh(r);
+    };
+    showMenu(at, [
+      ...b.local.map((name) => ({ label: name, checked: name === current, run: () => go(name, false) })),
+      ...(b.remote.length ? ['separator' as const, ...b.remote.map((name) => ({ label: name, title: `A new branch tracking ${name}`, run: () => go(name, true) }))] : []),
+    ]);
   }
 
   private openCommitDiff(target: DiffTarget, repo: Repo): void {
@@ -337,8 +386,8 @@ class App {
       key: `commit:${repo.root}\x1f${target.hash}\x1f${target.path}`,
       kind: 'diff',
       title: basename(target.path),
-      detail: `${this.name(repo)} @ ${target.hash?.slice(0, 7)}`,
-      tooltip: `${this.name(repo)} › ${target.path} in commit ${target.hash?.slice(0, 7)}`,
+      detail: '',
+      tooltip: `${this.name(repo)}/${target.path} in commit ${target.hash?.slice(0, 7)}`,
       show: (saved) => {
         this.setMode('diff');
         this.diff.show(target, { repoName: this.name(repo), back: () => this.showHistory(repo) }, false, saved)
@@ -387,7 +436,7 @@ class App {
       key: `file:${path}`,
       kind: 'file',
       title: basename(path),
-      detail: dirname(rel),
+      detail: '',
       tooltip: rel,
       show: (saved) => {
         this.setMode('file');
@@ -472,6 +521,22 @@ class App {
     return best;
   }
 
+  /** What opens the diff of a file with changes, null if it has none: its conflict, else its
+   * changes not staged (or untracked), else its staged ones, as the Repositories view lists them. */
+  private diffOf(path: string): (() => void) | null {
+    const r = this.repoOf(path);
+    if (!r?.status) return null;
+    const rel = path.slice(r.root.length + 1).replaceAll('\\', '/');
+    const e = r.status.entries.find((x) => x.path === rel);
+    if (!e) return null;
+    const group = e.conflict ? 'conflicts' : e.worktree ? 'changes' : e.untracked ? 'untracked' : 'staged';
+    const key = `${r.root}\x1f${group}\x1f${rel}`;
+    return () => {
+      const item = this.sidebar.resolve(key);
+      if (item) this.openItem(item);
+    };
+  }
+
   /** What the viewer's change markers compare a file against: the file at HEAD ('' if it's new
    * or untracked), or null when it has no uncommitted changes. */
   private async baseline(path: string): Promise<string | null> {
@@ -531,12 +596,13 @@ class App {
   }
 
   private renderStatusbar(): void {
+    const scanning = this.scanInfo === 'scanning…';
     fill(this.statusbar,
-      h('span', {}, this.opened?.base ?? ''),
-      h('span', { class: 'dim' }, this.scanInfo),
-      this.indexInfo ? h('span', { class: 'dim' }, this.indexInfo) : null,
+      this.opened ? h('span', { class: 'status-item', 'data-tip': 'The base folder' }, icon('folder'), h('span', { class: 'status-text' }, this.opened.base)) : null,
+      this.scanInfo ? h('span', { class: `status-item dim ${scanning ? 'spinning' : ''}` }, icon(scanning ? 'busy' : 'repos'), h('span', { class: 'status-text' }, this.scanInfo)) : null,
+      this.indexInfo ? h('span', { class: 'status-item dim' }, icon('symbols'), h('span', { class: 'status-text' }, this.indexInfo)) : null,
       h('span', { class: 'spacer' }),
-      h('button', { class: 'link', onclick: () => this.showOpenForm(this.opened?.base) }, 'Open folder…'),
+      h('button', { class: 'status-button', onclick: () => this.chooseFolder() }, icon('folder-open'), 'Open folder…'),
     );
   }
 
@@ -546,20 +612,61 @@ class App {
     setTimeout(() => el.remove(), 8000);
   }
 
+  private formReturn: { mode: App['mode']; view: Element | null } | null = null;
+
+  /** "Open folder…": the shell's native folder picker, or the form where one isn't available. */
+  private async chooseFolder(): Promise<void> {
+    if (!this.pickFolder) {
+      this.showOpenForm(this.opened?.base);
+      return;
+    }
+    try {
+      const path = await this.pickFolder(this.opened?.base);
+      if (path) await this.open(path);
+    } catch (e) {
+      this.toast(String((e as Error).message ?? e));
+    }
+  }
+
+  /** The form for a folder's path: shown when none could be opened, and in place of a native
+   * picker. With a folder open, Cancel (or Escape) puts back what was showing. */
   private showOpenForm(value?: string, error?: string): void {
     if (!this.terminals.reviewActive) this.terminals.select(null);
+    // What Cancel goes back to: what was showing before the form (a form shown again after a
+    // failed open keeps the first one's).
+    const current = this.review.firstElementChild;
+    if (!current?.classList.contains('open-form')) this.formReturn = { mode: this.mode, view: current };
+    const before = this.formReturn ?? { mode: 'welcome' as const, view: null };
     this.mode = 'welcome';
     const input = h('input', { type: 'text', class: 'path', value: value ?? '', placeholder: '/path/to/your/base/folder', spellcheck: false });
     const submit = (e: Event) => {
       e.preventDefault();
       if (input.value.trim()) this.open(input.value.trim());
     };
-    this.review.replaceChildren(h('form', { class: 'welcome', onsubmit: submit },
-      h('h1', {}, 'Open a folder'),
-      h('p', { class: 'dim' }, 'The base folder holding your repositories. Gako finds the repos inside it.'),
-      input,
-      error ? h('p', { class: 'error' }, error) : null,
-      h('button', { class: 'primary', type: 'submit' }, 'Open')));
+    const cancel = () => {
+      if (!this.review.contains(form)) return;
+      if (before.mode === 'welcome' || !before.view) this.showWelcome();
+      else {
+        this.mode = before.mode;
+        this.review.replaceChildren(before.view);
+      }
+    };
+    const browse = async () => {
+      const path = await this.pickFolder?.(input.value.trim() || this.opened?.base).catch(() => null);
+      if (path) this.open(path);
+    };
+    const form: HTMLFormElement = h('form', {
+      class: 'welcome open-form', onsubmit: submit,
+      onkeydown: (e: KeyboardEvent) => { if (e.key === 'Escape' && this.opened) cancel(); },
+    },
+    h('h1', {}, 'Open a folder'),
+    h('p', { class: 'dim' }, 'The base folder holding your repositories. Gako finds the repos inside it.'),
+    h('div', { class: 'path-row' }, input, this.pickFolder ? h('button', { type: 'button', onclick: browse }, 'Browse…') : null),
+    error ? h('p', { class: 'error' }, error) : null,
+    h('div', { class: 'form-buttons' },
+      h('button', { class: 'primary', type: 'submit' }, 'Open'),
+      this.opened ? h('button', { type: 'button', onclick: cancel }, 'Cancel') : null));
+    this.review.replaceChildren(form);
     input.focus();
   }
 }
@@ -568,7 +675,7 @@ async function main(): Promise<void> {
   const b = boot();
   const t = await connect(b);
   const hello = await t.request<{ env: Record<string, string> }>('hello');
-  const app = new App(t, hello.env);
+  const app = new App(t, hello.env, b.pickFolder);
   let last: string | undefined;
   try { last = localStorage.getItem(LAST_BASE) ?? undefined; } catch { /* storage unavailable */ }
   // The folder given on the command line, then the last one opened, then the settings file's.

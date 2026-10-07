@@ -36,6 +36,8 @@ export interface DiffActions {
   prev?: () => void;
   next?: () => void;
   back?: () => void;
+  /** Throws away the changes shown (after asking). */
+  revert?: () => void;
   /** The working-tree file shown on the right, which can be opened in the viewer or an editor. */
   file?: string;
   repoName: string;
@@ -114,13 +116,14 @@ export class DiffPanel {
     fill(this.header,
       a.back ? h('button', { class: 'link', onclick: a.back }, '← Back') : null,
       h('div', { class: 'diff-title' },
+        h('span', { class: 'dim' }, `${a.repoName}/${dirname(t.path) ? dirname(t.path) + '/' : ''}`),
         h('span', { class: 'diff-name' }, basename(t.path)),
-        h('span', { class: 'dim' }, ` ${a.repoName}${dirname(t.path) ? ' › ' + dirname(t.path) : ''}`),
         renamed ? h('span', { class: 'dim' }, ` (renamed from ${renamed.slice(0, -3)})`) : null),
       h('div', { class: 'diff-kind dim', 'data-tip': `Left: ${sideLabel(t.left)}. Right: ${sideLabel(t.right)}.` }, what),
       h('div', { class: 'diff-actions' },
-        a.file ? iconButton('file', 'Open the whole file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
+        a.file ? iconButton('file', 'Open file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
         a.file ? this.editors.button(() => this.spot(a.file!)) : null,
+        a.revert ? iconButton('revert', 'Revert changes', a.revert, { class: 'framed' }) : null,
         this.modeSwitch(),
         iconButton('prev', 'Previous changed file (↑ in the sidebar)', () => a.prev?.(), { class: 'framed', disabled: !a.prev }),
         iconButton('next', 'Next changed file (↓ in the sidebar)', () => a.next?.(), { class: 'framed', disabled: !a.next })),

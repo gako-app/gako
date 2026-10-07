@@ -30,6 +30,22 @@ export class Git {
     return this.t.request('gitCommitDetails', { repo, hash });
   }
 
+  /** Throws away a file's changes in one group of the repos view: changes not staged go back to
+   * the index, an untracked file is deleted, staged changes go back to HEAD. */
+  revert(repo: string, group: 'changes' | 'untracked' | 'staged', path: string, origPath?: string): Promise<void> {
+    return this.t.request('gitRevert', { repo, group, path, origPath: origPath ?? null });
+  }
+
+  /** Local branches, and remote ones with no local branch of that name; most recent first. */
+  branches(repo: string): Promise<{ local: string[]; remote: string[] }> {
+    return this.t.request('gitBranches', { repo });
+  }
+
+  /** Switches to a local branch, or to a new one tracking a remote branch. */
+  switch(repo: string, branch: string, remote: boolean): Promise<void> {
+    return this.t.request('gitSwitch', { repo, branch, remote });
+  }
+
   /** Fetches, pulls (fast-forward only) or pushes; the repo's status follows. */
   remote(repo: string, action: 'fetch' | 'pull' | 'push'): Promise<void> {
     return this.t.request(`git${action[0].toUpperCase()}${action.slice(1)}`, { repo });

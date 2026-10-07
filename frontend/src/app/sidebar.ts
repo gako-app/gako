@@ -7,9 +7,9 @@
 import { basename, dirname, fill, h } from './dom';
 import type { Explorer } from './explorer';
 import type { SearchView } from './search';
-import type { DiffTarget, Entry, Repo, Status } from './model';
+import type { DiffTarget, Entry, Repo } from './model';
 import { changeCount, diffTarget, LETTER } from './model';
-import { iconButton } from './icons';
+import { icon, iconButton } from './icons';
 
 export type View = 'repos' | 'files' | 'search';
 
@@ -29,6 +29,14 @@ export interface SidebarHooks {
   open(item: Item, pin?: boolean): void;
   /** Opens the whole file an item names, not its diff. */
   openFile(item: Item): void;
+  /** Opens the file an item names in the user's editor. */
+  openInEditor(item: Item): void;
+  /** What that button says: "Open in VS Code". */
+  editorLabel(): string;
+  /** Throws away the changes an item shows, once the user confirms. */
+  revert(item: Item): void;
+  /** Offers the repo's branches to switch to, in a menu under `at`. */
+  branches(repo: Repo, at: HTMLElement): void;
   history(repo: Repo): void;
   remote(repo: Repo, action: RemoteAction): Promise<void>;
   /** Hides the sidebar. */
@@ -156,11 +164,17 @@ export class Sidebar {
     return r.rel || this.baseName;
   }
 
-  private branch(s: Status | undefined): HTMLElement {
+  /** The branch, which switches to another one when clicked. */
+  private branch(r: Repo): HTMLElement {
+    const s = r.status;
     if (!s) return h('span', { class: 'dim' }, '…');
     const name = s.branch ?? (s.oid ? `detached at ${s.oid.slice(0, 7)}` : '');
+    const button: HTMLButtonElement = h('button', {
+      class: 'branch-name', 'data-tip': 'Switch branch',
+      onclick: (e: MouseEvent) => { e.stopPropagation(); this.hooks.branches(r, button); },
+    }, icon('branch'), s.oid === null && s.branch ? `${s.branch} (no commits yet)` : name);
     return h('span', { class: 'branch' },
-      s.oid === null && s.branch ? `${s.branch} (no commits yet)` : name,
+      button,
       s.upstreamGone ? h('span', { class: 'warn', 'data-tip': 'The upstream branch no longer exists on the remote' }, ' upstream gone') : null,
       s.operation ? h('span', { class: 'badge' }, s.operation.replace('cherryPick', 'cherry-pick').toUpperCase()) : null);
   }
@@ -200,7 +214,7 @@ export class Sidebar {
         h('button', { class: 'group-toggle', onclick: () => { this.cleanOpen = !this.cleanOpen; this.render(); } },
           `${this.cleanOpen ? '▾' : '▸'} Clean repositories (${clean.length})`),
         this.cleanOpen ? clean.map((r) => h('div', { class: 'clean-repo', 'data-tip': r.root },
-          h('span', { class: 'repo-name' }, this.name(r)), ' ', this.branch(r.status),
+          h('span', { class: 'repo-name' }, this.name(r)), ' ', this.branch(r),
           h('span', { class: 'spacer' }),
           this.repoActions(r))) : null));
     }
@@ -235,7 +249,7 @@ export class Sidebar {
         open ? '▾' : '▸'),
       h('span', { class: 'repo-name', 'data-tip': r.root }, this.name(r)),
       r.kind !== 'normal' ? h('span', { class: 'badge' }, r.kind) : null,
-      ' ', this.branch(s),
+      ' ', this.branch(r),
       h('span', { class: 'spacer' }),
       this.repoActions(r),
       s ? h('span', { class: 'count', 'data-tip': `${n} changed file${n === 1 ? '' : 's'}` }, String(n)) : null,
@@ -264,7 +278,7 @@ export class Sidebar {
         const letter = group === 'staged' ? LETTER[e.index!] : group === 'changes' ? LETTER[e.worktree!] : group === 'untracked' ? 'U' : '!';
         // A deleted file has no whole file to open.
         const gone = (group === 'staged' ? e.index : e.worktree) === 'deleted';
-        out.push(this.fileRow(item, letter, gone ? null : iconButton('file', 'Open the whole file', () => this.hooks.openFile(item), { class: 'hover' })));
+        out.push(this.fileRow(item, letter, gone, group !== 'conflicts'));
       }
       if (group === 'untracked' && s.untrackedOmitted) {
         out.push(h('div', { class: 'more dim' }, `${s.untrackedOmitted.toLocaleString()} more untracked files not listed`));
@@ -273,16 +287,20 @@ export class Sidebar {
     sec.files.replaceChildren(...out);
   }
 
-  private fileRow(item: Item, letter: string, action: HTMLElement | null): HTMLElement {
+  /** A file: its name, its folder, the buttons on hover, its status letter. */
+  private fileRow(item: Item, letter: string, gone: boolean, revertible: boolean): HTMLElement {
     const e = item.entry;
     return h('div', {
       class: `file st-${letter}`, 'data-key': item.key, 'data-tip': e.path,
       onclick: () => this.select(item), ondblclick: () => this.select(item, true),
     },
-    h('span', { class: 'letter' }, letter),
     h('span', { class: 'fname' }, basename(e.path)),
     h('span', { class: 'fdir dim' }, dirname(e.path)),
-    action);
+    iconButton('diff', 'Show diff', () => this.select(item), { class: 'hover' }),
+    gone ? null : iconButton('file', 'Open file', () => this.hooks.openFile(item), { class: 'hover' }),
+    gone ? null : iconButton('editor', this.hooks.editorLabel(), () => this.hooks.openInEditor(item), { class: 'hover' }),
+    revertible ? iconButton('revert', 'Revert changes', () => this.hooks.revert(item), { class: 'hover' }) : null,
+    h('span', { class: 'letter' }, letter));
   }
 
   focus(): void {

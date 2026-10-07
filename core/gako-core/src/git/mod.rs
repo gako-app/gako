@@ -267,5 +267,96 @@ pub async fn remote(repo: &Path, action: &str) -> Result<()> {
     Ok(())
 }
 
+/// Which of a file's changes a revert throws away, as the repos view groups them.
+pub enum Revert {
+    /// Changes not staged: the working tree goes back to the index.
+    Changes,
+    /// An untracked file: deleted.
+    Untracked,
+    /// Staged changes: the index and the working tree go back to HEAD. A file HEAD doesn't have
+    /// is unstaged and deleted; a renamed file's old path comes back too.
+    Staged,
+}
+
+/// Throws away a file's changes (VS Code's "Discard Changes"); `path` is relative to the repo.
+pub async fn revert(git: &Git, repo: &Path, what: Revert, path: &str, orig_path: Option<&str>) -> Result<()> {
+    match what {
+        Revert::Changes => {
+            git.run(repo, &["restore", "--worktree", "--", path]).await?;
+        }
+        Revert::Untracked => {
+            // Only a file git lists as untracked is deleted, which also keeps the path inside the repo.
+            let out = git.run(repo, &["ls-files", "--others", "--exclude-standard", "-z", "--", path]).await?;
+            if !out.split(|&b| b == 0).any(|p| p == path.as_bytes()) {
+                bail!("{path} isn't an untracked file");
+            }
+            tokio::fs::remove_file(repo.join(path)).await.with_context(|| format!("deleting {path}"))?;
+        }
+        Revert::Staged => {
+            for p in std::iter::once(path).chain(orig_path) {
+                let in_head = git.run(repo, &["cat-file", "-e", &format!("HEAD:{p}")]).await.is_ok();
+                if in_head {
+                    git.run(repo, &["restore", "--source=HEAD", "--staged", "--worktree", "--", p]).await?;
+                } else {
+                    git.run(repo, &["rm", "-q", "--cached", "--ignore-unmatch", "--", p]).await?;
+                    match tokio::fs::remove_file(repo.join(p)).await {
+                        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+                            return Err(anyhow::Error::from(e).context(format!("deleting {p}")));
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Branches {
+    /// Local branches, most recently committed to first.
+    pub local: Vec<String>,
+    /// Remote branches with no local branch of the same name (`origin/feature`), likewise.
+    pub remote: Vec<String>,
+}
+
+/// The branches a repo can switch to.
+pub async fn branches(git: &Git, repo: &Path) -> Result<Branches> {
+    let out = git
+        .run(repo, &["for-each-ref", "--sort=-committerdate", "--format=%(refname)%09%(symref)", "refs/heads", "refs/remotes"])
+        .await?;
+    let mut b = Branches::default();
+    let mut remote = Vec::new();
+    for line in String::from_utf8_lossy(&out).lines() {
+        let (name, symref) = line.split_once('\t').unwrap_or((line, ""));
+        if !symref.is_empty() {
+            continue; // origin/HEAD
+        }
+        if let Some(n) = name.strip_prefix("refs/heads/") {
+            b.local.push(n.to_string());
+        } else if let Some(n) = name.strip_prefix("refs/remotes/") {
+            remote.push(n.to_string());
+        }
+    }
+    b.remote = remote.into_iter().filter(|r| r.split_once('/').is_none_or(|(_, n)| !b.local.iter().any(|l| l == n))).collect();
+    Ok(b)
+}
+
+/// Switches to a local branch, or to a new local branch tracking a remote one (`origin/feature`).
+/// Git refuses when uncommitted changes would be overwritten, and says so.
+pub async fn switch(git: &Git, repo: &Path, branch: &str, remote: bool) -> Result<()> {
+    let refname = format!("refs/{}/{branch}", if remote { "remotes" } else { "heads" });
+    if branch.starts_with('-') || git.run(repo, &["show-ref", "--verify", "--quiet", &refname]).await.is_err() {
+        bail!("there's no branch {branch}");
+    }
+    if remote {
+        git.run(repo, &["switch", "--track", branch]).await?;
+    } else {
+        git.run(repo, &["switch", "--no-guess", branch]).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests;

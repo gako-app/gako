@@ -1,11 +1,10 @@
 // "Open in editor": the editors the core found, the one in use, and the button that opens a file in
 // it. The chosen editor is remembered on this machine; the settings' `editor` decides only until the
-// user picks one.
+// user picks another one from the file tree's context menu.
 
 import type { monaco } from '../monaco';
 import type { Transport } from '../transport';
-import { h } from './dom';
-import { showMenu } from './menu';
+import { iconButton } from './icons';
 
 interface Editor {
   id: string;
@@ -51,11 +50,11 @@ export class Editors {
     try { localStorage.setItem(CHOSEN, id); } catch { /* storage unavailable */ }
   }
 
-  /** Menu items opening `spot` in each editor ("Open in VS Code", or just "VS Code" under an
-   * "Open in…" button); picking another one makes it the default. */
-  items(spot: Spot, short = false): { label: string; checked: boolean; run: () => void }[] {
+  /** Menu items opening `spot` in each editor ("Open in VS Code"); picking another one makes it
+   * the default. */
+  items(spot: Spot): { label: string; checked: boolean; run: () => void }[] {
     return this.list.map((e) => ({
-      label: short ? e.name : this.label(e.id),
+      label: this.label(e.id),
       checked: this.list.length > 1 && e.id === this.current,
       run: () => {
         this.choose(e.id);
@@ -64,19 +63,12 @@ export class Editors {
     }));
   }
 
-  /** "Open in…": a menu of the editors found, opening at the cursor or the top of the view. */
+  /** "Open in VS Code" (the editor in use), at the cursor or the top of the view. */
   button(spot: () => Spot | null): HTMLElement {
-    const b = h('button', {
-      'data-tip': 'Open this file in an editor, at the cursor or the top of the view',
-      onclick: () => {
-        const s = spot();
-        if (!s) return;
-        const items = this.items(s, true);
-        // With none found, the one item explains why when it's used.
-        showMenu(b, items.length ? items : [{ label: 'Open in editor', run: () => this.open(s) }]);
-      },
-    }, 'Open in…');
-    return b;
+    return iconButton('editor', this.label(), () => {
+      const s = spot();
+      if (s) this.open(s);
+    }, { class: 'framed' });
   }
 }
 

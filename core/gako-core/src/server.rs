@@ -457,9 +457,10 @@ async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Resul
     }
 }
 
-/// Requests against the open workspace's repos: reading them, and fetch, pull and push (staging
-/// and committing are left to the agents). A fetch, pull or push refreshes the repo's status before
-/// replying, so the frontend sees the new status no later than the reply.
+/// Requests against the open workspace's repos: reading them, reverting a file, switching branch,
+/// and fetch, pull and push (staging and committing are left to the agents). Anything that changes
+/// the repo refreshes its status before replying, so the frontend sees the new status no later
+/// than the reply.
 async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result<Value> {
     let repo = ws.repo(&param::<String>(&params, "repo")?)?;
     let g = &ws.git;
@@ -482,6 +483,27 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
         "gitCommitDetails" => {
             let hash: String = param(&params, "hash")?;
             Ok(serde_json::to_value(git::show_commit(g, &repo.root, &hash).await?)?)
+        }
+        "gitRevert" => {
+            let path: String = param(&params, "path")?;
+            let orig_path: Option<String> = param(&params, "origPath").unwrap_or(None);
+            let what = match param::<String>(&params, "group")?.as_str() {
+                "changes" => git::Revert::Changes,
+                "untracked" => git::Revert::Untracked,
+                "staged" => git::Revert::Staged,
+                g => anyhow::bail!("can't revert {g}"),
+            };
+            git::revert(g, &repo.root, what, &path, orig_path.as_deref()).await?;
+            ws.refresh(&repo.root).await;
+            Ok(Value::Null)
+        }
+        "gitBranches" => Ok(serde_json::to_value(git::branches(g, &repo.root).await?)?),
+        "gitSwitch" => {
+            let branch: String = param(&params, "branch")?;
+            let remote = params["remote"].as_bool().unwrap_or(false);
+            git::switch(g, &repo.root, &branch, remote).await?;
+            ws.refresh(&repo.root).await;
+            Ok(Value::Null)
         }
         "gitFetch" | "gitPull" | "gitPush" => {
             git::remote(&repo.root, &method[3..].to_lowercase()).await?;

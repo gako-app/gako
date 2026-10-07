@@ -191,3 +191,76 @@ async fn fetch_pull_and_push_against_a_remote() {
     assert!(remote(&b, "pull").await.is_err());
     assert!(remote(&b, "merge").await.is_err());
 }
+
+#[tokio::test]
+async fn revert_each_kind_of_change() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = t.path().canonicalize().unwrap();
+    init(&dir);
+    std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+    std::fs::write(dir.join("old.txt"), "old\n").unwrap();
+    sh_git(&dir, &["add", "."]);
+    sh_git(&dir, &["commit", "-q", "-m", "base"]);
+    let g = git();
+    let read = |p: &str| std::fs::read_to_string(dir.join(p)).ok();
+
+    // Changes not staged go back to what's staged.
+    std::fs::write(dir.join("a.txt"), "two\n").unwrap();
+    sh_git(&dir, &["add", "a.txt"]);
+    std::fs::write(dir.join("a.txt"), "three\n").unwrap();
+    revert(&g, &dir, Revert::Changes, "a.txt", None).await.unwrap();
+    assert_eq!(read("a.txt").as_deref(), Some("two\n"));
+    // Staged changes go back to HEAD, in the index too.
+    revert(&g, &dir, Revert::Staged, "a.txt", None).await.unwrap();
+    assert_eq!(read("a.txt").as_deref(), Some("one\n"));
+
+    // A staged new file is unstaged and deleted; a rename puts the old name back.
+    std::fs::write(dir.join("new.txt"), "new\n").unwrap();
+    sh_git(&dir, &["add", "new.txt"]);
+    revert(&g, &dir, Revert::Staged, "new.txt", None).await.unwrap();
+    assert_eq!(read("new.txt"), None);
+    sh_git(&dir, &["mv", "old.txt", "moved.txt"]);
+    revert(&g, &dir, Revert::Staged, "moved.txt", Some("old.txt")).await.unwrap();
+    assert_eq!((read("moved.txt"), read("old.txt").as_deref()), (None, Some("old\n")));
+
+    // An untracked file is deleted; a tracked one never is, nor anything outside the repo.
+    std::fs::write(dir.join("scratch.txt"), "x").unwrap();
+    revert(&g, &dir, Revert::Untracked, "scratch.txt", None).await.unwrap();
+    assert_eq!(read("scratch.txt"), None);
+    assert!(revert(&g, &dir, Revert::Untracked, "a.txt", None).await.is_err());
+    assert!(revert(&g, &dir, Revert::Untracked, "../outside", None).await.is_err());
+    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    assert!(st.entries.is_empty(), "{:?}", st.entries);
+}
+
+#[tokio::test]
+async fn list_and_switch_branches() {
+    let t = tempfile::tempdir().unwrap();
+    let origin = t.path().join("origin");
+    init(&origin);
+    std::fs::write(origin.join("f"), "1").unwrap();
+    sh_git(&origin, &["add", "."]);
+    sh_git(&origin, &["commit", "-q", "-m", "1"]);
+    sh_git(&origin, &["branch", "feature"]);
+    sh_git(&origin, &["branch", "shared"]);
+    sh_git(t.path(), &["clone", "-q", "origin", "clone"]);
+    let dir = t.path().join("clone").canonicalize().unwrap();
+    configure(&dir);
+    sh_git(&dir, &["branch", "shared", "origin/shared"]);
+    sh_git(&dir, &["branch", "local-only"]);
+    let g = git();
+
+    let mut b = branches(&g, &dir).await.unwrap();
+    b.local.sort();
+    assert_eq!(b.local, vec!["local-only", "main", "shared"]);
+    assert_eq!(b.remote, vec!["origin/feature"], "remote branches with a local one are left out");
+
+    switch(&g, &dir, "local-only", false).await.unwrap();
+    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    assert_eq!(st.branch.as_deref(), Some("local-only"));
+    switch(&g, &dir, "origin/feature", true).await.unwrap();
+    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    assert_eq!((st.branch.as_deref(), st.upstream.as_deref()), (Some("feature"), Some("origin/feature")));
+    assert!(switch(&g, &dir, "nope", false).await.is_err());
+    assert!(switch(&g, &dir, "--detach", false).await.is_err());
+}

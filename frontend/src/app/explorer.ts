@@ -1,6 +1,7 @@
 // The Files view: the base folder as a tree, loaded folder by folder, with Git state on files and
 // ignored entries dimmed. Expanded folders reload when the core reports changes in them. Any entry
-// opens in the user's editor from its hover button or its context menu.
+// opens in the user's editor from its hover button or its context menu; a changed file's diff opens
+// from its hover button too.
 
 import type { Transport } from '../transport';
 import { h } from './dom';
@@ -51,6 +52,8 @@ export class Explorer {
     private openFile: (path: string, pin?: boolean) => void,
     private onError: (message: string) => void,
     private relative: (path: string) => string,
+    /** What opens a changed file's diff; null if it has none to show. */
+    private diffOf: (path: string) => (() => void) | null,
   ) {
     t.onEvent((ev) => {
       if (ev.t !== 'filesChanged') return;
@@ -194,6 +197,7 @@ export class Explorer {
         const isDir = entry.kind === 'dir';
         const open = isDir && this.expanded.has(entry.path);
         const letter = this.letters.get(entry.path);
+        const diff = letter && !isDir ? this.diffOf(entry.path) : null;
         out.push(h('div', {
           // A nested repo the base repo ignores is still a repo of its own: not dimmed.
           class: `tree-row ${entry.ignored && !entry.repo ? 'ignored' : ''} ${letter ? `st-${letter}` : ''} ${this.dirty.has(entry.path) ? 'dirty' : ''} ${entry.path === this.selected ? 'selected' : ''}`,
@@ -208,7 +212,9 @@ export class Explorer {
         entry.repo ? h('span', { class: 'badge repo' }, 'repo') : null,
         entry.kind === 'symlink' ? h('span', { class: 'dim' }, ' ↗') : null,
         h('span', { class: 'spacer' }),
-        iconButton('external', `${this.editors.label()}${isDir ? ' (the folder)' : ''}`, () => this.editors.open({ path: entry.path }), { class: 'hover' }),
+        diff ? iconButton('diff', 'Show diff', diff, { class: 'hover' }) : null,
+        isDir ? null : iconButton('file', 'Open file', () => this.activate(row), { class: 'hover' }),
+        iconButton('editor', this.editors.label(), () => this.editors.open({ path: entry.path }), { class: 'hover' }),
         letter ? h('span', { class: 'letter' }, letter) : this.dirty.has(entry.path) ? h('span', { class: 'dirty-dot' }, '•') : null));
         if (open) walk(entry.path, depth + 1);
       }

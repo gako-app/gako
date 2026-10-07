@@ -168,6 +168,16 @@ app.whenReady().then(async () => {
   ipcMain.on('gako:boot', (e) => {
     e.returnValue = started.boot;
   });
+  // The native folder picker, for "Open folder…": the path chosen, or null if cancelled.
+  ipcMain.handle('gako:pickFolder', async (e, defaultPath) => {
+    const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+      title: 'Open a folder',
+      buttonLabel: 'Open',
+      defaultPath: typeof defaultPath === 'string' ? defaultPath : undefined,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return r.canceled ? null : r.filePaths[0] ?? null;
+  });
 
   const saved = savedWindow();
   const win = new BrowserWindow({

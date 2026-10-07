@@ -2,18 +2,21 @@
 // are bundled.
 
 import {
-  ArrowDown, ArrowUp, ChevronDown, ChevronUp, Columns2, createElement, FileText, History, type IconNode, Proportions,
-  PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, RefreshCw, Rows2, SquareArrowOutUpRight,
+  ArrowDown, ArrowUp, Braces, ChevronDown, ChevronUp, Columns2, createElement, FileDiff, FilePen, FileText, Folder, FolderOpen,
+  GitBranch, History, type IconNode, LoaderCircle, Proportions, PanelLeftClose, PanelLeftOpen, PanelRightClose,
+  PanelRightOpen, Plus, RefreshCw, Rows2, Undo2,
 } from 'lucide';
 import { h } from './dom';
 
 const ICONS = {
   file: FileText,
+  diff: FileDiff,
+  editor: FilePen,
+  revert: Undo2,
   history: History,
   refresh: RefreshCw,
   push: ArrowUp,
   pull: ArrowDown,
-  external: SquareArrowOutUpRight,
   'sidebar-hide': PanelLeftClose,
   'sidebar-show': PanelLeftOpen,
   'agents-hide': PanelRightClose,
@@ -24,6 +27,12 @@ const ICONS = {
   'side-by-side': Columns2,
   inline: Rows2,
   'layout-auto': Proportions,
+  folder: Folder,
+  'folder-open': FolderOpen,
+  repos: GitBranch,
+  branch: GitBranch,
+  symbols: Braces,
+  busy: LoaderCircle,
 } satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;

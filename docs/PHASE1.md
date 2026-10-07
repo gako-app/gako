@@ -123,6 +123,10 @@ auto-update. Editing files stays out, always.
    its history, a fetch (refresh), and pull (fast-forward only) and push buttons with counts when
    its branch is behind or ahead of its upstream. The review queue went too: the repos view already
    lists every change in every repo. Each changed file also opens whole, not only as a diff.
+   *Extended after further use (2026-10-07):* each changed file can be reverted, as VS Code's
+   "Discard Changes" does, after a confirmation (changes not staged go back to the index, an
+   untracked file is deleted, staged changes go back to HEAD; conflicts are left alone), and a
+   repo's branch name opens a menu to switch to another branch, local or remote.
 2. **Layout defaults:** sized for the work layout (10–30 repos, 1–2 levels deep), every limit
    configurable, and a 100-repo stress layout in the tests so larger setups for other people are
    covered.

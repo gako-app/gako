@@ -1,17 +1,19 @@
 // The read-only file viewer: one Monaco editor that never edits, with "open in editor" at the
-// cursor's line (or the top of the view).
+// cursor's line (or the top of the view), and the file's diff when it has changes.
 
 import { languageFor, monaco } from '../monaco';
-import { basename, h } from './dom';
+import { basename, fill, h } from './dom';
 import type { FileContent } from './model';
 import type { Reveal } from './search';
 import type { Navigator } from './navigate';
 import { type Editors, spotIn } from './editors';
 import { ChangeMarkers } from './changes';
+import { iconButton } from './icons';
 
 export class Viewer {
   readonly el = h('section', { class: 'diff' });
   private header = h('header', { class: 'diff-header' });
+  private actions = h('div', { class: 'diff-actions' });
   private notice = h('div', { class: 'diff-notice', hidden: true });
   private host = h('div', { class: 'diff-editor' });
   private editor: monaco.editor.IStandaloneCodeEditor;
@@ -26,6 +28,8 @@ export class Viewer {
     private relative: (path: string) => string,
     /** The file at the last commit ('' if it's new), or null if it has no changes to mark. */
     private baseline: (path: string) => Promise<string | null>,
+    /** What opens a changed file's diff; null if it has none to show. */
+    private diffOf: (path: string) => (() => void) | null,
   ) {
     this.el.append(this.header, this.notice, this.host);
     this.editor = monaco.editor.create(this.host, {
@@ -45,6 +49,7 @@ export class Viewer {
   refreshMarkers(): void {
     const path = this.path;
     if (!path) return;
+    this.renderActions();
     this.baseline(path).then((before) => { if (this.path === path) this.markers.show(before); }).catch(() => this.markers.clear());
   }
 
@@ -53,10 +58,13 @@ export class Viewer {
     const ticket = ++this.ticket;
     const same = keepView && this.path === path;
     this.path = path;
+    const rel = this.relative(path);
+    const name = basename(rel);
     this.header.replaceChildren(
-      h('div', { class: 'diff-title' }, h('span', { class: 'diff-name' }, basename(path)), h('span', { class: 'dim' }, ` ${this.relative(path)}`)),
-      h('div', { class: 'diff-actions' }, this.editors.button(() => (this.path ? spotIn(this.editor, this.path) : null))),
+      h('div', { class: 'diff-title', 'data-tip': path }, h('span', { class: 'dim' }, rel.slice(0, rel.length - name.length)), h('span', { class: 'diff-name' }, name)),
+      this.actions,
     );
+    this.renderActions();
     const content = await this.read(path);
     if (ticket !== this.ticket) return;
     const notes = [
@@ -83,6 +91,14 @@ export class Viewer {
       this.editor.setPosition({ lineNumber: reveal.line, column: fixed[0]?.startColumn ?? reveal.column ?? 1 });
       this.editor.focus();
     }
+  }
+
+  /** Show diff (when the file has changes) and open in the editor. */
+  private renderActions(): void {
+    const diff = this.path ? this.diffOf(this.path) : null;
+    fill(this.actions,
+      diff ? iconButton('diff', 'Show diff', diff, { class: 'framed' }) : null,
+      this.editors.button(() => (this.path ? spotIn(this.editor, this.path) : null)));
   }
 
   saveView(): unknown {
