@@ -56,7 +56,8 @@ function tail(path: string, bytes: number): Uint8Array {
   return start === 0 ? buf : buf.subarray(buf.indexOf(10) + 1);
 }
 
-test('tui-load output passes the line and panel checks', async () => {
+// capture-tui.py runs tui-load in a PTY with Python's pty module, which is Unix-only.
+test('tui-load output passes the line and panel checks', { skip: process.platform === 'win32' && 'needs a Unix PTY' }, async () => {
   const dir = mkdtempSync(join(tmpdir(), 'gako-check-'));
   const raw = join(dir, 'tui.raw');
   const report = join(dir, 'tui.json');

@@ -11,6 +11,7 @@
     "app": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm start -w shells/electron --",
     "build:frontend": "npm run build -w frontend",
     "dev:frontend": "npm run dev -w frontend",
-    "package": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm run notices -w shells/electron && npm run package -w shells/electron"
+    "package": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm run notices -w shells/electron && npm run package -w shells/electron",
+    "check": "cargo fmt --all --manifest-path core/Cargo.toml --check && cargo clippy --release --manifest-path core/Cargo.toml -- -D warnings && cargo build --release --manifest-path core/Cargo.toml && cargo test --release --manifest-path core/Cargo.toml && npm run typecheck -w frontend && npm test -w frontend"
   }
 }

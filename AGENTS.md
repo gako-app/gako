@@ -36,6 +36,7 @@ search and navigation. It never edits code; editing is handed off to an external
 
 ## Commits
 
+- Run `npm run check` (formatting, clippy, tests, typecheck) before committing; it must pass.
 - Sign off every commit with the DCO line: `git commit -s`.
 - **No `Co-Authored-By` trailers and no other AI or tool attribution** in commit messages or PR
   descriptions. The message ends with the `Signed-off-by` line and nothing after it.
