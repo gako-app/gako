@@ -1,0 +1,85 @@
+# Files, search and navigation
+
+Everything for reading code: the file tree, the viewer, search, go to file, and go to definition.
+All of it is read-only; "Open in editor" hands a file to your editor when you want to change it.
+
+## Files
+
+The Files view shows the base folder as a tree, loaded folder by folder as you expand it:
+
+- Repositories nested in it are marked as repositories. Files show their Git state in the same
+  colours as the Repositories view, files that `.gitignore` excludes are dimmed rather than hidden
+  (build output and logs are often what you want to look at), and `.git` folders aren't shown.
+- A folder lists its first 5,000 entries, with a note when there are more.
+- Expanded folders reload by themselves when their contents change, from the same file watching
+  that keeps the Git view current.
+- ↑ and ↓ move, → opens a folder and ← closes it, Enter opens a file.
+- The context menu opens a file in any editor Gako found (the one you pick becomes the default) and
+  copies its path, absolute or relative.
+
+## The viewer
+
+A file opens in Monaco, read-only, with syntax highlighting for every language Monaco knows.
+
+- **Change markers:** lines added, changed or deleted since the last commit are marked in the
+  gutter, in VS Code's colours, whether the changes are staged or not. Clicking a marker shows the
+  old lines under the new ones, with steps to the previous and next change.
+- Binary files show their size instead of their contents, and files over 50 MB are cut off there.
+- **Open in editor** opens the file at the cursor's line, or at the top of the view.
+
+Tabs work as VS Code's editor tabs do: a single click opens a preview tab (in italics) that the
+next one replaces, and a double click keeps it. ⌘W (Ctrl+W) closes the tab in front, and Ctrl+Tab
+and Ctrl+Shift+Tab step through the tabs. The tabs open for a base folder come back when it's
+opened again.
+
+## Opening files in your editor
+
+Gako finds the editors it knows on the `PATH` or, failing that, where their installers put them:
+VS Code, VS Code Insiders, VSCodium, Cursor, Windsurf, Zed and Sublime Text. Looking beyond the
+`PATH` matters: VS Code's `code` command, for one, isn't there on macOS until you install it from VS
+Code's command palette.
+
+The first editor found is used, unless the `editor` setting names another or a command line of your
+own (see [settings.md](settings.md)), or you pick one from the Files view's context menu. Gako
+never falls back to the operating system's default app: that ignores the line and sends each file
+type somewhere different, so with no editor found, Gako says so.
+
+## Search
+
+The Search view (⌘⇧F, Ctrl+Shift+F off macOS) searches file contents in the core, with ripgrep's
+own crates:
+
+- Text or a regular expression, match case, whole word, and globs to include and exclude.
+- **Scope:** all repositories, the base repository only, or a chosen set. Each repository is
+  searched with its own `.gitignore`, so a nested repository that the base repository ignores is
+  still searched as itself, and the base repository's search never wanders into it.
+- Ignored files are skipped unless "Search ignored files too" is on. Binary files and files over
+  5 MB are skipped.
+- Results stream in as they're found, grouped by repository and file. A search stops at 20,000
+  matches or 10,000 files with matches, and says so. A new search cancels the one before.
+
+**Go to file** (⌘P, Ctrl+P) is a fuzzy search on file paths across all repositories. It favours
+matches in the file name, consecutive characters and the start of words.
+
+## Go to definition
+
+The core builds a project-wide **symbol index** when a folder opens, in the background, with
+tree-sitter's tag queries: the approach GitHub's code navigation uses. It holds the definitions of
+functions, methods, classes, interfaces, types, modules and constants in Rust, TypeScript and TSX,
+JavaScript, Python, Go, Java, C, C++, Ruby, C# and PHP, across every repository. Files over 1 MB and
+ignored files are skipped, and changed files are parsed again as they change.
+
+- **Go to definition** (F12, or ⌘-click or Ctrl-click) on a word in the viewer or a diff: one match
+  opens directly; several show a list, with the current repository and file first.
+- **Go to symbol** (⌘T, Ctrl+T): a fuzzy search over every symbol in the workspace.
+- **Find references** (Shift+F12): a whole-word, case-sensitive search for the name, shown in the
+  Search view.
+
+**Its limit:** the index resolves by name, not by binding. `Handler` may match twenty definitions
+across repositories, and "references" are every occurrence of the word. In exchange it needs no
+per-language setup, no language servers to install and run, and works the same way in every
+repository. Binding-accurate navigation would need language servers; see
+[decisions.md](decisions.md#navigation-by-name-not-by-language-servers).
+
+Off macOS, Ctrl+P, Ctrl+T and Ctrl+Shift+F stay with a terminal while you're typing in one, since
+shells use them.

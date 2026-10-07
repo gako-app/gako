@@ -50,11 +50,11 @@ pub struct Settings {
     pub terminal_font_size: f64,
     pub terminal_font_family: String,
     /// Combining marks allowed per character; a longer run is dropped whole (0: no limit). See
-    /// PHASE2.md.
+    /// docs/terminals.md.
     pub terminal_max_combining: usize,
     /// The editor files open in: a known editor's id (`"vscode"`, `"zed"`…), or a command with
     /// `{file}`, `{line}` and `{column}` placeholders. Unset: the first known editor installed. See
-    /// PHASE3.md and editors.rs.
+    /// docs/settings.md and editors.rs.
     pub editor: Option<crate::editors::EditorSetting>,
     /// Start Claude Code with a hook that reports when it waits for approval (see agents.rs).
     pub agent_hooks: bool,

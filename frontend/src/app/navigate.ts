@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// Navigation by name (phase 5): go to definition (F12, ⌘/Ctrl-click), find references (Shift+F12)
+// Navigation by name: go to definition (F12, ⌘/Ctrl-click), find references (Shift+F12)
 // and go to symbol (⌘T, Ctrl+T), backed by the core's symbol index. The index resolves by name,
-// not by binding (PLAN.md), so several definitions are offered as a list.
+// not by binding (docs/navigation.md), so several definitions are offered as a list.
 
 import { monaco } from '../monaco';
 import type { Transport } from '../transport';

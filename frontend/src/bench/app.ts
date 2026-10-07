@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// The phase 0 harness UI: a tab bar over a diff view, a file view and terminal tabs.
+// The measurement harness UI: a tab bar over a diff view, a file view and terminal tabs.
 
 import type { Metrics } from '../metrics';
 import { TerminalTab, type Renderer, type TermOptions } from '../terminal';

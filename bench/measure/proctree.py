@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU Affero General Public License along with this program.
 # If not, see <https://www.gnu.org/licenses/>.
 
-"""Memory of an app's whole process tree, following PLAN.md's "How to measure it".
+"""Memory of an app's whole process tree, by the method in docs/performance.md.
 
 - Processes are collected by walking the tree from the app's own root process, never by name.
 - On macOS, WebKit's web content, GPU and networking processes are XPC services: their parent is

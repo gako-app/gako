@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU Affero General Public License along with this program.
 # If not, see <https://www.gnu.org/licenses/>.
 
-"""Generates phase 0's test data into bench/out/fixtures. Deterministic: same bytes on every machine.
+"""Generates the measurement suites' test data into bench/out/fixtures. Deterministic: same bytes on every machine.
 
     uv run fixtures/generate.py            # everything that's missing
     uv run fixtures/generate.py --force    # regenerate everything
@@ -278,8 +278,8 @@ def gen_layout(name: str, groups: list[str], count: int, depth_choices: list[int
         parts = [rng.choice(groups)] + [f"area{rng.randint(1, 3)}" for _ in range(depth - 2)] + [f"{rng.choice(NOUNS)}-svc-{i:03}"]
         rel = "/".join(parts[-depth:]) if depth == 1 else "/".join(parts)
         nested.append(rel)
-    # The base repo ignores its nested repos (PLAN.md's open question 3: both cases occur; Gako
-    # filters them out of the base repo's status either way).
+    # The base repo ignores its nested repos (real layouts do both; Gako filters them out of the
+    # base repo's status either way).
     (base / ".gitignore").write_text("".join(f"/{r}/\n" for r in nested))
     if scan_depth != 2:
         (base / ".gako").mkdir()

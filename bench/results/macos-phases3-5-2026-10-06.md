@@ -2,8 +2,7 @@
 
 Measured against `gako-core` alone with `node bench/measure/core.mjs <layout>` (Apple M5, macOS 27.0.1),
 on fresh copies of the generated layouts: work (25 repos, three with 3,000 untracked files) and stress
-(100 repos, up to 4 levels deep). Thresholds are in [PHASE3.md](../../docs/PHASE3.md),
-[PHASE4.md](../../docs/PHASE4.md) and [PHASE5.md](../../docs/PHASE5.md). Phase 1's UI thresholds re-run with
+(100 repos, up to 4 levels deep). Budgets are in [performance.md](../../docs/performance.md). Phase 1's UI thresholds re-run with
 this code: [macos-phase1-rerun-phase5-2026-10-06.md](macos-phase1-rerun-phase5-2026-10-06.md).
 
 | Measure | Target | Work layout | Stress layout | |

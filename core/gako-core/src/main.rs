@@ -173,9 +173,10 @@ fn env_usize(name: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
-/// Walks up from the executable and the working directory to the folder holding `docs/PLAN.md`.
+/// Whether `p` is the repository root, which `find_root` walks up to from the executable and the
+/// working directory.
 fn is_repo(p: &Path) -> bool {
-    p.join("docs").join("PLAN.md").is_file() && p.join("core").is_dir()
+    p.join("core").join("Cargo.toml").is_file() && p.join("frontend").join("package.json").is_file()
 }
 
 fn find_root() -> Option<PathBuf> {

@@ -14,7 +14,7 @@
 
 // What an agent's terminal title says about its state. Some agents title their terminal with a
 // spinner while they work and change it when they stop; that is a better signal than output
-// alone, which a blinking prompt or a redraw keeps alive. Recorded on 2026-10-06 (PHASE2.md):
+// alone, which a blinking prompt or a redraw keeps alive. Recorded on 2026-10-06 (docs/terminals.md):
 //
 //   Claude Code  "◐ Fix the tests" while working, "✳ Fix the tests" otherwise
 //   Codex        "⠦ Fix tests | repo" while working, "[ ! ] Action Required | Fix tests | repo"

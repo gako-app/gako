@@ -16,7 +16,7 @@
 //
 // Long runs of combining marks on one character ("zalgo" text) cost memory twice: xterm.js stores
 // a character's marks as a growing string on its cell, and the WebGL renderer caches every distinct
-// stack of marks as its own glyph, in the GPU process. Phase 2 measured both (see docs/PHASE2.md):
+// stack of marks as its own glyph, in the GPU process. Both were measured (see docs/terminals.md):
 // cutting runs to 8 marks still let the GPU process grow to 8 GB on a dump of random stacks, while
 // keeping at most one mark held it near 100 MB. Real writing stays within 4 marks per character
 // (Vietnamese, Thai, Hebrew with points, Indic scripts), so a run longer than that is dropped whole,

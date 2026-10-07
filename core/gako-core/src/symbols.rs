@@ -14,7 +14,7 @@
 
 //! The project-wide symbol index: definitions found with tree-sitter's tag queries, by name.
 //!
-//! PLAN.md's honest limit applies: this resolves by name, not by binding. It's built in the
+//! Its limit (docs/navigation.md): this resolves by name, not by binding. It's built in the
 //! background when a workspace opens and kept current from the watcher's change events.
 
 use std::collections::HashMap;

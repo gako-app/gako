@@ -16,11 +16,12 @@ Gako is for reviewing and supervising coding agents across many Git repositories
 view, read-only diffs and files, terminal tabs for agents, search and navigation. It deliberately
 **never edits code**. Editing is handed to an external editor, and the file viewer and diffs stay
 read-only. Changes that turn it into an editor or an IDE won't be accepted, however well made.
-[docs/PLAN.md](docs/PLAN.md) explains the scope and the reasons for it.
+[docs/scope.md](docs/scope.md) explains the scope, and [docs/decisions.md](docs/decisions.md) the
+reasons for it.
 
 ## Building and running
 
-Building and running are in the [README](README.md#run-it). You need Rust (via rustup), Node.js
+Building and running are in the [README](README.md#install). You need Rust (via rustup), Node.js
 and git.
 
 ## Checks

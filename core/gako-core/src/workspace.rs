@@ -55,7 +55,7 @@ struct Inner {
     search: Option<Arc<std::sync::atomic::AtomicBool>>,
     /// Every file in the workspace, for go-to-file; rebuilt after files change.
     files: Option<Arc<Vec<PathBuf>>>,
-    /// The symbol index, once built (phase 5).
+    /// The symbol index, once built.
     symbols: Option<Arc<std::sync::RwLock<crate::symbols::Index>>>,
     repos: Vec<Repo>,
     states: Vec<RepoState>,

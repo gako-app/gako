@@ -37,7 +37,7 @@ export type Log = (ev: string, data?: Record<string, unknown>) => void;
 
 export interface TermOptions {
   title: string;
-  /** A fixed size (phase 0's measurements); without one the terminal fits its container. */
+  /** A fixed size (for measurements); without one the terminal fits its container. */
   cols?: number;
   rows?: number;
   scrollback: number;

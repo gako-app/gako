@@ -158,8 +158,6 @@ fn end_group(group: libc::pid_t) {
     unsafe { libc::killpg(group, libc::SIGKILL) };
 }
 
-/// `GAKO_SHELL` if set; otherwise PowerShell on Windows (VS Code's default there too) and the
-/// user's login shell elsewhere.
 /// The command that runs `program`. On Windows the program is found here rather than by
 /// portable-pty, which tries the bare name first and so picks npm's extensionless shim (a script for
 /// Git Bash, which Windows can't run) over its `.cmd`; and a `.cmd` or `.bat` file, which Windows
@@ -192,6 +190,8 @@ fn windows_program(program: &str) -> Option<(std::path::PathBuf, bool)> {
     Some((resolved, batch))
 }
 
+/// `GAKO_SHELL` if set; otherwise PowerShell on Windows (VS Code's default there too) and the
+/// user's login shell elsewhere.
 fn default_shell() -> CommandBuilder {
     match std::env::var_os("GAKO_SHELL") {
         Some(shell) => CommandBuilder::new(shell),

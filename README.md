@@ -1,53 +1,96 @@
 # Gako
 
-Work in progress: a lean, cross-platform workspace app for reviewing and supervising coding agents
-across many repositories at once.
+A lean desktop app for reviewing and supervising coding agents across many Git repositories at
+once. For macOS, Windows and Linux.
 
-- [docs/PLAN.md](docs/PLAN.md): the plan
-- [docs/](docs/): the phase briefs; [AGENTS.md](AGENTS.md#read-first) says where each phase stands
-- [AGENTS.md](AGENTS.md): guide for coding agents working in this repo
+Gako is for a base folder holding several independent repositories, as microservice codebases,
+robotics workspaces and polyrepo teams have. Agents work in their own terminal interfaces; Gako
+shows you what they changed in every repository, tells you which of them need you, and stays out of
+the way of your editor.
 
-## Run it
+## What it does
 
-Needs Rust (via rustup), Node.js and git. From the repository root:
+- **Every repository in one view.** Gako finds the repositories under a folder and lists the ones
+  with changes, each with its branch, its sync state and its changed files. Clean repositories fold
+  away. Fetch, pull, push, switch branch or revert a file without leaving the list.
+- **Agents in real terminals.** Start Claude Code, Codex, OpenCode, Pi or any other program in any
+  repository. The agent bar shows which agents are working, which have finished while you were
+  away, and which are waiting for your approval.
+- **Review without an editor's weight.** Read-only diffs and files with syntax highlighting, each
+  repository's history, search scoped to the repositories you choose, and go to definition across
+  all of them.
+- **Your editor for editing.** Gako never edits code. "Open in editor" opens the file at the right
+  line in VS Code, Zed, Cursor or the editor you configure.
+- **Light.** Idle, Gako uses about a seventh of VS Code's memory on the same machine; with four
+  agents running, about a quarter. See [docs/performance.md](docs/performance.md).
+
+## Status
+
+Version 0.9.0, the first public release. Gako is used every day on macOS. It runs on Windows and
+Linux, but they have had less use, and Windows hasn't been through the measurement suites yet.
+There are no prebuilt or signed packages yet: build it from source, as below.
+
+## Install
+
+You need [Rust](https://rustup.rs) (via rustup), [Node.js](https://nodejs.org) (LTS or newer) and
+Git. On Windows, Rust also needs the Visual Studio Build Tools with "Desktop development with C++".
 
 ```bash
+git clone https://github.com/gako-app/gako.git
+cd gako
 npm install
-npm run app -- /path/to/your/base/folder
-```
-
-This builds the frontend and the core, then opens the folder in Gako. Without a folder, Gako
-reopens the last one, or asks.
-
-## Package it
-
-```bash
 npm run package
 ```
 
-This builds the frontend and the core and packages them with the Electron shell for this platform
-into `dist/`: `Gako.app` on macOS (copy it to `/Applications`), a `Gako` folder with `Gako.exe` on
-Windows, and a `gako` folder on Linux. A packaged Gako opens the folder given on its command line
-(`open -a Gako --args /path/to/folder` on macOS), or the last one it had open. It isn't signed, so
-it's for the machine it was built on.
+This builds Gako into `dist/`:
 
-On Windows, keep the whole `Gako` folder (not only `Gako.exe`) on a local disk, such as
-`C:\Tools\Gako` or `%LOCALAPPDATA%\Programs\Gako`. Run from a network drive or a redirected folder,
-as corporate profiles and remote desktop hosts often have, Chromium can't start its sandboxed helper
-processes, and Gako says so and quits.
+- **macOS:** `Gako.app`. Copy it to `/Applications`.
+- **Windows:** a `Gako` folder with `Gako.exe`. Keep the whole folder on a local disk, such as
+  `C:\Tools\Gako` or `%LOCALAPPDATA%\Programs\Gako`. Started from a network drive or a redirected
+  folder, as corporate profiles and remote desktop hosts often have, Chromium can't start its
+  helper processes, and Gako says so and quits.
+- **Linux:** a `gako` folder with the `gako` executable. On systems that restrict unprivileged
+  user namespaces, such as Ubuntu 24.04, Chromium's sandbox needs the folder's `chrome-sandbox` to
+  be owned by root and setuid: `sudo chown root chrome-sandbox && sudo chmod 4755 chrome-sandbox`.
 
-Gako keeps its window state, open tabs and Chromium's caches in an `Electron` folder: in
-`%LOCALAPPDATA%\Gako` on Windows, `~/Library/Application Support/Gako` on macOS and `~/.config/Gako`
-on Linux. Deleting it starts Gako as if for the first time. Settings, if you have any, are in
-`settings.json` in `%APPDATA%\Gako`, `~/Library/Application Support/Gako` or `~/.config/gako`.
+The package isn't signed, so it's meant for the machine that built it.
 
-The icon's source is `shells/electron/build/icon.svg`; `npm run icons -w shells/electron` renders
-the files packaging uses from it.
+To run Gako from the repository instead, while working on it:
 
-Packaging also regenerates [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt): the npm packages and
-Rust crates Gako includes, with their licences. The app carries it, with Electron's and Chromium's
-own notices, and lists it in its About window (the ⓘ button at the right of the status bar, or the
-Gako menu on macOS).
+```bash
+npm run app -- /path/to/your/folder
+```
+
+## Using it
+
+Gako opens the folder given on its command line (`open -a Gako --args /path/to/folder` on macOS),
+or the last one it had open, or asks. **Open folder…** in the status bar picks another.
+
+| Shortcut (macOS / elsewhere) | |
+|---|---|
+| ⌘P / Ctrl+P | Go to file |
+| ⌘T / Ctrl+T | Go to symbol |
+| ⌘⇧F / Ctrl+Shift+F | Search in files |
+| F12, or ⌘-click / Ctrl-click | Go to definition |
+| Shift+F12 | Find references (by name) |
+| ⌘W / Ctrl+W | Close the tab in front |
+| Ctrl+Tab, Ctrl+Shift+Tab | Next and previous tab |
+| ↑ ↓ in the sidebar | Next and previous changed file |
+
+Gako has no settings screen: settings are a JSON file, described in
+[docs/settings.md](docs/settings.md). The About window (ⓘ at the right of the status bar) shows
+where it is, along with the version, the licence and the third-party notices.
+
+## Documentation
+
+[docs/](docs/README.md) explains how each part works and why: [the Git view](docs/git.md),
+[terminals and agents](docs/terminals.md), [files, search and navigation](docs/navigation.md),
+[the architecture](docs/architecture.md) and [the decisions behind it](docs/decisions.md).
+
+## Contributing
+
+Bug reports and pull requests are welcome; [CONTRIBUTING.md](CONTRIBUTING.md) explains how. To
+report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## Licence
 
@@ -58,5 +101,5 @@ License, or (at your option) any later version. See [LICENSE](LICENSE).
 It's distributed in the hope that it will be useful, but without any warranty; without even the
 implied warranty of merchantability or fitness for a particular purpose.
 
-Copyright © 2026 João Sena Ribeiro. The packaged app carries the licence and shows it in its About
-window.
+Copyright © 2026 João Sena Ribeiro. Gako includes third-party software under its own licences,
+listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt) and in the About window.

@@ -1,33 +1,34 @@
 # Gako — agent guide
 
 Gako is a lean, cross-platform desktop app for reviewing and supervising coding agents across many
-Git repositories at once: a multi-repo Git view, read-only diffs and files, terminal tabs for agents,
+Git repositories at once: a multi-repo Git view, read-only diffs and files, terminals for agents,
 search and navigation. It never edits code; editing is handed off to an external editor.
 
 ## Read first
 
-1. [docs/PLAN.md](docs/PLAN.md): goal, scope, stack, build order, known traps and decision rules.
-   It's the single source of truth.
-2. The phase briefs. **Phase 0 is done** (see [docs/PHASE0.md](docs/PHASE0.md)): the app shell is
-   Electron. **Phases 1–5 are built and measured on macOS**: [PHASE1](docs/PHASE1.md) (Git panel),
-   [PHASE2](docs/PHASE2.md) (terminals and the agent bar), [PHASE3](docs/PHASE3.md) (explorer and
-   viewer), [PHASE4](docs/PHASE4.md) (search), [PHASE5](docs/PHASE5.md) (navigation), then reworked
-   after the user's first trials (each brief's decisions say what changed and why), and packaged as
-   an app (`npm run package`, see README.md). Still to do: real use on macOS, then the pass on
-   Windows and Linux. Code signing and auto-update are left for later.
+1. [docs/scope.md](docs/scope.md): what Gako does, what it never does, and its principles.
+2. [docs/architecture.md](docs/architecture.md): the shell, the core and the frontend, and the
+   connection between them.
+3. [docs/decisions.md](docs/decisions.md): why things are the way they are. Read the relevant entry
+   before changing one of them.
+
+Then the document for the area you're working in: [git.md](docs/git.md),
+[terminals.md](docs/terminals.md), [navigation.md](docs/navigation.md),
+[settings.md](docs/settings.md) or [performance.md](docs/performance.md).
 
 ## Rules
 
-- **Change PLAN.md only on the basis of results** (measurements, the trial week), not from more
-  drafting. When results change something, update the plan in the same change and link the
-  results.
-- **Stay in scope.** The app never owns editing: Monaco stays `readOnly` everywhere. Don't add
-  anything from PLAN.md's "never owns" list or "Ideas for later" without being asked.
+- **Stay in scope.** Gako never edits code: Monaco stays `readOnly` everywhere. Don't add anything
+  from scope.md's "What Gako never does" without being asked.
 - **Reuse, don't rebuild:** Monaco, xterm.js, ripgrep's crates, the `git` CLI.
-- **Frontend code never calls shell APIs** (Electron's) directly. It goes through the
-  transport layer described in PHASE0.md, so the shell stays replaceable.
-- **Cross-platform from the start:** macOS (primary), Windows (required at work), Linux. Don't use
-  platform-specific paths, shells or tools without a fallback for the other two.
+- **Frontend code never calls shell APIs** (Electron's) directly. It goes through the `Transport`
+  interface, apart from `boot.ts` (see architecture.md), so the shell stays replaceable.
+- **Cross-platform from the start:** macOS, Windows and Linux. Don't use platform-specific paths,
+  shells or tools without a fallback for the other two.
+- **Keep the docs true.** A change in behaviour updates the document that describes it, in the same
+  commit: a new setting goes into settings.md, a changed decision into decisions.md with its
+  reasons and costs. Performance numbers come only from measurements (`bench/`), with the results
+  committed and linked.
 - **Every source file starts with the licence notice** (AGPL-3.0-or-later): copy it from an
   existing file in the same language, above any doc comment or docstring, below a shebang or
   `<!doctype html>`.
@@ -44,6 +45,6 @@ search and navigation. It never edits code; editing is handed off to an external
 
 ## Repository layout
 
-See PHASE0.md for the full layout. In short: `core/` (Rust), `frontend/` (TypeScript + Vite),
-`shells/electron/` (the app shell), `bench/` (fixtures, measurement scripts, committed results),
-`docs/`.
+`core/` (Rust: the core and `tui-load`), `frontend/` (TypeScript + Vite), `shells/electron/` (the
+app shell and packaging), `bench/` (measurement suites and committed results), `docs/`. The full
+layout is in architecture.md.

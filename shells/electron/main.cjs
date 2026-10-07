@@ -32,7 +32,7 @@ const { pathToFileURL } = require('node:url');
 
 function findRoot() {
   for (let dir = __dirname; dir !== path.dirname(dir); dir = path.dirname(dir)) {
-    if (fs.existsSync(path.join(dir, 'docs', 'PLAN.md')) && fs.existsSync(path.join(dir, 'core'))) return dir;
+    if (fs.existsSync(path.join(dir, 'core', 'Cargo.toml')) && fs.existsSync(path.join(dir, 'frontend', 'package.json'))) return dir;
   }
   throw new Error('cannot find the repository root');
 }
@@ -338,7 +338,7 @@ app.whenReady().then(async () => {
   // bench/ measures what's drawn: a window left behind other apps counts as hidden on macOS and
   // stops drawing, so under the bench it comes to the front.
   if (process.env.GAKO_BENCH) win.once('ready-to-show', () => { app.focus({ steal: true }); win.moveTop(); });
-  // bench/ sets GAKO_SCENARIO to drive the phase 0 measurement harness instead of the app.
+  // bench/ sets GAKO_SCENARIO to drive the measurement harness (bench.html) instead of the app.
   win.loadURL(process.env.GAKO_SCENARIO ? 'app://gako/bench.html' : 'app://gako/index.html');
 
   // Closing the window (or quitting) stops every agent running in it: ask first. The frontend says

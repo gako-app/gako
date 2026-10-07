@@ -12,7 +12,7 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// Scripted runs for PLAN.md's phase 0 table. bench/measure starts the app with GAKO_SCENARIO set,
+// Scripted runs for the terminal and viewer suite (docs/performance.md). bench/measure starts the app with GAKO_SCENARIO set,
 // reads the records these write to the log, and samples memory from outside.
 
 import type { App } from './app';

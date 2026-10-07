@@ -1,7 +1,7 @@
 [project]
 name = "gako-bench"
 version = "0.0.0"
-description = "Phase 0 fixtures and measurement scripts for Gako"
+description = "Fixtures and measurement scripts for Gako"
 requires-python = ">=3.11"
 dependencies = ["psutil>=7"]
 

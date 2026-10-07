@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU Affero General Public License along with this program.
 # If not, see <https://www.gnu.org/licenses/>.
 
-"""Runs phase 0's measurements and writes the raw results.
+"""Runs the measurement suites and writes the raw results (see bench/README.md).
 
     uv run measure/run.py APP SCENARIO [options]
     uv run measure/run.py suite [--apps vscode,electron]
@@ -26,11 +26,11 @@ APP is electron or vscode. SCENARIOS:
   dump       three 250 MB dumps into one tab: memory over time, dump times, integrity
   cycle      hide and show terminal tabs under the four-agent load (Gako only)
   lifecycle  resize, close a tab, quit: no orphaned processes (Gako only)
-  panel      phase 1: the app on a generated layout (--layout work|stress): first scan, edits and
+  panel      the Git panel: the app on a generated layout (--layout work|stress): first scan, edits and
              commits shown, CPU and memory while idle (VS Code: CPU and memory only)
 
 Each run writes bench/out/runs/<run id>/result.json; measure/report.py turns those into
-bench/results/<platform>-<app>-<date>.md. See bench/RUNNING.md.
+bench/results/<platform>-<app>-<date>.md. See bench/README.md.
 """
 
 from __future__ import annotations
@@ -362,7 +362,8 @@ class Run:
             "runId": self.id, "platform": PLATFORM, "app": app, "scenario": scenario, "settings": settings,
             "date": dt.date.today().isoformat(), "pinned": dict(PINNED), "versions": versions(app),
             "settle": args.settle, "window": args.window,
-            # Which phase's code and question this run belongs to; reported separately.
+            # A label for which set of runs this belongs to: 0 for the terminal and viewer suite, 1 for
+            # the Git view, anything else for a re-run with newer code. Each is reported separately.
             "phase": args.phase or ("1" if scenario == "panel" else "0"),
         }
         self.proc = None
@@ -434,7 +435,7 @@ class Run:
     # sampling -----------------------------------------------------------------------------------
 
     def measure_window(self, start_ms: float, sampler: Sampler) -> dict:
-        """Settle, then sample for the window, as PLAN.md requires."""
+        """Settle, then sample for the window, as docs/performance.md's method requires."""
         settle_end = start_ms + self.args.settle * 1000
         end = settle_end + self.args.window * 1000
         log(f"settling {self.args.settle} s, then sampling {self.args.window} s")
@@ -796,8 +797,8 @@ def main() -> None:
     ap.add_argument("--probe", action="store_true",
                     help="measure VS Code's terminal size again (otherwise the size measured last time is reused)")
     ap.add_argument("--apps", default="vscode,electron",
-                    help="for suite; VS Code first, so its baseline is checked before Gako runs (PLAN.md)")
-    ap.add_argument("--settle", type=float, default=120, help="seconds to settle before sampling (PLAN.md: 120)")
+                    help="for suite; VS Code first, so its baseline is checked before Gako runs")
+    ap.add_argument("--settle", type=float, default=120, help="seconds to settle before sampling (the method: 120)")
     ap.add_argument("--window", type=float, default=60, help="seconds of samples after settling")
     ap.add_argument("--repeat", type=int, default=5, help="coldstart launches")
     ap.add_argument("--load-seconds", type=int, default=240)
@@ -808,8 +809,8 @@ def main() -> None:
                     help="Linux: sample memory without root (Chromium's sandboxed processes then go uncounted)")
     ap.add_argument("--cols", type=int, help="pin the terminal size instead of probing VS Code's")
     ap.add_argument("--rows", type=int)
-    ap.add_argument("--phase", help="the phase this run measures (default: 1 for panel, 0 otherwise); "
-                    "report.py writes each phase's results to its own file")
+    ap.add_argument("--phase", help="a label for this set of runs (default: 1 for panel, 0 otherwise); "
+                    "report.py writes each label's results to its own file")
     ap.add_argument("--layout", choices=["work", "stress"], default="work", help="panel: which generated layout")
     ap.add_argument("--quit", choices=["term", "kill"], default="term", help="lifecycle: how to quit the app")
     args = ap.parse_args()

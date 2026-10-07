@@ -15,7 +15,7 @@
 //! What Gako adds when it starts an agent, so the agent bar can tell its states apart.
 //!
 //! Claude Code shows the same title when it has finished a turn and when it waits for approval (see
-//! PHASE2.md), but it runs a Notification hook for the second. So Gako starts `claude` with one more
+//! docs/terminals.md), but it runs a Notification hook for the second. So Gako starts `claude` with one more
 //! hook, passed with `--settings` (which Claude Code adds to the user's own settings rather than
 //! replacing them): it runs `gako-core notify`, which turns the hook's message into a terminal
 //! notification (OSC 9). The frontend shows that as "waiting for you". The `agentHooks` setting
