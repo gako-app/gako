@@ -25,7 +25,7 @@ function git(...args: string[]): string {
   }
 }
 
-// Relative asset paths, so the same build loads from Tauri's and Electron's custom protocols.
+// Relative asset paths, so the build loads from the shell's custom protocol (app://).
 export default defineConfig({
   base: './',
   // What the About window shows as the build: the nearest tag, commits since and the commit

@@ -16,7 +16,6 @@
 // and whether the shell offers a native folder picker and an About window; everything else goes
 // through the Transport.
 //
-// - Tauri injects `window.__GAKO_BOOT__` with an initialization script.
 // - Electron exposes `window.__GAKO_BOOT__` and `window.__GAKO_SHELL__` from its preload script.
 // - In a plain browser (development), pass `?core=ws://127.0.0.1:PORT&token=TOKEN`. There's no
 //   folder picker there: folders are opened by typing their path.

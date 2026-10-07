@@ -12,6 +12,3 @@ __pycache__/
 .venv/
 
 .DS_Store
-
-# Tauri-generated schemas
-shells/tauri/src-tauri/gen/

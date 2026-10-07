@@ -5,8 +5,7 @@
   "license": "AGPL-3.0-or-later",
   "workspaces": [
     "frontend",
-    "shells/electron",
-    "shells/tauri"
+    "shells/electron"
   ],
   "scripts": {
     "app": "npm run build:frontend && cargo build --release --manifest-path core/Cargo.toml && npm start -w shells/electron --",

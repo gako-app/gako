@@ -236,8 +236,6 @@ class Report:
                           "browser's key dispatch and the last compositor frame. VS Code has no equivalent timing.")
         self.notes.append("VS Code's cold start is measured to its first task starting, which waits for the extension host; "
                           "it's an upper bound for its usable window, not the same moment as Gako's.")
-        if self.platform == "macos" and self.app == "tauri":
-            self.notes.append("WebKit rounds `performance.now()` to whole milliseconds.")
 
     def markdown(self) -> str:
         self.method_notes()
@@ -316,30 +314,30 @@ def phase1_markdown(runs: dict, platform: str, date: str) -> str | None:
     """Phase 1's thresholds (PHASE1.md) for the panel runs: the app against VS Code on the same layouts."""
     rows = []
     for layout, scan_limit in (("work", 2000), ("stress", 8000)):
-        for app in ("electron", "tauri"):
-            r = runs.get((app, f"panel-{layout}", "default"))
-            if not r:
-                continue
-            vs = runs.get(("vscode", f"panel-{layout}", "matched"))
-            scan = r.get("scan", {}).get("sinceOpenMs")
-            lat = r.get("latency", {})
-            mem, vmem = r.get("memory", {}).get("medianMB"), (vs or {}).get("memory", {}).get("medianMB")
-            name = f"{app}, {layout} layout ({r['layout']['repos']} repos)"
-            rows.append((name, f"First full scan (< {scan_limit // 1000} s)", fmt(scan, " ms"),
-                         verdict(scan < scan_limit if scan is not None else None)))
-            for kind, label, limit in (("edit", "File saved → shown", 500), ("revert", "File reverted → shown", 500),
-                                       ("commit", "Commit from a terminal → shown", 1000)):
-                v = lat.get(kind)
-                rows.append((name, f"{label} (< {limit} ms)",
-                             f"median {fmt(v and v['median'], ' ms')}, max {fmt(v and v['max'], ' ms')}",
-                             verdict(v["max"] < limit if v else None)))
-            cpu = r.get("cpuIdlePercent")
-            rows.append((name, "CPU when nothing changes (idle)", f"{fmt(cpu, '% of a core', 2)}"
-                         + (f" (VS Code {fmt(vs.get('cpuIdlePercent'), '%', 2)})" if vs else ""),
-                         verdict(cpu < 1.0 if cpu is not None else None)))
-            rows.append((name, "Memory, idle with the panel open (≤ half of VS Code's)",
-                         f"{fmt(mem, ' MB')} vs VS Code {fmt(vmem, ' MB')}" + (f" ({mem / vmem:.0%})" if mem and vmem else ""),
-                         verdict(mem <= vmem / 2 if mem and vmem else None)))
+        app = "electron"
+        r = runs.get((app, f"panel-{layout}", "default"))
+        if not r:
+            continue
+        vs = runs.get(("vscode", f"panel-{layout}", "matched"))
+        scan = r.get("scan", {}).get("sinceOpenMs")
+        lat = r.get("latency", {})
+        mem, vmem = r.get("memory", {}).get("medianMB"), (vs or {}).get("memory", {}).get("medianMB")
+        name = f"{app}, {layout} layout ({r['layout']['repos']} repos)"
+        rows.append((name, f"First full scan (< {scan_limit // 1000} s)", fmt(scan, " ms"),
+                     verdict(scan < scan_limit if scan is not None else None)))
+        for kind, label, limit in (("edit", "File saved → shown", 500), ("revert", "File reverted → shown", 500),
+                                   ("commit", "Commit from a terminal → shown", 1000)):
+            v = lat.get(kind)
+            rows.append((name, f"{label} (< {limit} ms)",
+                         f"median {fmt(v and v['median'], ' ms')}, max {fmt(v and v['max'], ' ms')}",
+                         verdict(v["max"] < limit if v else None)))
+        cpu = r.get("cpuIdlePercent")
+        rows.append((name, "CPU when nothing changes (idle)", f"{fmt(cpu, '% of a core', 2)}"
+                     + (f" (VS Code {fmt(vs.get('cpuIdlePercent'), '%', 2)})" if vs else ""),
+                     verdict(cpu < 1.0 if cpu is not None else None)))
+        rows.append((name, "Memory, idle with the panel open (≤ half of VS Code's)",
+                     f"{fmt(mem, ' MB')} vs VS Code {fmt(vmem, ' MB')}" + (f" ({mem / vmem:.0%})" if mem and vmem else ""),
+                     verdict(mem <= vmem / 2 if mem and vmem else None)))
     if not rows:
         return None
     any_run = next(r for (a, s, _), r in runs.items() if s.startswith("panel-"))

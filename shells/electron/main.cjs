@@ -96,7 +96,6 @@ function startCore() {
     env: {
       ...process.env,
       GAKO_TOKEN: token,
-      GAKO_SHELL_KIND: 'electron',
       GAKO_ROOT: root,
       ...(base ? { GAKO_BASE: path.resolve(base) } : {}),
     },

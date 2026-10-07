@@ -1,8 +1,7 @@
 # Running the phase 0 suite
 
 How to build Gako's phase 0 harness and run the whole measurement suite on a fresh machine:
-macOS, Windows or Linux. What the numbers mean and how they decide Tauri or Electron is in
-[PLAN.md](../docs/PLAN.md); what was built is in [PHASE0.md](../docs/PHASE0.md).
+macOS, Windows or Linux. What the numbers mean is in [PLAN.md](../docs/PLAN.md); what was built is in [PHASE0.md](../docs/PHASE0.md).
 
 ## 1. Prerequisites
 
@@ -18,10 +17,8 @@ All platforms:
 Per platform:
 
 - **macOS:** Xcode or the Command Line Tools.
-- **Windows:** Visual Studio Build Tools with "Desktop development with C++" (for Rust), and
-  WebView2 (preinstalled on Windows 10 21H2+ and 11).
-- **Linux (Debian/Ubuntu):** `sudo apt install build-essential libwebkit2gtk-4.1-dev libssl-dev
-  libayatana-appindicator3-dev librsvg2-dev` (Tauri's prerequisites). If Electron refuses to
+- **Windows:** Visual Studio Build Tools with "Desktop development with C++" (for Rust).
+- **Linux (Debian/Ubuntu):** `sudo apt install build-essential`. If Electron refuses to
   start because of its sandbox helper, see Electron's Linux sandbox notes; record any workaround
   with the results.
 
@@ -33,12 +30,7 @@ From the repository root:
 npm install
 npm run build -w frontend
 cargo build --release --manifest-path core/Cargo.toml
-cargo build --release --manifest-path shells/tauri/src-tauri/Cargo.toml
 ```
-
-Rebuild the Tauri shell after every frontend build: it embeds the frontend when it's compiled
-(Electron loads it at run time). `run.py` refuses to run a Tauri build that's older than the
-frontend build.
 
 The first Electron start downloads the Electron runtime (checked against the checksums pinned in
 the `electron` package).
@@ -82,11 +74,11 @@ uv run measure/run.py suite
 uv run measure/report.py
 ```
 
-Or one run at a time: `uv run measure/run.py <tauri|electron|vscode> <scenario>`, with scenarios
+Or one run at a time: `uv run measure/run.py <electron|vscode> <scenario>`, with scenarios
 `coldstart`, `idle`, `ui`, `load`, `dump`, `cycle` and `lifecycle` (`--help` for options). Each
 run writes `bench/out/runs/<run id>/` with `result.json`, the app's timing log and the agents'
-reports. `report.py` turns the day's runs into `bench/results/<platform>-<shell>-<date>.md`: one
-file per Gako shell with every row of PLAN.md's table and its verdict, and one for the VS Code
+reports. `report.py` turns the day's runs into `bench/results/<platform>-<app>-<date>.md`: one
+file for Gako with every row of PLAN.md's table and its verdict, and one for the VS Code
 baseline. Commit those files.
 
 **Check the thresholds against VS Code before the Gako runs** (PLAN.md: adjust them only then,
@@ -160,8 +152,7 @@ Gako only, because VS Code exposes no equivalent timing.
 
 - **Minimize and restore** the Gako window a few times during the `cycle` run (it switches tabs
   on its own). Afterwards every agent tab must show its panel, not a blank or garbled screen.
-- **Real-agent sanity run:** start each shell by hand (`npm start -w shells/tauri`,
-  `npm start -w shells/electron`), open four terminal tabs with the **+ terminal** button, start `claude` or `codex` in them, give them real work across the sample
+- **Real-agent sanity run:** start Gako by hand (`npm start -w shells/electron`), open four terminal tabs with the **+ terminal** button, start `claude` or `codex` in them, give them real work across the sample
   workspace's repos for a few minutes, and look for anything wrong: garbled redraws, lag,
   resize problems, leftover processes after quitting. Write what you saw into the results file
   under a "Real agents" heading.

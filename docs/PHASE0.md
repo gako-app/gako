@@ -62,7 +62,6 @@ gako/
     gako-core/       the core binary
     tui-load/        synthetic agent-TUI output generator (see below)
   frontend/          TypeScript + Vite, Monaco, xterm.js; no UI framework
-  shells/tauri/      Tauri 2 shell
   shells/electron/   bare Electron shell
   bench/
     fixtures/        generators for test data (generated files are gitignored)

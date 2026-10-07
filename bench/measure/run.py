@@ -15,9 +15,9 @@
 """Runs phase 0's measurements and writes the raw results.
 
     uv run measure/run.py APP SCENARIO [options]
-    uv run measure/run.py suite [--apps vscode,tauri,electron]
+    uv run measure/run.py suite [--apps vscode,electron]
 
-APP is tauri, electron or vscode. SCENARIOS:
+APP is electron or vscode. SCENARIOS:
 
   coldstart  launch to usable window, repeated (--repeat, default 5)
   idle       memory, idle: the 5,000-line diff showing plus one idle terminal
@@ -241,15 +241,11 @@ def versions(app: str) -> dict:
                                          text=True).stdout.strip()
     except OSError:
         pass
-    if app in ("tauri", "electron"):
+    if app == "electron":
         v["xterm"] = pkg_version("@xterm/xterm")
         v["xtermWebgl"] = pkg_version("@xterm/addon-webgl")
         v["monaco"] = pkg_version("monaco-editor")
         v["portablePty"] = cargo_lock_version(ROOT / "core" / "Cargo.lock", "portable-pty")
-    if app == "tauri":
-        v["tauri"] = cargo_lock_version(ROOT / "shells" / "tauri" / "src-tauri" / "Cargo.lock", "tauri")
-        v["wry"] = cargo_lock_version(ROOT / "shells" / "tauri" / "src-tauri" / "Cargo.lock", "wry")
-    if app == "electron":
         v["electron"] = pkg_version("electron")
     if app == "vscode":
         v["vscode"] = vscode_version()
@@ -258,13 +254,7 @@ def versions(app: str) -> dict:
 
 # --- launching ----------------------------------------------------------------------------------
 
-def gako_command(app: str) -> list[str]:
-    if app == "tauri":
-        exe = ROOT / "shells" / "tauri" / "src-tauri" / "target" / "release" / f"gako-tauri{EXE}"
-        # Tauri embeds the frontend at build time; Electron loads it at run time.
-        if exe.stat().st_mtime < (ROOT / "frontend" / "dist" / "index.html").stat().st_mtime:
-            raise SystemExit("the Tauri build is older than the frontend build: rebuild shells/tauri")
-        return [str(exe)]
+def gako_command() -> list[str]:
     dist = ROOT / "node_modules" / "electron" / "dist"
     exe = {"macos": dist / "Electron.app" / "Contents" / "MacOS" / "Electron",
            "windows": dist / "electron.exe", "linux": dist / "electron"}[PLATFORM]
@@ -394,7 +384,7 @@ class Run:
                "GAKO_RENDERER": PINNED["renderer"], "GAKO_COLS": str(PINNED["cols"]), "GAKO_ROWS": str(PINNED["rows"]),
                **(extra_env or {})}
         t0 = now_ms()
-        self.proc = proctree.spawn(gako_command(self.app), env, ROOT, self.dir / "app.stdout")
+        self.proc = proctree.spawn(gako_command(), env, ROOT, self.dir / "app.stdout")
         return t0
 
     # vscode -------------------------------------------------------------------------------------
@@ -798,14 +788,14 @@ def suite(args: argparse.Namespace) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("app", choices=["tauri", "electron", "vscode", "suite"])
+    ap.add_argument("app", choices=["electron", "vscode", "suite"])
     ap.add_argument("scenario", nargs="?", choices=list(SCENARIOS))
     ap.add_argument("--settings", choices=["matched", "default"], default=None,
                     help="VS Code: matched pins the terminal settings to Gako's; default keeps your own settings")
     ap.add_argument("--scenarios", default="coldstart,idle,ui,load,dump,cycle,lifecycle", help="for suite")
     ap.add_argument("--probe", action="store_true",
                     help="measure VS Code's terminal size again (otherwise the size measured last time is reused)")
-    ap.add_argument("--apps", default="vscode,tauri,electron",
+    ap.add_argument("--apps", default="vscode,electron",
                     help="for suite; VS Code first, so its baseline is checked before Gako runs (PLAN.md)")
     ap.add_argument("--settle", type=float, default=120, help="seconds to settle before sampling (PLAN.md: 120)")
     ap.add_argument("--window", type=float, default=60, help="seconds of samples after settling")

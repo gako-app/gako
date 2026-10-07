@@ -228,9 +228,7 @@ the Windows work machine early, and `bench/` can still run there if anything loo
   WebSocket to the core (loopback only, one-time token) stays.
 
 **The hedge, kept:** the frontend stays shell-independent. UI code never calls Electron APIs; it
-goes through the `Transport` interface, and the shell only manages the window and the core. The
-Tauri shell stays in `shells/tauri/`, unmaintained, so the comparison can be re-run if WebKitGTK or
-the Windows numbers ever argue for it.
+goes through the `Transport` interface, and the shell only manages the window and the core.
 
 **Shape that interface for streams, not only request and response.** It has to carry two-way,
 long-lived message streams: terminal output needs that from phase 0, and language servers would
