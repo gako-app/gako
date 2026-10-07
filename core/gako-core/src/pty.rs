@@ -233,7 +233,8 @@ impl Terminal {
         cmd.env("COLORTERM", "truecolor");
         cmd.env("TERM_PROGRAM", "gako");
         // The terminal's device, for helpers that run without one, such as an agent's hooks (see
-        // agents.rs).
+        // agents.rs). Unix only: ConPTY has no device path, so on Windows those helpers go without.
+        #[cfg(unix)]
         if let Some(tty) = pair.master.tty_name() {
             cmd.env("GAKO_TTY", tty);
         }
