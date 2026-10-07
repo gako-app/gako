@@ -145,6 +145,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .agents-empty { padding: 12px; font-size: 12px; line-height: 1.6; }
 .agent { position: relative; display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px; cursor: pointer; border-left: 2px solid transparent; }
 .agent:hover { background: #2a2d2e; }
+.agent .restart { margin-right: -6px; }
 .agent.active { background: var(--select); border-left-color: var(--accent); }
 .agent-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .agent-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

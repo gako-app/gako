@@ -146,6 +146,36 @@ fn end_group(group: libc::pid_t) {
 
 /// `GAKO_SHELL` if set; otherwise PowerShell on Windows (VS Code's default there too) and the
 /// user's login shell elsewhere.
+/// The command that runs `program`. On Windows the program is found here rather than by
+/// portable-pty, which tries the bare name first and so picks npm's extensionless shim (a script for
+/// Git Bash, which Windows can't run) over its `.cmd`; and a `.cmd` or `.bat` file, which Windows
+/// runs only through the command interpreter, goes to `cmd.exe /d /c`.
+fn command(program: &str, args: &[String]) -> CommandBuilder {
+    let mut c = match windows_program(program) {
+        Some((resolved, true)) => {
+            let mut c = CommandBuilder::new("cmd.exe");
+            c.args(["/d", "/c"]);
+            c.arg(resolved);
+            c
+        }
+        Some((resolved, false)) => CommandBuilder::new(resolved),
+        None => CommandBuilder::new(program),
+    };
+    c.args(args);
+    c
+}
+
+/// On Windows, `program` found on the PATH (by its PATHEXT extensions only), and whether it's a
+/// batch file; None elsewhere, or when it isn't found (portable-pty then reports that).
+fn windows_program(program: &str) -> Option<(std::path::PathBuf, bool)> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let resolved = crate::shellenv::which(program)?;
+    let batch = resolved.extension().is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"));
+    Some((resolved, batch))
+}
+
 fn default_shell() -> CommandBuilder {
     match std::env::var_os("GAKO_SHELL") {
         Some(shell) => CommandBuilder::new(shell),
@@ -217,11 +247,7 @@ impl Terminal {
 
         let recorder = Recorder::open(id, req.cmd.as_deref().and_then(|c| c.first()).map_or("shell", |p| p.as_str()));
         let mut cmd = match req.cmd.as_deref() {
-            Some([program, args @ ..]) => {
-                let mut c = CommandBuilder::new(program);
-                c.args(args);
-                c
-            }
+            Some([program, args @ ..]) => command(program, args),
             _ => default_shell(),
         };
         cmd.cwd(req.cwd.as_deref().unwrap_or(default_cwd));

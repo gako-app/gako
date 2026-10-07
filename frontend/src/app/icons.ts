@@ -4,7 +4,7 @@
 import {
   ArrowDown, ArrowUp, Braces, ChevronDown, ChevronUp, Columns2, createElement, FileDiff, FilePen, FileText, Folder, FolderOpen,
   GitBranch, History, type IconNode, LoaderCircle, Proportions, PanelLeftClose, PanelLeftOpen, PanelRightClose,
-  PanelRightOpen, Plus, RefreshCw, Rows2, Undo2,
+  PanelRightOpen, Plus, RefreshCw, RotateCcw, Rows2, Undo2,
 } from 'lucide';
 import { h } from './dom';
 
@@ -13,6 +13,7 @@ const ICONS = {
   diff: FileDiff,
   editor: FilePen,
   revert: Undo2,
+  restart: RotateCcw,
   history: History,
   refresh: RefreshCw,
   push: ArrowUp,

@@ -96,7 +96,15 @@ pub fn which(program: &str) -> Option<std::path::PathBuf> {
     }
     let path = get().get("PATH").cloned().or_else(|| std::env::var("PATH").ok())?;
     let exts: Vec<String> = if cfg!(windows) {
-        std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT".into()).split(';').map(|e| e.to_lowercase()).collect()
+        // Only names with one of these extensions run (an extensionless file beside an npm `.cmd`
+        // is a script for Git Bash); a name that already has one is tried as it is first.
+        let mut exts: Vec<String> =
+            std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT".into()).split(';').map(|e| e.to_lowercase()).collect();
+        let lower = program.to_lowercase();
+        if exts.iter().any(|e| !e.is_empty() && lower.ends_with(e.as_str())) {
+            exts.insert(0, String::new());
+        }
+        exts
     } else {
         vec![String::new()]
     };

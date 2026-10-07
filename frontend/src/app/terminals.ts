@@ -151,7 +151,8 @@ export class Terminals {
     return this.active === null;
   }
 
-  async open(program: Program, folder: Folder): Promise<void> {
+  /** Starts `program` in `folder`, in a new entry at the end of the bar or at `at`. */
+  async open(program: Program, folder: Folder, at = this.tabs.length): Promise<void> {
     const s = this.settings;
     const term = new TerminalTab(this.t, this.log, this.body, {
       title: program.name,
@@ -166,7 +167,7 @@ export class Terminals {
     const banner = h('div', { class: 'term-banner', hidden: true });
     term.el.append(banner);
     const tab: Tab = { term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false, titled: false, shownTitle: '', noticeAt: 0 };
-    this.tabs.push(tab);
+    this.tabs.splice(at, 0, tab);
     // Shown before it starts, so the program starts at the size of the window.
     this.select(tab);
     try {
@@ -216,9 +217,11 @@ export class Terminals {
     this.onChange?.();
   }
 
+  /** Starts an exited program again, as a new session, in its place in the bar. */
   private restart(tab: Tab): void {
+    const at = this.tabs.indexOf(tab);
     this.close(tab, true);
-    this.open(tab.program, tab.folder);
+    this.open(tab.program, tab.folder, at);
   }
 
   private showBanner(tab: Tab): void {
@@ -327,6 +330,7 @@ export class Terminals {
         h('span', { class: 'agent-name' }, tab.program.name),
         h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || tab.folder.name} · ${this.stateText(tab)}`)),
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
+    !this.collapsed && tab.term.exit ? iconButton('restart', `Restart ${tab.program.name}`, () => this.restart(tab), { class: 'restart' }) : null,
     this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'))));
   }
 

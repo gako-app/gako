@@ -608,7 +608,7 @@ class App {
   private renderStatusbar(): void {
     const scanning = this.scanInfo === 'scanning…';
     fill(this.statusbar,
-      this.opened ? h('span', { class: 'status-item', 'data-tip': 'The base folder' }, icon('folder'), h('span', { class: 'status-text' }, this.opened.base)) : null,
+      this.opened ? h('span', { class: 'status-item' }, icon('folder'), h('span', { class: 'status-text' }, this.opened.base)) : null,
       this.scanInfo ? h('span', { class: `status-item dim ${scanning ? 'spinning' : ''}` }, icon(scanning ? 'busy' : 'repos'), h('span', { class: 'status-text' }, this.scanInfo)) : null,
       this.indexInfo ? h('span', { class: 'status-item dim' }, icon('symbols'), h('span', { class: 'status-text' }, this.indexInfo)) : null,
       h('span', { class: 'spacer' }),
