@@ -211,11 +211,13 @@ export class Explorer {
         h('span', { class: 'fname' }, entry.name),
         entry.repo ? h('span', { class: 'badge repo' }, 'repo') : null,
         entry.kind === 'symlink' ? h('span', { class: 'dim' }, ' ↗') : null,
-        h('span', { class: 'spacer' }),
-        diff ? iconButton('diff', 'Show diff', diff, { class: 'hover' }) : null,
-        isDir ? null : iconButton('file', 'Open file', () => this.activate(row), { class: 'hover' }),
-        iconButton('editor', this.editors.label(), () => this.editors.open({ path: entry.path }), { class: 'hover' }),
-        letter ? h('span', { class: 'letter' }, letter) : this.dirty.has(entry.path) ? h('span', { class: 'dirty-dot' }, '•') : null));
+        // Pinned to the row's right edge, over the end of a long name, so they're in reach however
+        // deep or long the entry is.
+        h('span', { class: 'row-end' },
+          diff ? iconButton('diff', 'Show diff', diff, { class: 'hover' }) : null,
+          isDir ? null : iconButton('file', 'Open file', () => this.activate(row), { class: 'hover' }),
+          iconButton('editor', this.editors.label(), () => this.editors.open({ path: entry.path }), { class: 'hover' }),
+          letter ? h('span', { class: 'letter' }, letter) : this.dirty.has(entry.path) ? h('span', { class: 'dirty-dot' }, '•') : null)));
         if (open) walk(entry.path, depth + 1);
       }
       if (listing.omitted) {

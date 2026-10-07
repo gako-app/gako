@@ -71,6 +71,8 @@ export class Sidebar {
   private busy = new Map<string, RemoteAction>();
   /** "Pull all" in progress: how many are done of how many. */
   private pullingAll: { done: number; total: number } | null = null;
+  /** Repos waiting for their turn in "Pull all" (it runs a few at a time). */
+  private queued = new Set<string>();
   view: View = 'repos';
   selected: string | null = null;
   repos: Repo[] = [];
@@ -191,6 +193,7 @@ export class Sidebar {
   /** Runs a fetch, pull or push on a repo, showing it busy meanwhile; resolves to git's error. */
   private run(r: Repo, action: RemoteAction, quiet = false): Promise<string | null> {
     if (this.busy.has(r.root)) return Promise.resolve(null);
+    this.queued.delete(r.root);
     this.busy.set(r.root, action);
     this.render();
     return this.hooks.remote(r, action, quiet).finally(() => {
@@ -211,6 +214,7 @@ export class Sidebar {
     const repos = this.behind().filter((r) => !this.busy.has(r.root));
     if (!repos.length) return;
     this.pullingAll = { done: 0, total: repos.length };
+    for (const r of repos) this.queued.add(r.root);
     const failed: string[] = [];
     const queue = [...repos];
     const worker = async () => {
@@ -249,12 +253,15 @@ export class Sidebar {
     const busy = this.busy.get(r.root);
     const upstream = s?.upstream && !s.upstreamGone ? s.upstream : null;
     const plural = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
+    // Waiting its turn in "Pull all": its buttons show, greyed out.
+    const queued = this.queued.has(r.root);
+    const waiting = queued ? 'Waiting to be pulled by Pull all' : '';
     return h('span', { class: 'repo-actions' },
-      busy ? null : iconButton('refresh', upstream ? `Fetch from ${upstream.split('/')[0]} and refresh` : 'Fetch from the remote and refresh', () => this.run(r, 'fetch'), { class: 'hover' }),
+      busy || queued ? null : iconButton('refresh', upstream ? `Fetch from ${upstream.split('/')[0]} and refresh` : 'Fetch from the remote and refresh', () => this.run(r, 'fetch'), { class: 'hover' }),
       iconButton('history', 'Show the history', () => this.hooks.history(r), { class: 'hover' }),
       busy ? h('span', { class: 'busy dim' }, REMOTE_BUSY[busy]) : null,
-      !busy && upstream && s!.behind ? iconButton('pull', `Pull ${plural(s!.behind)} from ${upstream} (fast-forward only)`, () => this.run(r, 'pull'), { label: String(s!.behind), class: 'sync' }) : null,
-      !busy && upstream && s!.ahead ? iconButton('push', `Push ${plural(s!.ahead)} to ${upstream}`, () => this.run(r, 'push'), { label: String(s!.ahead), class: 'sync' }) : null);
+      !busy && upstream && s!.behind ? iconButton('pull', waiting || `Pull ${plural(s!.behind)} from ${upstream} (fast-forward only)`, () => this.run(r, 'pull'), { label: String(s!.behind), class: 'sync', disabled: queued }) : null,
+      !busy && upstream && s!.ahead ? iconButton('push', waiting || `Push ${plural(s!.ahead)} to ${upstream}`, () => this.run(r, 'push'), { label: String(s!.ahead), class: 'sync', disabled: queued }) : null);
   }
 
   private renderRepos(changed: Repo[], clean: Repo[]): void {
@@ -344,7 +351,8 @@ export class Sidebar {
     sec.files.replaceChildren(...out);
   }
 
-  /** A file: its name, its folder, the buttons on hover, its status letter. */
+  /** A file: its name, its folder, then the buttons on hover and its status letter, pinned to the
+   * row's right edge (over the end of a long name) so they're always in reach. */
   private fileRow(item: Item, letter: string, gone: boolean, revertible: boolean): HTMLElement {
     const e = item.entry;
     return h('div', {
@@ -353,11 +361,12 @@ export class Sidebar {
     },
     h('span', { class: 'fname' }, basename(e.path)),
     h('span', { class: 'fdir dim' }, dirname(e.path)),
-    iconButton('diff', 'Show diff', () => this.select(item), { class: 'hover' }),
-    gone ? null : iconButton('file', 'Open file', () => this.hooks.openFile(item), { class: 'hover' }),
-    gone ? null : iconButton('editor', this.hooks.editorLabel(), () => this.hooks.openInEditor(item), { class: 'hover' }),
-    revertible ? iconButton('revert', 'Revert changes', () => this.hooks.revert(item), { class: 'hover' }) : null,
-    h('span', { class: 'letter' }, letter));
+    h('span', { class: 'row-end' },
+      iconButton('diff', 'Show diff', () => this.select(item), { class: 'hover' }),
+      gone ? null : iconButton('file', 'Open file', () => this.hooks.openFile(item), { class: 'hover' }),
+      gone ? null : iconButton('editor', this.hooks.editorLabel(), () => this.hooks.openInEditor(item), { class: 'hover' }),
+      revertible ? iconButton('revert', 'Revert changes', () => this.hooks.revert(item), { class: 'hover' }) : null,
+      h('span', { class: 'letter' }, letter)));
   }
 
   focus(): void {

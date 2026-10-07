@@ -167,7 +167,7 @@ class App {
         this.onScanned = null;
         // From asking for the workspace to every repo's status: discovery and the first scan.
         const sinceOpen = performance.now() - this.openedAt;
-        this.scanInfo = `scanned ${ev.repos} repositories in ${Math.round(sinceOpen)} ms`;
+        this.scanInfo = `${ev.repos.toLocaleString()} repositor${ev.repos === 1 ? 'y' : 'ies'} scanned (${Math.round(sinceOpen).toLocaleString()} ms)`;
         this.log('scanDone', { ms: ev.ms, sinceOpenMs: sinceOpen, repos: ev.repos });
         this.renderStatusbar();
       }
@@ -239,7 +239,7 @@ class App {
       this.sidebar.baseName = basename(opened.base);
       this.explorer.setBase(opened.base);
       this.search.base = opened.base;
-      this.scanInfo = 'scanning…';
+      this.scanInfo = 'Scanning…';
       this.repos = opened.repos.map((r) => ({ ...r }));
       for (const s of opened.statuses) this.onStatus(s.repo, 'status' in s ? s.status : undefined, 'error' in s ? s.error : undefined);
       this.sidebar.repos = this.repos;
@@ -606,7 +606,7 @@ class App {
   }
 
   private renderStatusbar(): void {
-    const scanning = this.scanInfo === 'scanning…';
+    const scanning = this.scanInfo === 'Scanning…';
     fill(this.statusbar,
       this.opened ? h('span', { class: 'status-item' }, icon('folder'), h('span', { class: 'status-text' }, this.opened.base)) : null,
       this.scanInfo ? h('span', { class: `status-item dim ${scanning ? 'spinning' : ''}` }, icon(scanning ? 'busy' : 'repos'), h('span', { class: 'status-text' }, this.scanInfo)) : null,
