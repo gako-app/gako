@@ -183,7 +183,8 @@ export class TerminalTab {
     }
   }
 
-  show(): void {
+  /** Shows the terminal, and gives it the keyboard unless `focus` is false. */
+  show(focus = true): void {
     this.el.style.display = '';
     this.visible = true;
     if (!this.opened) {
@@ -193,7 +194,7 @@ export class TerminalTab {
     if (this.opts.renderer === 'webgl' && !this.webgl) this.attachWebgl();
     this.refit();
     this.term.refresh(0, this.term.rows - 1);
-    this.term.focus();
+    if (focus) this.term.focus();
   }
 
   hide(): void {

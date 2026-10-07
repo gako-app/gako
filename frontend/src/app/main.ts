@@ -19,6 +19,7 @@ import { Editors } from './editors';
 import { type DocSpec, DocTabs } from './doctabs';
 import type { Folder as TermFolder, Program } from './terminals';
 import { Layout } from './layout';
+import { Panes } from './panes';
 import { installTooltips } from './tooltip';
 import { icon } from './icons';
 import { confirmAction } from './confirm';
@@ -68,6 +69,7 @@ class App {
   private editors: Editors;
   private docs: DocTabs;
   private layout: Layout;
+  private panes: Panes;
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
@@ -134,7 +136,14 @@ class App {
     this.terminals = new Terminals(t, this.body, this.review, () => this.folders(), this.log, (m) => this.toast(m),
       (terminal) => this.docs.setFront(!terminal));
     this.body.append(this.review);
-    this.main.append(this.docs.bar, this.body);
+    // The documents (their tabs, with the single/dual pane switch, over what's shown), and the
+    // terminal pane beside them in the dual layout. Using either side gives it the keyboard's
+    // shortcuts there.
+    this.panes = new Panes(this.main, this.terminals);
+    const docsCol = h('div', { class: 'docs-col' }, h('div', { class: 'main-top' }, this.docs.bar, this.panes.toggle), this.body);
+    docsCol.addEventListener('mousedown', () => this.terminals.paneFocus(false));
+    docsCol.addEventListener('focusin', () => this.terminals.paneFocus(false));
+    this.main.append(docsCol, this.panes.handle, this.terminals.pane);
     const app = document.getElementById('app')!;
     this.layout = new Layout(app, this.sidebar.el, this.terminals);
     this.terminals.onCollapse = () => this.layout.apply();

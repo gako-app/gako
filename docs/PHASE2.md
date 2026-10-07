@@ -86,6 +86,10 @@ terminals alive across app restarts; split panes.
    only diffs, files and histories, as VS Code's editor tabs do: a single click opens a preview tab
    (in italics) that the next one replaces, and a double click keeps it. A terminal and the
    documents take turns in the whole main area.
+   *Extended after use on a wide screen (2026-10-07):* a switch at the right of the tab bar picks
+   that single-pane layout or a dual-pane one, where the terminal picked in the agent bar has a pane
+   of its own to the right of the documents, sized by dragging the separator. The pane last
+   clicked or typed in gets ⌘W and Ctrl+Tab. The choice and the size are remembered.
    *Finished, unseen:* output that lasted at least 1.5 s after the user's last keystroke, then
    stopped (or the program exited), while that terminal wasn't in front of a focused window. The
    keystroke rule keeps the echo of typing from counting as work. Reading an agent's own signals
