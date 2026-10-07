@@ -1,0 +1,32 @@
+name: Idea or improvement
+description: Something Gako could do better, or doesn't do yet.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gako deliberately stays small: it reviews and supervises, and leaves editing to your editor. [docs/scope.md](https://github.com/gako-app/gako/blob/main/docs/scope.md) says what it does and never does, and [docs/decisions.md](https://github.com/gako-app/gako/blob/main/docs/decisions.md) why.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you're trying to do
+      description: The situation and what gets in the way, before any solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you imagine it working. Rough is fine.
+  - type: textarea
+    id: today
+    attributes:
+      label: How you manage today
+      description: Another tool, a workaround, or doing without.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: I've read docs/scope.md, and this doesn't turn Gako into an editor.
+          required: true

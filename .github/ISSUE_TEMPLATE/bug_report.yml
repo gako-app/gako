@@ -1,0 +1,48 @@
+name: Bug report
+description: Something in Gako doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. For a security problem, don't open an issue: see [SECURITY.md](https://github.com/gako-app/gako/blob/main/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen
+      description: The steps, as exactly as you can. If it involves an agent, say which one and what it was doing.
+      placeholder: |
+        1. Open a folder with …
+        2. Start …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: Version and system
+      description: Open the About window (ⓘ at the right of the status bar), press Copy under Details, and paste here.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How you run Gako
+      options:
+        - A package built with npm run package
+        - From the repository, with npm run app
+    validations:
+      required: true
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Screenshots, error messages, your settings.json if it might matter, or the layout of your folders (how many repositories, how deep).
