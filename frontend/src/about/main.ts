@@ -130,7 +130,7 @@ function aboutPanel(): HTMLElement {
       h('h2', {}, 'Files'),
       h('dl', { class: 'facts' },
         fileRow('Settings', info.settingsFile,
-          info.settingsExists ? 'Your settings. A .gako/settings.json in the open folder overrides them.' : 'Not created yet: Gako runs on its defaults.',
+          info.settingsExists ? 'Your settings, for every folder Gako opens.' : 'Not created yet: Gako runs on its defaults.',
           'settings', info.settingsExists),
         fileRow('App data', info.dataFolder, 'Window state, open tabs and caches. Delete it to start Gako afresh.', 'data', true))) : null,
     h('footer', { class: 'legal' },

@@ -20,7 +20,6 @@ import type { Commit, CommitDetails, FileContent, RepoInfo, Settings, Status } f
 export interface Opened {
   base: string;
   settings: Settings;
-  settingsFiles: { user: string | null; workspace: string };
   repos: RepoInfo[];
   statuses: ({ repo: string } & ({ status: Status } | { error: string }))[];
 }

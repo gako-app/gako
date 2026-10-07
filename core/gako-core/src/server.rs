@@ -360,7 +360,7 @@ async fn request(
             let user = settings::user_file();
             let s = match workspace {
                 Some(ws) => ws.settings.clone(),
-                None => settings::load(user.as_deref(), None)?,
+                None => settings::load(user.as_deref())?,
             };
             let agents: Vec<Value> = s
                 .agents
@@ -376,7 +376,7 @@ async fn request(
             // The editors "open in editor" can use, and the one to use unless the user picks.
             let setting = match workspace {
                 Some(ws) => ws.settings.editor.clone(),
-                None => settings::load(settings::user_file().as_deref(), None)?.editor,
+                None => settings::load(settings::user_file().as_deref())?.editor,
             };
             let (found, default) =
                 tokio::task::spawn_blocking(move || crate::editors::offered(setting.as_ref()))
@@ -384,22 +384,17 @@ async fn request(
             Ok(json!({"editors": found, "default": default}))
         }
         "workspaceOpen" => {
-            let user = settings::user_file();
+            let settings = settings::load(settings::user_file().as_deref())?;
             let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;
-            let base = match given {
-                Some(b) => b,
-                None => settings::load(user.as_deref(), None)?.base.ok_or_else(|| {
-                    anyhow::anyhow!("no base folder given, and none in the settings")
-                })?,
-            };
-            let settings = settings::load(user.as_deref(), Some(&base))?;
+            let base = given
+                .or_else(|| settings.base.clone())
+                .ok_or_else(|| anyhow::anyhow!("no base folder given, and none in the settings"))?;
             // The previous workspace, if any, stops watching when it's dropped here.
             let ws = Workspace::open(base, settings, tx.clone())?;
             *workspace = Some(ws.clone());
             Ok(json!({
                 "base": ws.base,
                 "settings": ws.settings,
-                "settingsFiles": {"user": user, "workspace": settings::workspace_file(&ws.base)},
                 "repos": ws.repos(),
                 "statuses": ws.statuses(),
             }))

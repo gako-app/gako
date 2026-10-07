@@ -65,10 +65,10 @@ Phase 0's pieces stay: the Electron shell, `gako-core` in Rust, the one WebSocke
   pull and push: see decision 1); pushed events when a repo's status changes. Same framing as
   phase 0: JSON text frames, a `t` field, request ids.
 - **Settings:** a JSON file in the platform's config folder (`~/Library/Application Support/Gako`,
-  `%APPDATA%\Gako`, `~/.config/gako`), with a per-workspace override in the base folder
-  (`.gako/settings.json`). Defaults suit a work layout of 10–30 repos, 1–2 levels deep: scan depth 2,
-  4 git processes at once, a 150 ms debounce per repo, 2,000 untracked files listed per repo. All of
-  them are settings, for larger layouts. No settings UI yet.
+  `%APPDATA%\Gako`, `~/.config/gako`); opened folders have no settings of their own. Defaults suit
+  a work layout of 10–30 repos, 1–2 levels deep: scan depth 2, 4 git processes at once, a 150 ms
+  debounce per repo, 2,000 untracked files listed per repo. All of them are settings, for larger
+  layouts. No settings UI yet.
 - **Choosing the base folder:** from the command line, the settings file, or a path typed into the
   app. A native folder picker needs a shell API, so it waits for a small shell bridge that keeps
   the frontend free of shell calls.

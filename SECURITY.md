@@ -40,7 +40,8 @@ read any file you can. So the questions that matter are about everyone else.
   vulnerability.
 - **Repository content running code.** Gako shows what's in your repositories: file names and
   contents, diffs, commit messages, branch names, and the output of programs in its terminals. None
-  of it should be able to run code or commands. One exception is below.
+  of it should be able to run code or commands. That includes settings: Gako reads them only from
+  your own settings file, never from a folder it opens.
 
 **These aren't:**
 
@@ -48,12 +49,6 @@ read any file you can. So the questions that matter are about everyone else.
   terminal would.
 - Attacks that need code already running as your user.
 - Your operating system's warnings about an unsigned app.
-
-**The exception: an opened folder's settings are trusted.** A `.gako/settings.json` in the folder
-you open overrides your own settings, including the commands that start agents and open your
-editor. Opening a folder runs nothing by itself, but those commands run when you start an agent or
-open a file in your editor. Only open folders whose `.gako/settings.json` you trust, or check it
-first.
 
 **Git follows each repository's own configuration.** Gako runs `git` in every repository it finds,
 as any Git tool does, and git obeys the repository's `.git/config`, which can name programs to run.

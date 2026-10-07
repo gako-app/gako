@@ -12,9 +12,9 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-//! Settings: a JSON file in the platform's config folder, overridden per workspace by
-//! `<base>/.gako/settings.json`. Every key is optional; defaults suit a layout of 10–30 repos,
-//! one or two levels deep.
+//! Settings: one JSON file in the platform's config folder. Every key is optional; defaults suit a
+//! layout of 10–30 repos, one or two levels deep. Folders that Gako opens have no settings of
+//! their own, so nothing in a repository can change what Gako runs.
 
 use std::path::{Path, PathBuf};
 
@@ -120,10 +120,6 @@ pub fn user_file() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join(name).join("settings.json"))
 }
 
-pub fn workspace_file(base: &Path) -> PathBuf {
-    base.join(".gako").join("settings.json")
-}
-
 fn read(path: &Path) -> Result<Option<Value>> {
     match std::fs::read_to_string(path) {
         Ok(text) => Ok(Some(
@@ -134,31 +130,12 @@ fn read(path: &Path) -> Result<Option<Value>> {
     }
 }
 
-/// Keys in `over` replace those in `base`; objects merge key by key.
-fn merge(base: &mut Value, over: Value) {
-    match (base, over) {
-        (Value::Object(b), Value::Object(o)) => {
-            for (k, v) in o {
-                merge(b.entry(k).or_insert(Value::Null), v);
-            }
-        }
-        (b, o) => *b = o,
-    }
-}
-
-/// The user's settings, with `base`'s workspace file on top if a base folder is given.
-pub fn load(user: Option<&Path>, base: Option<&Path>) -> Result<Settings> {
-    let mut value = serde_json::to_value(Settings::default())?;
-    if let Some(v) = user.map(read).transpose()?.flatten() {
-        merge(&mut value, v);
-    }
-    if let Some(v) = base
-        .map(|b| read(&workspace_file(b)))
-        .transpose()?
-        .flatten()
-    {
-        merge(&mut value, v);
-    }
+/// The user's settings file, over the defaults; the defaults alone if there's no file.
+pub fn load(user: Option<&Path>) -> Result<Settings> {
+    let value = match user.map(read).transpose()?.flatten() {
+        Some(v) => v,
+        None => serde_json::to_value(Settings::default())?,
+    };
     let mut settings: Settings = serde_json::from_value(value).context("settings")?;
     settings.max_git_processes = settings.max_git_processes.max(1);
     Ok(settings)
@@ -169,22 +146,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn workspace_overrides_user() {
+    fn the_user_file_overrides_defaults() {
         let dir = tempfile::tempdir().unwrap();
         let user = dir.path().join("user.json");
         std::fs::write(&user, r#"{"scanDepth": 4, "maxGitProcesses": 8}"#).unwrap();
-        std::fs::create_dir(dir.path().join(".gako")).unwrap();
-        std::fs::write(workspace_file(dir.path()), r#"{"scanDepth": 3}"#).unwrap();
-        let s = load(Some(&user), Some(dir.path())).unwrap();
-        assert_eq!(s.scan_depth, 3);
+        let s = load(Some(&user)).unwrap();
+        assert_eq!(s.scan_depth, 4);
         assert_eq!(s.max_git_processes, 8);
         assert_eq!(s.debounce_ms, Settings::default().debounce_ms);
     }
 
     #[test]
-    fn missing_files_give_defaults() {
+    fn a_missing_file_gives_defaults() {
         let dir = tempfile::tempdir().unwrap();
-        let s = load(Some(&dir.path().join("none.json")), Some(dir.path())).unwrap();
+        let s = load(Some(&dir.path().join("none.json"))).unwrap();
         assert_eq!(s, Settings::default());
     }
 }
