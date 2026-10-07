@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "gako-core"
-version = "0.0.0"
+version = "0.9.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1310,7 +1310,7 @@ dependencies = [
 
 [[package]]
 name = "tui-load"
-version = "0.0.0"
+version = "0.9.0"
 dependencies = [
  "crossterm",
 ]
