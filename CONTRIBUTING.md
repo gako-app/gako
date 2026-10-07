@@ -37,6 +37,9 @@ That runs, from the repository root:
 - `cargo fmt --check`, `cargo clippy` (warnings are errors) and `cargo test` for the Rust core
 - the TypeScript typecheck and the frontend's tests
 
+The same command runs on macOS, Windows and Linux for every push and pull request, so a pull request
+shows whether it passes on all three.
+
 If you change something in the window, try it in the app (`npm run app -- /path/to/folder`) on
 your platform, and say in the pull request what you tried and where.
 

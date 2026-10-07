@@ -1,0 +1,44 @@
+# Runs `npm run check` (formatting, clippy, the core's tests, the typecheck and the frontend's
+# tests) on macOS, Windows and Linux, for every push and pull request.
+name: Check
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request makes an older run pointless.
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      # The checks never start Electron, so its runtime isn't downloaded.
+      ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      CARGO_TERM_COLOR: always
+    steps:
+      # Keep the files as committed (LF), as rustfmt's check and the tests expect.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - run: npm ci
+      - run: npm run check

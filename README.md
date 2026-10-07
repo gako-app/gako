@@ -1,5 +1,7 @@
 # Gako
 
+[![Check](https://github.com/gako-app/gako/actions/workflows/check.yml/badge.svg)](https://github.com/gako-app/gako/actions/workflows/check.yml)
+
 A lean desktop app for reviewing and supervising coding agents across many Git repositories at
 once. For macOS, Windows and Linux.
 
