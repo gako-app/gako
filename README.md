@@ -8,6 +8,8 @@ robotics workspaces and polyrepo teams have. Agents work in their own terminal i
 shows you what they changed in every repository, tells you which of them need you, and stays out of
 the way of your editor.
 
+![Gako with several repositories open: changed files grouped by repository on the left, a diff in the middle, and three agents on the right, one working, one waiting for approval and one finished](docs/images/gako.png)
+
 ## What it does
 
 - **Every repository in one view.** Gako finds the repositories under a folder and lists the ones
