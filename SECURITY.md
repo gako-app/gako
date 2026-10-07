@@ -34,8 +34,9 @@ read any file you can. So the questions that matter are about everyone else.
   connections that present a random token, made by the app when it starts. A web page, another
   local user, or a process that doesn't have the token must not be able to run commands, read
   files or watch terminals through it.
-- **Escaping Gako's windows.** The windows load only Gako's own pages, with context isolation and
-  Chromium's sandbox, and the preload scripts expose a short, fixed list of calls. Content that
+- **Escaping Gako's windows.** The windows load only Gako's own pages, with context isolation,
+  Chromium's sandbox and a content security policy that allows only Gako's own scripts, and the
+  preload scripts expose a short, fixed list of calls. Content that
   makes a window load remote content, navigate away, or reach Electron's or Node's APIs is a
   vulnerability.
 - **Repository content running code.** Gako shows what's in your repositories: file names and

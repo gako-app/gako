@@ -104,6 +104,9 @@ Gako runs as you, with your rights. What it guards against is everyone else:
 - Windows load only Gako's own pages from `app://gako/`, with context isolation, Chromium's
   sandbox and no Node.js in the page. Links open in your browser, and a window can't navigate away
   from the app.
+- Every page carries a content security policy (set in `frontend/vite.config.ts`): scripts, workers,
+  fonts and files only from the app itself, no inline scripts, and connections only to the app and
+  to the loopback interface. Inline styles are allowed, since Monaco and xterm.js set them.
 - The preload scripts expose a short, fixed list of calls: the core's address and token, the folder
   picker and the About window for the main window; facts, "show in file manager" and Electron's own
   notices for the About window.
