@@ -76,10 +76,19 @@ const KNOWN: &[Known] = &[
         mac_apps: &["Visual Studio Code - Insiders.app"],
         mac_tool: "Contents/Resources/app/bin/code",
         windows: &[
-            ("LOCALAPPDATA", r"Programs\Microsoft VS Code Insiders\bin\code-insiders.cmd"),
-            ("ProgramFiles", r"Microsoft VS Code Insiders\bin\code-insiders.cmd"),
+            (
+                "LOCALAPPDATA",
+                r"Programs\Microsoft VS Code Insiders\bin\code-insiders.cmd",
+            ),
+            (
+                "ProgramFiles",
+                r"Microsoft VS Code Insiders\bin\code-insiders.cmd",
+            ),
         ],
-        linux: &["/usr/share/code-insiders/bin/code-insiders", "/snap/bin/code-insiders"],
+        linux: &[
+            "/usr/share/code-insiders/bin/code-insiders",
+            "/snap/bin/code-insiders",
+        ],
         file: VSCODE_FILE,
     },
     Known {
@@ -88,7 +97,10 @@ const KNOWN: &[Known] = &[
         cli: "codium",
         mac_apps: &["VSCodium.app"],
         mac_tool: "Contents/Resources/app/bin/codium",
-        windows: &[("LOCALAPPDATA", r"Programs\VSCodium\bin\codium.cmd"), ("ProgramFiles", r"VSCodium\bin\codium.cmd")],
+        windows: &[
+            ("LOCALAPPDATA", r"Programs\VSCodium\bin\codium.cmd"),
+            ("ProgramFiles", r"VSCodium\bin\codium.cmd"),
+        ],
         linux: &["/usr/share/codium/bin/codium", "/snap/bin/codium"],
         file: VSCODE_FILE,
     },
@@ -98,7 +110,10 @@ const KNOWN: &[Known] = &[
         cli: "cursor",
         mac_apps: &["Cursor.app"],
         mac_tool: "Contents/Resources/app/bin/cursor",
-        windows: &[("LOCALAPPDATA", r"Programs\cursor\resources\app\bin\cursor.cmd")],
+        windows: &[(
+            "LOCALAPPDATA",
+            r"Programs\cursor\resources\app\bin\cursor.cmd",
+        )],
         linux: &["/usr/share/cursor/bin/cursor"],
         file: VSCODE_FILE,
     },
@@ -151,7 +166,12 @@ pub fn detect() -> Vec<Found> {
         .iter()
         .filter_map(|k| {
             let program = crate::shellenv::which(k.cli).or_else(|| installed(k))?;
-            Some(Found { id: k.id.into(), name: k.name.into(), program, file: k.file.iter().map(|s| s.to_string()).collect() })
+            Some(Found {
+                id: k.id.into(),
+                name: k.name.into(),
+                program,
+                file: k.file.iter().map(|s| s.to_string()).collect(),
+            })
         })
         .collect()
 }
@@ -159,10 +179,20 @@ pub fn detect() -> Vec<Found> {
 fn installed(k: &Known) -> Option<PathBuf> {
     let home = dirs::home_dir();
     let candidates: Vec<PathBuf> = if cfg!(target_os = "macos") {
-        let roots = [Some(PathBuf::from("/Applications")), home.map(|h| h.join("Applications"))];
-        roots.into_iter().flatten().flat_map(|r| k.mac_apps.iter().map(move |a| r.join(a).join(k.mac_tool))).collect()
+        let roots = [
+            Some(PathBuf::from("/Applications")),
+            home.map(|h| h.join("Applications")),
+        ];
+        roots
+            .into_iter()
+            .flatten()
+            .flat_map(|r| k.mac_apps.iter().map(move |a| r.join(a).join(k.mac_tool)))
+            .collect()
     } else if cfg!(windows) {
-        k.windows.iter().filter_map(|(var, rel)| std::env::var_os(var).map(|v| PathBuf::from(v).join(rel))).collect()
+        k.windows
+            .iter()
+            .filter_map(|(var, rel)| std::env::var_os(var).map(|v| PathBuf::from(v).join(rel)))
+            .collect()
     } else {
         k.linux
             .iter()
@@ -182,8 +212,18 @@ pub fn offered(setting: Option<&EditorSetting>) -> (Vec<Found>, Option<String>) 
     if let Some(EditorSetting::Command(cmd)) = setting
         && let Some(program) = cmd.first()
     {
-        let name = Path::new(program).file_name().map_or(program.clone(), |n| n.to_string_lossy().into_owned());
-        found.insert(0, Found { id: "custom".into(), name, program: PathBuf::from(program), file: cmd[1..].to_vec() });
+        let name = Path::new(program)
+            .file_name()
+            .map_or(program.clone(), |n| n.to_string_lossy().into_owned());
+        found.insert(
+            0,
+            Found {
+                id: "custom".into(),
+                name,
+                program: PathBuf::from(program),
+                file: cmd[1..].to_vec(),
+            },
+        );
     }
     // An editor named in the settings but not installed is reported when it's used, not swapped
     // for another one.
@@ -196,12 +236,20 @@ pub fn offered(setting: Option<&EditorSetting>) -> (Vec<Found>, Option<String>) 
 
 /// The command that opens `path` in the editor `choice` (or the default one): at `line` and
 /// `column` for a file, or just the folder.
-pub fn command(setting: Option<&EditorSetting>, choice: Option<&str>, path: &Path, line: u32, column: u32) -> Result<Vec<String>> {
+pub fn command(
+    setting: Option<&EditorSetting>,
+    choice: Option<&str>,
+    path: &Path,
+    line: u32,
+    column: u32,
+) -> Result<Vec<String>> {
     let (found, default) = offered(setting);
     let id = choice.map(str::to_string).or(default);
     let Some(editor) = id.and_then(|id| found.into_iter().find(|f| f.id == id)) else {
         if let Some(EditorSetting::Known(id)) = setting {
-            bail!("the editor \"{id}\" set in settings.json isn't installed (or isn't one Gako knows)");
+            bail!(
+                "the editor \"{id}\" set in settings.json isn't installed (or isn't one Gako knows)"
+            );
         }
         bail!(
             "no editor found: install VS Code, Zed, Cursor or Sublime Text, or set \"editor\" in settings.json to the command that opens one"
@@ -219,14 +267,18 @@ fn fill(program: &Path, args: &[String], path: &Path, line: u32, column: u32) ->
         return cmd;
     }
     cmd.extend(args.iter().map(|a| {
-        a.replace("{file}", &file).replace("{line}", &line.max(1).to_string()).replace("{column}", &column.max(1).to_string())
+        a.replace("{file}", &file)
+            .replace("{line}", &line.max(1).to_string())
+            .replace("{column}", &column.max(1).to_string())
     }));
     cmd
 }
 
 /// Starts the editor and doesn't wait for it (a thread reaps it when it exits).
 pub fn spawn(cmd: &[String]) -> Result<()> {
-    let Some((program, args)) = cmd.split_first() else { bail!("the editor command is empty") };
+    let Some((program, args)) = cmd.split_first() else {
+        bail!("the editor command is empty")
+    };
     let resolved = crate::shellenv::which(program).unwrap_or_else(|| PathBuf::from(program));
     let mut child = std::process::Command::new(resolved)
         .args(args)
@@ -252,7 +304,14 @@ mod tests {
         std::fs::write(&f, "").unwrap();
         let args: Vec<String> = VSCODE_FILE.iter().map(|s| s.to_string()).collect();
         let cmd = fill(Path::new("/bin/code"), &args, &f, 12, 0);
-        assert_eq!(cmd, vec!["/bin/code".to_string(), "-g".into(), format!("{}:12:1", f.display())]);
+        assert_eq!(
+            cmd,
+            vec![
+                "/bin/code".to_string(),
+                "-g".into(),
+                format!("{}:12:1", f.display())
+            ]
+        );
     }
 
     #[test]
@@ -260,12 +319,19 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let args: Vec<String> = VSCODE_FILE.iter().map(|s| s.to_string()).collect();
         let cmd = fill(Path::new("/bin/code"), &args, t.path(), 12, 3);
-        assert_eq!(cmd, vec!["/bin/code".to_string(), t.path().display().to_string()]);
+        assert_eq!(
+            cmd,
+            vec!["/bin/code".to_string(), t.path().display().to_string()]
+        );
     }
 
     #[test]
     fn a_custom_command_comes_first_and_is_the_default() {
-        let setting = EditorSetting::Command(vec!["/opt/ed/bin/ed".into(), "+{line}".into(), "{file}".into()]);
+        let setting = EditorSetting::Command(vec![
+            "/opt/ed/bin/ed".into(),
+            "+{line}".into(),
+            "{file}".into(),
+        ]);
         let (found, default) = offered(Some(&setting));
         assert_eq!(found[0].id, "custom");
         assert_eq!(found[0].name, "ed");
@@ -274,13 +340,22 @@ mod tests {
         let f = t.path().join("x");
         std::fs::write(&f, "").unwrap();
         let cmd = command(Some(&setting), None, &f, 7, 2).unwrap();
-        assert_eq!(cmd, vec!["/opt/ed/bin/ed".to_string(), "+7".into(), f.display().to_string()]);
+        assert_eq!(
+            cmd,
+            vec![
+                "/opt/ed/bin/ed".to_string(),
+                "+7".into(),
+                f.display().to_string()
+            ]
+        );
     }
 
     #[test]
     fn an_unknown_editor_id_is_an_error() {
         let setting = EditorSetting::Known("no-such-editor".into());
-        let err = command(Some(&setting), None, Path::new("/x"), 1, 1).unwrap_err().to_string();
+        let err = command(Some(&setting), None, Path::new("/x"), 1, 1)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("no-such-editor"), "{err}");
     }
 
@@ -288,7 +363,11 @@ mod tests {
     fn the_setting_reads_as_an_id_or_a_command() {
         let id: EditorSetting = serde_json::from_str("\"zed\"").unwrap();
         assert_eq!(id, EditorSetting::Known("zed".into()));
-        let cmd: EditorSetting = serde_json::from_str("[\"code\", \"-g\", \"{file}:{line}\"]").unwrap();
-        assert_eq!(cmd, EditorSetting::Command(vec!["code".into(), "-g".into(), "{file}:{line}".into()]));
+        let cmd: EditorSetting =
+            serde_json::from_str("[\"code\", \"-g\", \"{file}:{line}\"]").unwrap();
+        assert_eq!(
+            cmd,
+            EditorSetting::Command(vec!["code".into(), "-g".into(), "{file}:{line}".into()])
+        );
     }
 }

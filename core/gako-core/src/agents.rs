@@ -29,13 +29,23 @@ use serde_json::json;
 
 /// The command to run for `cmd`, with Gako's hook added for Claude Code.
 pub fn adjust(cmd: Vec<String>) -> Vec<String> {
-    let Some(program) = cmd.first() else { return cmd };
-    let name = Path::new(program).file_stem().map(|s| s.to_string_lossy().to_lowercase());
+    let Some(program) = cmd.first() else {
+        return cmd;
+    };
+    let name = Path::new(program)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_lowercase());
     // A command that brings its own --settings is left alone.
-    if name.as_deref() != Some("claude") || cmd.iter().any(|a| a == "--settings" || a.starts_with("--settings=")) {
+    if name.as_deref() != Some("claude")
+        || cmd
+            .iter()
+            .any(|a| a == "--settings" || a.starts_with("--settings="))
+    {
         return cmd;
     }
-    let Ok(exe) = std::env::current_exe() else { return cmd };
+    let Ok(exe) = std::env::current_exe() else {
+        return cmd;
+    };
     let settings = json!({
         "hooks": {"Notification": [{"hooks": [{"type": "command", "command": format!("{} notify", quote(&exe))}]}]}
     });
@@ -47,7 +57,11 @@ pub fn adjust(cmd: Vec<String>) -> Vec<String> {
 /// Quotes a path for the shell Claude Code runs hooks with.
 fn quote(path: &Path) -> String {
     let p = path.to_string_lossy();
-    if cfg!(windows) { format!("\"{p}\"") } else { format!("'{}'", p.replace('\'', r"'\''")) }
+    if cfg!(windows) {
+        format!("\"{p}\"")
+    } else {
+        format!("'{}'", p.replace('\'', r"'\''"))
+    }
 }
 
 /// `gako-core notify`: reads a Claude Code hook's JSON on stdin and writes its message to the
@@ -58,9 +72,13 @@ pub fn notify_main() -> Result<()> {
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input)?;
     let event: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
-    let message = event["message"].as_str().filter(|m| !m.trim().is_empty()).unwrap_or("Claude Code needs you");
+    let message = event["message"]
+        .as_str()
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or("Claude Code needs you");
     let sequence = format!("\x1b]9;{}\x07", clean(message));
-    let path = std::env::var_os("GAKO_TTY").unwrap_or_else(|| (if cfg!(windows) { "CONOUT$" } else { "/dev/tty" }).into());
+    let path = std::env::var_os("GAKO_TTY")
+        .unwrap_or_else(|| (if cfg!(windows) { "CONOUT$" } else { "/dev/tty" }).into());
     // Best effort: without a terminal (Claude Code run elsewhere) there's nobody to tell, and a
     // failing hook would only show up as an error in Claude Code.
     if let Ok(mut tty) = std::fs::OpenOptions::new().write(true).open(path) {
@@ -71,7 +89,12 @@ pub fn notify_main() -> Result<()> {
 
 /// A message without control characters, which would end or break the sequence.
 fn clean(message: &str) -> String {
-    message.chars().map(|c| if c.is_control() { ' ' } else { c }).collect::<String>().trim().to_string()
+    message
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 #[cfg(test)]
@@ -88,7 +111,9 @@ mod tests {
         assert_eq!(cmd[0], "claude");
         assert_eq!(cmd[1], "--settings");
         let settings: serde_json::Value = serde_json::from_str(&cmd[2]).unwrap();
-        let hook = settings["hooks"]["Notification"][0]["hooks"][0]["command"].as_str().unwrap();
+        let hook = settings["hooks"]["Notification"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap();
         assert!(hook.ends_with(" notify"), "{hook}");
         assert_eq!(&cmd[3..], &v(&["--model", "opus"])[..]);
         // Also by full path.
@@ -98,19 +123,28 @@ mod tests {
     #[test]
     fn other_programs_and_own_settings_are_left_alone() {
         assert_eq!(adjust(v(&["codex"])), v(&["codex"]));
-        assert_eq!(adjust(v(&["claude", "--settings", "x.json"])), v(&["claude", "--settings", "x.json"]));
+        assert_eq!(
+            adjust(v(&["claude", "--settings", "x.json"])),
+            v(&["claude", "--settings", "x.json"])
+        );
         assert_eq!(adjust(v(&[])), v(&[]));
     }
 
     #[test]
     fn messages_lose_control_characters() {
-        assert_eq!(clean("needs\x07 your\npermission"), "needs  your permission");
+        assert_eq!(
+            clean("needs\x07 your\npermission"),
+            "needs  your permission"
+        );
     }
 
     #[test]
     fn paths_are_quoted_for_the_shell() {
         if !cfg!(windows) {
-            assert_eq!(quote(Path::new("/a b/it's/gako-core")), r"'/a b/it'\''s/gako-core'");
+            assert_eq!(
+                quote(Path::new("/a b/it's/gako-core")),
+                r"'/a b/it'\''s/gako-core'"
+            );
         }
     }
 }

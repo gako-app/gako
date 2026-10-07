@@ -71,18 +71,32 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn open(base: PathBuf, settings: Settings, tx: UnboundedSender<Event>) -> Result<Arc<Workspace>> {
+    pub fn open(
+        base: PathBuf,
+        settings: Settings,
+        tx: UnboundedSender<Event>,
+    ) -> Result<Arc<Workspace>> {
         if !base.is_dir() {
             bail!("{} is not a folder", base.display());
         }
         let base = crate::files::canonical(&base)?;
-        let git = Git::new(settings.max_git_processes, Duration::from_secs(settings.git_timeout_secs));
+        let git = Git::new(
+            settings.max_git_processes,
+            Duration::from_secs(settings.git_timeout_secs),
+        );
         let ws = Arc::new(Workspace {
             base,
             settings,
             git,
             tx,
-            inner: Mutex::new(Inner { search: None, files: None, symbols: None, repos: Vec::new(), states: Vec::new(), watcher: None }),
+            inner: Mutex::new(Inner {
+                search: None,
+                files: None,
+                symbols: None,
+                repos: Vec::new(),
+                states: Vec::new(),
+                watcher: None,
+            }),
         });
         ws.rediscover(true)?;
         ws.clone().build_index();
@@ -93,7 +107,11 @@ impl Workspace {
     pub fn roots(&self) -> Vec<PathBuf> {
         let mut roots = vec![self.base.clone()];
         for extra in &self.settings.extra_folders {
-            let p = if extra.is_absolute() { extra.clone() } else { self.base.join(extra) };
+            let p = if extra.is_absolute() {
+                extra.clone()
+            } else {
+                self.base.join(extra)
+            };
             if let Ok(p) = crate::files::canonical(&p)
                 && !roots.iter().any(|r| p.starts_with(r))
             {
@@ -104,12 +122,25 @@ impl Workspace {
     }
 
     pub fn repos(&self) -> Vec<RepoInfo> {
-        self.inner.lock().unwrap().repos.iter().map(|r| self.info(r)).collect()
+        self.inner
+            .lock()
+            .unwrap()
+            .repos
+            .iter()
+            .map(|r| self.info(r))
+            .collect()
     }
 
     fn info(&self, r: &Repo) -> RepoInfo {
-        let rel = r.root.strip_prefix(&self.base).map(|p| p.to_string_lossy().replace('\\', "/"));
-        RepoInfo { root: r.root.to_string_lossy().into_owned(), rel: rel.unwrap_or_else(|_| r.root.to_string_lossy().into_owned()), kind: r.kind }
+        let rel = r
+            .root
+            .strip_prefix(&self.base)
+            .map(|p| p.to_string_lossy().replace('\\', "/"));
+        RepoInfo {
+            root: r.root.to_string_lossy().into_owned(),
+            rel: rel.unwrap_or_else(|_| r.root.to_string_lossy().into_owned()),
+            kind: r.kind,
+        }
     }
 
     /// The repo with this root, if it's part of the workspace. Every git request goes through this,
@@ -125,7 +156,8 @@ impl Workspace {
     /// Finds repos again, restarts the watcher, and refreshes repos that are new.
     fn rediscover(self: &Arc<Self>, first: bool) -> Result<()> {
         let roots = self.roots();
-        let repos = git::discover::discover(&roots, self.settings.scan_depth, &self.settings.scan_ignore);
+        let repos =
+            git::discover::discover(&roots, self.settings.scan_depth, &self.settings.scan_ignore);
         let mut watched = roots.clone();
         for r in &repos {
             if !roots.iter().any(|root| r.git_dir.starts_with(root)) {
@@ -133,7 +165,11 @@ impl Workspace {
             }
         }
         let (tx, mut rx) = unbounded_channel::<Vec<PathBuf>>();
-        let watcher = watch::watch(&watched, Duration::from_millis(self.settings.debounce_ms), tx)?;
+        let watcher = watch::watch(
+            &watched,
+            Duration::from_millis(self.settings.debounce_ms),
+            tx,
+        )?;
         let weak = Arc::downgrade(self);
         tokio::spawn(async move {
             while let Some(paths) = rx.recv().await {
@@ -145,7 +181,8 @@ impl Workspace {
         let new: Vec<Repo> = {
             let mut inner = self.inner.lock().unwrap();
             let inner = &mut *inner;
-            let mut old: Vec<(Repo, RepoState)> = inner.repos.drain(..).zip(inner.states.drain(..)).collect();
+            let mut old: Vec<(Repo, RepoState)> =
+                inner.repos.drain(..).zip(inner.states.drain(..)).collect();
             let mut new = Vec::new();
             for r in repos {
                 match old.iter().position(|(o, _)| o.root == r.root) {
@@ -212,11 +249,21 @@ impl Workspace {
         let (changes, roots) = {
             let inner = self.inner.lock().unwrap();
             let c = watch::classify(&inner.repos, paths);
-            let roots: Vec<PathBuf> = c.repos.iter().map(|&i| inner.repos[i].root.clone()).collect();
+            let roots: Vec<PathBuf> = c
+                .repos
+                .iter()
+                .map(|&i| inner.repos[i].root.clone())
+                .collect();
             (c, roots)
         };
         if std::env::var_os("GAKO_DEBUG_WATCH").is_some() {
-            eprintln!("watch: {} paths -> {} repos {:?}, rediscover {}", paths.len(), roots.len(), roots.iter().map(|r| r.file_name()).collect::<Vec<_>>(), changes.rediscover);
+            eprintln!(
+                "watch: {} paths -> {} repos {:?}, rediscover {}",
+                paths.len(),
+                roots.len(),
+                roots.iter().map(|r| r.file_name()).collect::<Vec<_>>(),
+                changes.rediscover
+            );
         }
         if changes.rediscover
             && let Err(e) = self.rediscover(false)
@@ -234,7 +281,9 @@ impl Workspace {
     pub async fn refresh(self: &Arc<Self>, root: &Path) {
         {
             let mut inner = self.inner.lock().unwrap();
-            let Some(i) = inner.repos.iter().position(|r| r.root == root) else { return };
+            let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
+                return;
+            };
             if inner.states[i].running {
                 inner.states[i].dirty = true;
                 if std::env::var_os("GAKO_DEBUG_WATCH").is_some() {
@@ -247,13 +296,20 @@ impl Workspace {
         loop {
             let (repo, nested) = {
                 let inner = self.inner.lock().unwrap();
-                let Some(repo) = inner.repos.iter().find(|r| r.root == root).cloned() else { return };
-                let nested: Vec<PathBuf> =
-                    inner.repos.iter().filter(|r| r.root != root && r.root.starts_with(root)).map(|r| r.root.clone()).collect();
+                let Some(repo) = inner.repos.iter().find(|r| r.root == root).cloned() else {
+                    return;
+                };
+                let nested: Vec<PathBuf> = inner
+                    .repos
+                    .iter()
+                    .filter(|r| r.root != root && r.root.starts_with(root))
+                    .map(|r| r.root.clone())
+                    .collect();
                 (repo, nested)
             };
             let started = Instant::now();
-            let result = git::status(&self.git, &repo, &nested, self.settings.untracked_limit).await;
+            let result =
+                git::status(&self.git, &repo, &nested, self.settings.untracked_limit).await;
             let ms = started.elapsed().as_secs_f64() * 1000.0;
             let value = match result {
                 Ok(st) => json!({"status": st}),
@@ -261,7 +317,9 @@ impl Workspace {
             };
             let changed = {
                 let mut inner = self.inner.lock().unwrap();
-                let Some(i) = inner.repos.iter().position(|r| r.root == root) else { return };
+                let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
+                    return;
+                };
                 let changed = inner.states[i].last.as_ref() != Some(&value);
                 inner.states[i].last = Some(value.clone());
                 changed
@@ -279,7 +337,9 @@ impl Workspace {
                 self.send(json!({"t": "repoTouched", "repo": repo_id}));
             }
             let mut inner = self.inner.lock().unwrap();
-            let Some(i) = inner.repos.iter().position(|r| r.root == root) else { return };
+            let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
+                return;
+            };
             if inner.states[i].dirty {
                 inner.states[i].dirty = false;
             } else {
@@ -292,10 +352,21 @@ impl Workspace {
     /// A search scope: every repo and folder (`all`), the base folder only (`base`), or chosen repos.
     /// Repos inside a searched folder are skipped there: they're searched as themselves, or not at all.
     pub fn scope(&self, kind: &str, chosen: &[String]) -> crate::search::Scope {
-        let repos: Vec<PathBuf> = self.inner.lock().unwrap().repos.iter().map(|r| r.root.clone()).collect();
+        let repos: Vec<PathBuf> = self
+            .inner
+            .lock()
+            .unwrap()
+            .repos
+            .iter()
+            .map(|r| r.root.clone())
+            .collect();
         let roots: Vec<PathBuf> = match kind {
             "base" => vec![self.base.clone()],
-            "repos" => repos.iter().filter(|r| chosen.iter().any(|c| r.as_os_str() == c.as_str())).cloned().collect(),
+            "repos" => repos
+                .iter()
+                .filter(|r| chosen.iter().any(|c| r.as_os_str() == c.as_str()))
+                .cloned()
+                .collect(),
             _ => {
                 let mut v = self.roots();
                 let more: Vec<PathBuf> = repos.iter().filter(|r| !v.contains(r)).cloned().collect();
@@ -328,7 +399,11 @@ impl Workspace {
             return f;
         }
         let scope = self.scope("all", &[]);
-        let files = Arc::new(tokio::task::spawn_blocking(move || crate::search::list_files(&scope)).await.unwrap_or_default());
+        let files = Arc::new(
+            tokio::task::spawn_blocking(move || crate::search::list_files(&scope))
+                .await
+                .unwrap_or_default(),
+        );
         self.inner.lock().unwrap().files = Some(files.clone());
         files
     }
@@ -338,7 +413,11 @@ impl Workspace {
         tokio::spawn(async move {
             let started = Instant::now();
             let files = self.files().await;
-            let Ok(index) = tokio::task::spawn_blocking(move || crate::symbols::Index::build(&files)).await else { return };
+            let Ok(index) =
+                tokio::task::spawn_blocking(move || crate::symbols::Index::build(&files)).await
+            else {
+                return;
+            };
             let (files, symbols) = index.counts();
             self.inner.lock().unwrap().symbols = Some(Arc::new(std::sync::RwLock::new(index)));
             let ms = started.elapsed().as_secs_f64() * 1000.0;
@@ -348,12 +427,20 @@ impl Workspace {
 
     /// Re-parses changed files in `dirs` (only those the ignore rules keep).
     fn update_index(self: &Arc<Self>, dirs: Vec<PathBuf>) {
-        let Some(index) = self.inner.lock().unwrap().symbols.clone() else { return };
+        let Some(index) = self.inner.lock().unwrap().symbols.clone() else {
+            return;
+        };
         tokio::task::spawn_blocking(move || {
             let mut keep = std::collections::HashSet::new();
             for d in &dirs {
                 if let Ok(listing) = crate::files::list(d) {
-                    keep.extend(listing.entries.into_iter().filter(|e| !e.ignored).map(|e| e.path));
+                    keep.extend(
+                        listing
+                            .entries
+                            .into_iter()
+                            .filter(|e| !e.ignored)
+                            .map(|e| e.path),
+                    );
                 }
             }
             index.write().unwrap().update(&dirs, &|p| keep.contains(p));
@@ -368,7 +455,12 @@ impl Workspace {
     /// The repo a path belongs to (the innermost one).
     pub fn repo_of(&self, path: &Path) -> Option<PathBuf> {
         let inner = self.inner.lock().unwrap();
-        inner.repos.iter().filter(|r| path.starts_with(&r.root)).max_by_key(|r| r.root.components().count()).map(|r| r.root.clone())
+        inner
+            .repos
+            .iter()
+            .filter(|r| path.starts_with(&r.root))
+            .max_by_key(|r| r.root.components().count())
+            .map(|r| r.root.clone())
     }
 
     pub fn emit(&self, msg: Value) {

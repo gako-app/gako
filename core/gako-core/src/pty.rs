@@ -186,7 +186,9 @@ fn windows_program(program: &str) -> Option<(std::path::PathBuf, bool)> {
         return None;
     }
     let resolved = crate::shellenv::which(program)?;
-    let batch = resolved.extension().is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"));
+    let batch = resolved
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"));
     Some((resolved, batch))
 }
 
@@ -228,12 +230,19 @@ struct Recorder {
 impl Recorder {
     fn open(id: u32, program: &str) -> Option<Arc<Recorder>> {
         let dir = std::env::var_os("GAKO_RECORD_DIR")?;
-        let name = std::path::Path::new(program).file_name().map_or("shell".into(), |n| n.to_string_lossy().into_owned());
-        let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        let name = std::path::Path::new(program)
+            .file_name()
+            .map_or("shell".into(), |n| n.to_string_lossy().into_owned());
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
         let path = std::path::Path::new(&dir).join(format!("{secs}-{id}-{name}.jsonl"));
         let file = std::fs::create_dir_all(&dir).and_then(|_| std::fs::File::create(&path));
         match file {
-            Ok(f) => Some(Arc::new(Recorder { file: Mutex::new(f), started: std::time::Instant::now() })),
+            Ok(f) => Some(Arc::new(Recorder {
+                file: Mutex::new(f),
+                started: std::time::Instant::now(),
+            })),
             Err(e) => {
                 eprintln!("gako-core: can't record to {}: {e}", path.display());
                 None
@@ -256,10 +265,21 @@ impl Terminal {
         tx: UnboundedSender<Event>,
     ) -> Result<Arc<Terminal>> {
         let pair = native_pty_system()
-            .openpty(PtySize { rows: req.rows, cols: req.cols, pixel_width: 0, pixel_height: 0 })
+            .openpty(PtySize {
+                rows: req.rows,
+                cols: req.cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
             .context("openpty")?;
 
-        let recorder = Recorder::open(id, req.cmd.as_deref().and_then(|c| c.first()).map_or("shell", |p| p.as_str()));
+        let recorder = Recorder::open(
+            id,
+            req.cmd
+                .as_deref()
+                .and_then(|c| c.first())
+                .map_or("shell", |p| p.as_str()),
+        );
         let mut cmd = match req.cmd.as_deref() {
             Some([program, args @ ..]) => command(program, args),
             _ => default_shell(),
@@ -293,19 +313,32 @@ impl Terminal {
 
         let flow = Arc::new(Flow {
             config,
-            state: Mutex::new(FlowState { unacked: 0, closed: false, stats: Stats { hash: FNV_OFFSET, ..Stats::default() } }),
+            state: Mutex::new(FlowState {
+                unacked: 0,
+                closed: false,
+                stats: Stats {
+                    hash: FNV_OFFSET,
+                    ..Stats::default()
+                },
+            }),
             cv: Condvar::new(),
         });
 
         let (input_tx, input_rx) = std_mpsc::channel::<Vec<u8>>();
         let (start_tx, start_rx) = std_mpsc::channel::<()>();
-        std::thread::Builder::new().name(format!("pty-{id}-in")).spawn(move || {
-            while let Ok(bytes) = input_rx.recv() {
-                if writer.write_all(&bytes).and_then(|_| writer.flush()).is_err() {
-                    break;
+        std::thread::Builder::new()
+            .name(format!("pty-{id}-in"))
+            .spawn(move || {
+                while let Ok(bytes) = input_rx.recv() {
+                    if writer
+                        .write_all(&bytes)
+                        .and_then(|_| writer.flush())
+                        .is_err()
+                    {
+                        break;
+                    }
                 }
-            }
-        })?;
+            })?;
 
         let term = Arc::new(Terminal {
             pid,
@@ -319,50 +352,58 @@ impl Terminal {
 
         let (status_tx, status_rx) = std_mpsc::channel::<Option<u32>>();
         let waiter_term = term.clone();
-        std::thread::Builder::new().name(format!("pty-{id}-wait")).spawn(move || {
-            let code = child.wait().ok().map(|s| s.exit_code());
-            let _ = status_tx.send(code);
-            // With ConPTY the reader only reaches end of file once the pseudoconsole is closed.
-            if cfg!(windows) {
-                std::thread::sleep(std::time::Duration::from_millis(250));
-                waiter_term.master.lock().unwrap().take();
-            }
-        })?;
+        std::thread::Builder::new()
+            .name(format!("pty-{id}-wait"))
+            .spawn(move || {
+                let code = child.wait().ok().map(|s| s.exit_code());
+                let _ = status_tx.send(code);
+                // With ConPTY the reader only reaches end of file once the pseudoconsole is closed.
+                if cfg!(windows) {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    waiter_term.master.lock().unwrap().take();
+                }
+            })?;
 
         let chunk_size = config.chunk;
-        std::thread::Builder::new().name(format!("pty-{id}-out")).spawn(move || {
-            // Output waits until the reply announcing this terminal is queued (see `start`).
-            let _ = start_rx.recv();
-            let mut buf = vec![0u8; chunk_size];
-            loop {
-                let n = match reader.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => n,
-                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-                    // Unix PTYs report EIO once the child side is closed.
-                    Err(_) => break,
-                };
-                let mut frame = Vec::with_capacity(4 + n);
-                frame.extend_from_slice(&id.to_be_bytes());
-                frame.extend_from_slice(&buf[..n]);
-                if tx.send(Event::Data(frame)).is_err() {
-                    break;
+        std::thread::Builder::new()
+            .name(format!("pty-{id}-out"))
+            .spawn(move || {
+                // Output waits until the reply announcing this terminal is queued (see `start`).
+                let _ = start_rx.recv();
+                let mut buf = vec![0u8; chunk_size];
+                loop {
+                    let n = match reader.read(&mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => n,
+                        Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                        // Unix PTYs report EIO once the child side is closed.
+                        Err(_) => break,
+                    };
+                    let mut frame = Vec::with_capacity(4 + n);
+                    frame.extend_from_slice(&id.to_be_bytes());
+                    frame.extend_from_slice(&buf[..n]);
+                    if tx.send(Event::Data(frame)).is_err() {
+                        break;
+                    }
+                    if let Some(r) = &recorder {
+                        r.record("out", &buf[..n]);
+                    }
+                    flow.forwarded(&buf[..n]);
+                    if flow.is_closed() {
+                        break;
+                    }
                 }
-                if let Some(r) = &recorder {
-                    r.record("out", &buf[..n]);
-                }
-                flow.forwarded(&buf[..n]);
-                if flow.is_closed() {
-                    break;
-                }
-            }
-            // The PTY closes before waiting for the program: on macOS a program can't finish exiting
-            // while its terminal still holds output nobody reads, so holding it here would leave both
-            // waiting on each other (and the program alive, stuck exiting).
-            drop(reader);
-            let code = status_rx.recv().ok().flatten();
-            let _ = tx.send(Event::Exit(ExitInfo { term: id, code, stats: flow.stats() }));
-        })?;
+                // The PTY closes before waiting for the program: on macOS a program can't finish exiting
+                // while its terminal still holds output nobody reads, so holding it here would leave both
+                // waiting on each other (and the program alive, stuck exiting).
+                drop(reader);
+                let code = status_rx.recv().ok().flatten();
+                let _ = tx.send(Event::Exit(ExitInfo {
+                    term: id,
+                    code,
+                    stats: flow.stats(),
+                }));
+            })?;
 
         Ok(term)
     }
@@ -390,7 +431,12 @@ impl Terminal {
 
     pub fn resize(&self, cols: u16, rows: u16) -> Result<()> {
         if let Some(master) = self.master.lock().unwrap().as_ref() {
-            master.resize(PtySize { rows, cols, pixel_width: 0, pixel_height: 0 })?;
+            master.resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })?;
         }
         Ok(())
     }
@@ -414,7 +460,10 @@ impl Terminal {
         {
             // The program leads its own session, so its process group has its pid.
             let group = self.pid? as libc::pid_t;
-            std::thread::Builder::new().name("pty-end".into()).spawn(move || end_group(group)).ok()
+            std::thread::Builder::new()
+                .name("pty-end".into())
+                .spawn(move || end_group(group))
+                .ok()
         }
         #[cfg(not(unix))]
         None
@@ -437,7 +486,10 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let dir = tempfile::tempdir().unwrap();
         let pid_file = dir.path().join("child");
-        let script = format!("trap '' HUP; sleep 60 & echo $! > {}; wait", pid_file.display());
+        let script = format!(
+            "trap '' HUP; sleep 60 & echo $! > {}; wait",
+            pid_file.display()
+        );
         let req = OpenRequest {
             cols: 80,
             rows: 24,
@@ -445,7 +497,11 @@ mod tests {
             cwd: None,
             env: BTreeMap::new(),
         };
-        let config = FlowConfig { high: 1 << 20, low: 1 << 18, chunk: 4096 };
+        let config = FlowConfig {
+            high: 1 << 20,
+            low: 1 << 18,
+            chunk: 4096,
+        };
         let term = Terminal::spawn(1, req, dir.path(), config, tx).unwrap();
         term.start();
         let pid = term.pid.unwrap();
@@ -453,7 +509,11 @@ mod tests {
         while !pid_file.exists() && started.elapsed().as_secs() < 5 {
             std::thread::sleep(std::time::Duration::from_millis(20));
         }
-        let child: u32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+        let child: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         assert!(alive(pid) && alive(child));
         term.close().unwrap().join().unwrap();
         // The program is reaped by its waiter thread; give it a moment.
@@ -474,8 +534,18 @@ mod tests {
             "trap 'head -c 4000000 /dev/zero | tr \\0 x; exit 0' HUP TERM; touch {}; while :; do sleep 1; done",
             ready.display()
         );
-        let req = OpenRequest { cols: 80, rows: 24, cmd: Some(vec!["sh".into(), "-c".into(), script]), cwd: None, env: BTreeMap::new() };
-        let config = FlowConfig { high: 1 << 20, low: 1 << 18, chunk: 4096 };
+        let req = OpenRequest {
+            cols: 80,
+            rows: 24,
+            cmd: Some(vec!["sh".into(), "-c".into(), script]),
+            cwd: None,
+            env: BTreeMap::new(),
+        };
+        let config = FlowConfig {
+            high: 1 << 20,
+            low: 1 << 18,
+            chunk: 4096,
+        };
         let term = Terminal::spawn(1, req, dir.path(), config, tx).unwrap();
         term.start();
         let pid = term.pid.unwrap();

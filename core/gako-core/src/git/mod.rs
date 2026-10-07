@@ -40,7 +40,10 @@ pub struct Git {
 
 impl Git {
     pub fn new(max_processes: usize, timeout: Duration) -> Git {
-        Git { permits: Arc::new(Semaphore::new(max_processes.max(1))), timeout }
+        Git {
+            permits: Arc::new(Semaphore::new(max_processes.max(1))),
+            timeout,
+        }
     }
 
     /// `git <args>` in `dir`, returning stdout. Fails on a non-zero exit, with git's stderr.
@@ -52,7 +55,11 @@ impl Git {
             // Never prompt, and never take optional locks (status would otherwise refresh the
             // index and trigger our own file watcher).
             // The login shell's PATH, so hooks find the tools they call.
-            .envs(crate::shellenv::get().get("PATH").map(|p| ("PATH", p.as_str())))
+            .envs(
+                crate::shellenv::get()
+                    .get("PATH")
+                    .map(|p| ("PATH", p.as_str())),
+            )
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0")
             .stdin(Stdio::null())
@@ -66,7 +73,11 @@ impl Git {
             .await
             .with_context(|| format!("git {} timed out", args.join(" ")))??;
         if !out.status.success() {
-            bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
+            bail!(
+                "git {}: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
         }
         Ok(out.stdout)
     }
@@ -74,8 +85,24 @@ impl Git {
 
 /// A repo's status, plus the operation in progress. Untracked entries for nested repos (which git
 /// shows as untracked folders) are dropped: they're repos of their own.
-pub async fn status(git: &Git, repo: &Repo, nested: &[PathBuf], untracked_limit: usize) -> Result<RepoStatus> {
-    let out = git.run(&repo.root, &["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"]).await?;
+pub async fn status(
+    git: &Git,
+    repo: &Repo,
+    nested: &[PathBuf],
+    untracked_limit: usize,
+) -> Result<RepoStatus> {
+    let out = git
+        .run(
+            &repo.root,
+            &[
+                "status",
+                "--porcelain=v2",
+                "-z",
+                "--branch",
+                "--untracked-files=all",
+            ],
+        )
+        .await?;
     let mut st = status::parse(&out, untracked_limit);
     let nested_rel: Vec<String> = nested
         .iter()
@@ -83,9 +110,15 @@ pub async fn status(git: &Git, repo: &Repo, nested: &[PathBuf], untracked_limit:
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .collect();
     st.entries.retain(|e| {
-        !(e.untracked && nested_rel.iter().any(|n| e.path.trim_end_matches('/') == n || e.path.starts_with(&format!("{n}/"))))
+        !(e.untracked
+            && nested_rel
+                .iter()
+                .any(|n| e.path.trim_end_matches('/') == n || e.path.starts_with(&format!("{n}/"))))
     });
-    Ok(RepoStatus { status: st, operation: discover::operation(&repo.git_dir) })
+    Ok(RepoStatus {
+        status: st,
+        operation: discover::operation(&repo.git_dir),
+    })
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -105,7 +138,13 @@ pub enum Rev<'a> {
 
 /// A file's content at a revision; `None` when it doesn't exist there. Content is capped at
 /// `limit` bytes; binary content is reported, not returned.
-pub async fn file(git: &Git, repo: &Path, rev: Rev<'_>, path: &str, limit: usize) -> Result<Option<FileContent>> {
+pub async fn file(
+    git: &Git,
+    repo: &Path,
+    rev: Rev<'_>,
+    path: &str,
+    limit: usize,
+) -> Result<Option<FileContent>> {
     let bytes = match rev {
         Rev::WorkTree => match tokio::fs::read(repo.join(path)).await {
             Ok(b) => b,
@@ -127,14 +166,26 @@ pub async fn file(git: &Git, repo: &Path, rev: Rev<'_>, path: &str, limit: usize
     let size = bytes.len();
     let binary = bytes.iter().take(8000).any(|&b| b == 0);
     let truncated = size > limit;
-    let text = if binary { String::new() } else { String::from_utf8_lossy(&bytes[..size.min(limit)]).into_owned() };
-    Ok(Some(FileContent { text, size, binary, truncated }))
+    let text = if binary {
+        String::new()
+    } else {
+        String::from_utf8_lossy(&bytes[..size.min(limit)]).into_owned()
+    };
+    Ok(Some(FileContent {
+        text,
+        size,
+        binary,
+        truncated,
+    }))
 }
 
 fn is_missing(e: &anyhow::Error) -> bool {
     let m = e.to_string();
-    m.contains("does not exist") || m.contains("exists on disk, but not in") || m.contains("invalid object name")
-        || m.contains("bad revision") || m.contains("unknown revision")
+    m.contains("does not exist")
+        || m.contains("exists on disk, but not in")
+        || m.contains("invalid object name")
+        || m.contains("bad revision")
+        || m.contains("unknown revision")
 }
 
 #[derive(Debug, Serialize)]
@@ -165,11 +216,23 @@ const END: char = '\x1e';
 pub async fn log(git: &Git, repo: &Path, skip: usize, limit: usize) -> Result<Vec<Commit>> {
     let format = format!("--format=%H{SEP}%P{SEP}%an{SEP}%ae{SEP}%at{SEP}%s{END}");
     let out = match git
-        .run(repo, &["log", &format, &format!("--skip={skip}"), &format!("--max-count={limit}"), "HEAD", "--"])
+        .run(
+            repo,
+            &[
+                "log",
+                &format,
+                &format!("--skip={skip}"),
+                &format!("--max-count={limit}"),
+                "HEAD",
+                "--",
+            ],
+        )
         .await
     {
         Ok(o) => o,
-        Err(e) if is_missing(&e) || e.to_string().contains("does not have any commits") => return Ok(Vec::new()),
+        Err(e) if is_missing(&e) || e.to_string().contains("does not have any commits") => {
+            return Ok(Vec::new());
+        }
         Err(e) => return Err(e),
     };
     Ok(String::from_utf8_lossy(&out)
@@ -215,13 +278,31 @@ pub async fn show_commit(git: &Git, repo: &Path, hash: &str) -> Result<CommitDet
     let format = format!("--format=%H{SEP}%P{SEP}%an{SEP}%ae{SEP}%at{SEP}%cn{SEP}%B{END}");
     let out = git.run(repo, &["show", "-s", &format, hash, "--"]).await?;
     let text = String::from_utf8_lossy(&out);
-    let f: Vec<&str> = text.trim_end().trim_end_matches(END).splitn(7, SEP).collect();
+    let f: Vec<&str> = text
+        .trim_end()
+        .trim_end_matches(END)
+        .splitn(7, SEP)
+        .collect();
     if f.len() != 7 {
         bail!("unexpected git show output");
     }
     // --root shows the first commit's files too; -m with --first-parent covers merges.
     let names = git
-        .run(repo, &["diff-tree", "-r", "-z", "--root", "--name-status", "-M", "-m", "--first-parent", "--no-commit-id", hash])
+        .run(
+            repo,
+            &[
+                "diff-tree",
+                "-r",
+                "-z",
+                "--root",
+                "--name-status",
+                "-M",
+                "-m",
+                "--first-parent",
+                "--no-commit-id",
+                hash,
+            ],
+        )
         .await?;
     let names = String::from_utf8_lossy(&names);
     let mut tokens = names.split('\0').filter(|t| !t.is_empty());
@@ -231,10 +312,18 @@ pub async fn show_commit(git: &Git, repo: &Path, hash: &str) -> Result<CommitDet
         if matches!(status, 'R' | 'C') {
             let orig = tokens.next().map(String::from);
             if let Some(path) = tokens.next() {
-                files.push(CommitFile { status, path: path.into(), orig_path: orig });
+                files.push(CommitFile {
+                    status,
+                    path: path.into(),
+                    orig_path: orig,
+                });
             }
         } else if let Some(path) = tokens.next() {
-            files.push(CommitFile { status, path: path.into(), orig_path: None });
+            files.push(CommitFile {
+                status,
+                path: path.into(),
+                orig_path: None,
+            });
         }
     }
     Ok(CommitDetails {
@@ -276,7 +365,11 @@ pub async fn remote(repo: &Path, action: &str) -> Result<()> {
         .await
         .with_context(|| format!("git {} timed out after two minutes", args.join(" ")))??;
     if !out.status.success() {
-        bail!("git {}: {}", args.join(" "), String::from_utf8_lossy(&out.stderr).trim());
+        bail!(
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
     }
     Ok(())
 }
@@ -293,26 +386,62 @@ pub enum Revert {
 }
 
 /// Throws away a file's changes (VS Code's "Discard Changes"); `path` is relative to the repo.
-pub async fn revert(git: &Git, repo: &Path, what: Revert, path: &str, orig_path: Option<&str>) -> Result<()> {
+pub async fn revert(
+    git: &Git,
+    repo: &Path,
+    what: Revert,
+    path: &str,
+    orig_path: Option<&str>,
+) -> Result<()> {
     match what {
         Revert::Changes => {
-            git.run(repo, &["restore", "--worktree", "--", path]).await?;
+            git.run(repo, &["restore", "--worktree", "--", path])
+                .await?;
         }
         Revert::Untracked => {
             // Only a file git lists as untracked is deleted, which also keeps the path inside the repo.
-            let out = git.run(repo, &["ls-files", "--others", "--exclude-standard", "-z", "--", path]).await?;
+            let out = git
+                .run(
+                    repo,
+                    &[
+                        "ls-files",
+                        "--others",
+                        "--exclude-standard",
+                        "-z",
+                        "--",
+                        path,
+                    ],
+                )
+                .await?;
             if !out.split(|&b| b == 0).any(|p| p == path.as_bytes()) {
                 bail!("{path} isn't an untracked file");
             }
-            tokio::fs::remove_file(repo.join(path)).await.with_context(|| format!("deleting {path}"))?;
+            tokio::fs::remove_file(repo.join(path))
+                .await
+                .with_context(|| format!("deleting {path}"))?;
         }
         Revert::Staged => {
             for p in std::iter::once(path).chain(orig_path) {
-                let in_head = git.run(repo, &["cat-file", "-e", &format!("HEAD:{p}")]).await.is_ok();
+                let in_head = git
+                    .run(repo, &["cat-file", "-e", &format!("HEAD:{p}")])
+                    .await
+                    .is_ok();
                 if in_head {
-                    git.run(repo, &["restore", "--source=HEAD", "--staged", "--worktree", "--", p]).await?;
+                    git.run(
+                        repo,
+                        &[
+                            "restore",
+                            "--source=HEAD",
+                            "--staged",
+                            "--worktree",
+                            "--",
+                            p,
+                        ],
+                    )
+                    .await?;
                 } else {
-                    git.run(repo, &["rm", "-q", "--cached", "--ignore-unmatch", "--", p]).await?;
+                    git.run(repo, &["rm", "-q", "--cached", "--ignore-unmatch", "--", p])
+                        .await?;
                     match tokio::fs::remove_file(repo.join(p)).await {
                         Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
                             return Err(anyhow::Error::from(e).context(format!("deleting {p}")));
@@ -338,7 +467,16 @@ pub struct Branches {
 /// The branches a repo can switch to.
 pub async fn branches(git: &Git, repo: &Path) -> Result<Branches> {
     let out = git
-        .run(repo, &["for-each-ref", "--sort=-committerdate", "--format=%(refname)%09%(symref)", "refs/heads", "refs/remotes"])
+        .run(
+            repo,
+            &[
+                "for-each-ref",
+                "--sort=-committerdate",
+                "--format=%(refname)%09%(symref)",
+                "refs/heads",
+                "refs/remotes",
+            ],
+        )
         .await?;
     let mut b = Branches::default();
     let mut remote = Vec::new();
@@ -353,7 +491,13 @@ pub async fn branches(git: &Git, repo: &Path) -> Result<Branches> {
             remote.push(n.to_string());
         }
     }
-    b.remote = remote.into_iter().filter(|r| r.split_once('/').is_none_or(|(_, n)| !b.local.iter().any(|l| l == n))).collect();
+    b.remote = remote
+        .into_iter()
+        .filter(|r| {
+            r.split_once('/')
+                .is_none_or(|(_, n)| !b.local.iter().any(|l| l == n))
+        })
+        .collect();
     Ok(b)
 }
 
@@ -361,7 +505,12 @@ pub async fn branches(git: &Git, repo: &Path) -> Result<Branches> {
 /// Git refuses when uncommitted changes would be overwritten, and says so.
 pub async fn switch(git: &Git, repo: &Path, branch: &str, remote: bool) -> Result<()> {
     let refname = format!("refs/{}/{branch}", if remote { "remotes" } else { "heads" });
-    if branch.starts_with('-') || git.run(repo, &["show-ref", "--verify", "--quiet", &refname]).await.is_err() {
+    if branch.starts_with('-')
+        || git
+            .run(repo, &["show-ref", "--verify", "--quiet", &refname])
+            .await
+            .is_err()
+    {
         bail!("there's no branch {branch}");
     }
     if remote {

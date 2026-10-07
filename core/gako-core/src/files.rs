@@ -81,8 +81,15 @@ fn plain(p: &str) -> Option<String> {
     };
     const RESERVED: &[&str] = &["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"];
     let bad = |name: &str| {
-        let stem = name.split('.').next().unwrap_or(name).trim_end().to_ascii_uppercase();
-        let numbered = stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit();
+        let stem = name
+            .split('.')
+            .next()
+            .unwrap_or(name)
+            .trim_end()
+            .to_ascii_uppercase();
+        let numbered = stem.len() == 4
+            && (stem.starts_with("COM") || stem.starts_with("LPT"))
+            && stem.as_bytes()[3].is_ascii_digit();
         name.ends_with('.') || name.ends_with(' ') || RESERVED.contains(&stem.as_str()) || numbered
     };
     (s.len() < 260 && !s.split('\\').skip(1).any(|n| !n.is_empty() && bad(n))).then_some(s)
@@ -133,10 +140,18 @@ pub fn list(dir: &Path) -> Result<Listing> {
             Kind::File
         };
         let repo = kind == Kind::Dir && path.join(".git").exists();
-        entries.push(Entry { ignored: !kept.contains(&path), name, path, kind, repo });
+        entries.push(Entry {
+            ignored: !kept.contains(&path),
+            name,
+            path,
+            kind,
+            repo,
+        });
     }
     entries.sort_by(|a, b| {
-        (a.kind != Kind::Dir).cmp(&(b.kind != Kind::Dir)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        (a.kind != Kind::Dir)
+            .cmp(&(b.kind != Kind::Dir))
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     let omitted = entries.len().saturating_sub(MAX_ENTRIES);
     entries.truncate(MAX_ENTRIES);
@@ -148,8 +163,17 @@ pub async fn read(path: &Path, limit: usize) -> Result<FileContent> {
     let bytes = tokio::fs::read(path).await?;
     let size = bytes.len();
     let binary = bytes.iter().take(8000).any(|&b| b == 0);
-    let text = if binary { String::new() } else { String::from_utf8_lossy(&bytes[..size.min(limit)]).into_owned() };
-    Ok(FileContent { text, size, binary, truncated: size > limit })
+    let text = if binary {
+        String::new()
+    } else {
+        String::from_utf8_lossy(&bytes[..size.min(limit)]).into_owned()
+    };
+    Ok(FileContent {
+        text,
+        size,
+        binary,
+        truncated: size > limit,
+    })
 }
 
 #[cfg(test)]
@@ -158,8 +182,14 @@ mod tests {
 
     #[test]
     fn verbatim_windows_paths_lose_their_prefix_when_safe() {
-        assert_eq!(plain(r"\\?\C:\dev\projects").as_deref(), Some(r"C:\dev\projects"));
-        assert_eq!(plain(r"\\?\UNC\server\share\x").as_deref(), Some(r"\\server\share\x"));
+        assert_eq!(
+            plain(r"\\?\C:\dev\projects").as_deref(),
+            Some(r"C:\dev\projects")
+        );
+        assert_eq!(
+            plain(r"\\?\UNC\server\share\x").as_deref(),
+            Some(r"\\server\share\x")
+        );
         // Names the plain form would read differently, paths too long for it, other prefixes,
         // and paths that aren't verbatim at all stay as they are.
         assert_eq!(plain(r"\\?\C:\dev\nul.txt"), None);
@@ -172,7 +202,13 @@ mod tests {
     }
 
     fn git(dir: &Path, args: &[&str]) {
-        let ok = std::process::Command::new("git").args(args).current_dir(dir).output().unwrap().status.success();
+        let ok = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .unwrap()
+            .status
+            .success();
         assert!(ok, "git {args:?}");
     }
 
@@ -189,7 +225,11 @@ mod tests {
         std::fs::write(d.join("Main.rs"), "x").unwrap();
         std::fs::write(d.join(".editorconfig"), "x").unwrap();
         let l = list(&d).unwrap();
-        let names: Vec<(&str, bool, bool)> = l.entries.iter().map(|e| (e.name.as_str(), e.ignored, e.repo)).collect();
+        let names: Vec<(&str, bool, bool)> = l
+            .entries
+            .iter()
+            .map(|e| (e.name.as_str(), e.ignored, e.repo))
+            .collect();
         assert_eq!(
             names,
             vec![

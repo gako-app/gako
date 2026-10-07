@@ -46,19 +46,33 @@ pub fn repo_at(dir: &Path) -> Option<Repo> {
     let dot_git = dir.join(".git");
     let meta = std::fs::symlink_metadata(&dot_git).ok()?;
     if meta.is_dir() {
-        return Some(Repo { root: dir.to_path_buf(), git_dir: dot_git, kind: RepoKind::Normal });
+        return Some(Repo {
+            root: dir.to_path_buf(),
+            git_dir: dot_git,
+            kind: RepoKind::Normal,
+        });
     }
     let text = std::fs::read_to_string(&dot_git).ok()?;
     let target = text.lines().find_map(|l| l.strip_prefix("gitdir:"))?.trim();
     let git_dir = dir.join(target);
     let git_dir = crate::files::canonical(&git_dir).unwrap_or(git_dir);
-    let parts: Vec<_> = git_dir.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
-    let kind = if parts.windows(2).any(|w| w[0] == ".git" && w[1] == "worktrees") {
+    let parts: Vec<_> = git_dir
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+    let kind = if parts
+        .windows(2)
+        .any(|w| w[0] == ".git" && w[1] == "worktrees")
+    {
         RepoKind::Worktree
     } else {
         RepoKind::Submodule
     };
-    Some(Repo { root: dir.to_path_buf(), git_dir, kind })
+    Some(Repo {
+        root: dir.to_path_buf(),
+        git_dir,
+        kind,
+    })
 }
 
 /// Repos in `roots` and up to `depth` levels below them, sorted by path.
@@ -119,14 +133,30 @@ mod tests {
 
     fn git(dir: &Path, args: &[&str]) {
         let out = Command::new("git")
-            .args(["-c", "init.defaultBranch=main", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args([
+                "-c",
+                "init.defaultBranch=main",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+            ])
             .args(args)
             .current_dir(dir)
             .env("GIT_CONFIG_NOSYSTEM", "1")
-            .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
             .output()
             .expect("git");
-        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
 
     fn init(dir: &Path) {
@@ -145,13 +175,43 @@ mod tests {
         init(&base.join("services/auth"));
         init(&base.join("services/deep/er/too-deep"));
         init(&base.join("node_modules/pkg"));
-        git(&base.join("services/auth"), &["worktree", "add", "-q", &base.join("wt").to_string_lossy(), "-b", "feature"]);
-        git(&base, &["-c", "protocol.file.allow=always", "submodule", "add", "-q", &base.join("services/auth").to_string_lossy(), "vendor/auth"]);
+        git(
+            &base.join("services/auth"),
+            &[
+                "worktree",
+                "add",
+                "-q",
+                &base.join("wt").to_string_lossy(),
+                "-b",
+                "feature",
+            ],
+        );
+        git(
+            &base,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "-q",
+                &base.join("services/auth").to_string_lossy(),
+                "vendor/auth",
+            ],
+        );
 
         let repos = discover(&[base.clone()], 2, &["node_modules".into()]);
         let rel: Vec<_> = repos
             .iter()
-            .map(|r| (r.root.strip_prefix(&base).unwrap().to_string_lossy().replace('\\', "/"), r.kind))
+            .map(|r| {
+                (
+                    r.root
+                        .strip_prefix(&base)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/"),
+                    r.kind,
+                )
+            })
             .collect();
         assert_eq!(
             rel,
@@ -162,7 +222,11 @@ mod tests {
                 ("wt".into(), RepoKind::Worktree),
             ]
         );
-        assert!(repos[3].git_dir.ends_with("services/auth/.git/worktrees/wt"));
+        assert!(
+            repos[3]
+                .git_dir
+                .ends_with("services/auth/.git/worktrees/wt")
+        );
     }
 
     #[test]

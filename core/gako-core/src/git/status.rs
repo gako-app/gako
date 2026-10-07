@@ -171,7 +171,11 @@ pub fn parse(out: &[u8], untracked_limit: usize) -> Status {
                     st.untracked_omitted += 1;
                     None
                 } else {
-                    Some(Entry { path: rec[2..].to_string(), untracked: true, ..Entry::default() })
+                    Some(Entry {
+                        path: rec[2..].to_string(),
+                        untracked: true,
+                        ..Entry::default()
+                    })
                 }
             }
             _ => None,
@@ -189,7 +193,10 @@ mod tests {
     use super::*;
 
     fn z(records: &[&str]) -> Vec<u8> {
-        records.iter().flat_map(|r| r.bytes().chain(std::iter::once(0))).collect()
+        records
+            .iter()
+            .flat_map(|r| r.bytes().chain(std::iter::once(0)))
+            .collect()
     }
 
     const H: &str = "100644 100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222";
@@ -197,7 +204,12 @@ mod tests {
     #[test]
     fn branch_headers() {
         let st = parse(
-            &z(&["# branch.oid abc123", "# branch.head main", "# branch.upstream origin/main", "# branch.ab +2 -3"]),
+            &z(&[
+                "# branch.oid abc123",
+                "# branch.head main",
+                "# branch.upstream origin/main",
+                "# branch.ab +2 -3",
+            ]),
             10,
         );
         assert_eq!(st.oid.as_deref(), Some("abc123"));
@@ -212,7 +224,14 @@ mod tests {
         assert_eq!((unborn.oid, unborn.branch.as_deref()), (None, Some("main")));
         let detached = parse(&z(&["# branch.oid abc", "# branch.head (detached)"]), 10);
         assert_eq!(detached.branch, None);
-        let gone = parse(&z(&["# branch.oid abc", "# branch.head main", "# branch.upstream origin/old"]), 10);
+        let gone = parse(
+            &z(&[
+                "# branch.oid abc",
+                "# branch.head main",
+                "# branch.upstream origin/old",
+            ]),
+            10,
+        );
         assert!(gone.upstream_gone);
     }
 
@@ -231,9 +250,15 @@ mod tests {
         );
         assert_eq!(st.entries.len(), 5);
         assert_eq!(st.entries[0].path, "src/a file.ts");
-        assert_eq!((st.entries[0].index, st.entries[0].worktree), (Some(Change::Modified), None));
+        assert_eq!(
+            (st.entries[0].index, st.entries[0].worktree),
+            (Some(Change::Modified), None)
+        );
         assert_eq!(st.entries[1].worktree, Some(Change::Deleted));
-        assert_eq!((st.entries[2].index, st.entries[2].worktree), (Some(Change::Added), Some(Change::Modified)));
+        assert_eq!(
+            (st.entries[2].index, st.entries[2].worktree),
+            (Some(Change::Added), Some(Change::Modified))
+        );
         assert_eq!(st.entries[3].path, "renamed to.ts");
         assert_eq!(st.entries[3].orig_path.as_deref(), Some("renamed from.ts"));
         assert_eq!(st.entries[3].index, Some(Change::Renamed));
@@ -243,7 +268,13 @@ mod tests {
     #[test]
     fn conflicts() {
         let u = "100644 100644 100644 100644 1111111111111111111111111111111111111111 2222222222222222222222222222222222222222 3333333333333333333333333333333333333333";
-        let st = parse(&z(&[&format!("u UU N... {u} both.ts"), &format!("u DU N... {u} deleted by us.ts")]), 10);
+        let st = parse(
+            &z(&[
+                &format!("u UU N... {u} both.ts"),
+                &format!("u DU N... {u} deleted by us.ts"),
+            ]),
+            10,
+        );
         assert_eq!(st.entries[0].conflict, Some(Conflict::BothModified));
         assert_eq!(st.entries[1].conflict, Some(Conflict::DeletedByUs));
         assert_eq!(st.entries[1].path, "deleted by us.ts");

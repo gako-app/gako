@@ -36,10 +36,46 @@ use std::time::{Duration, Instant};
 const PANEL_ROWS: u16 = 8;
 const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const WORDS: [&str; 40] = [
-    "the", "agent", "reads", "src/lib.rs", "and", "updates", "parser", "tests", "→", "✓", "build",
-    "passes", "refactor", "handler", "config", "日本語", "retry", "cache", "fn", "struct", "impl",
-    "returns", "Result", "error", "async", "await", "commit", "diff", "branch", "merge", "repo",
-    "lint", "fmt", "check", "query", "index", "token", "stream", "render", "frame",
+    "the",
+    "agent",
+    "reads",
+    "src/lib.rs",
+    "and",
+    "updates",
+    "parser",
+    "tests",
+    "→",
+    "✓",
+    "build",
+    "passes",
+    "refactor",
+    "handler",
+    "config",
+    "日本語",
+    "retry",
+    "cache",
+    "fn",
+    "struct",
+    "impl",
+    "returns",
+    "Result",
+    "error",
+    "async",
+    "await",
+    "commit",
+    "diff",
+    "branch",
+    "merge",
+    "repo",
+    "lint",
+    "fmt",
+    "check",
+    "query",
+    "index",
+    "token",
+    "stream",
+    "render",
+    "frame",
 ];
 const COLORS: [u8; 6] = [31, 32, 33, 34, 35, 36];
 
@@ -61,7 +97,9 @@ fn main() {
 }
 
 fn flag(args: &[String], name: &str) -> Option<String> {
-    args.iter().position(|a| a == name).and_then(|i| args.get(i + 1).cloned())
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|i| args.get(i + 1).cloned())
 }
 
 // --- dump ---------------------------------------------------------------------------------------
@@ -90,7 +128,11 @@ fn dump(args: &[String]) -> Result<(), String> {
     if files.is_empty() {
         return Err("dump needs a file".into());
     }
-    let secs = |name| flag(args, name).and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+    let secs = |name| {
+        flag(args, name)
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(0.0)
+    };
     let (delay, pause) = (secs("--delay"), secs("--pause"));
     let report = flag(args, "--report").map(PathBuf::from);
     let report_dir = flag(args, "--report-dir").map(PathBuf::from);
@@ -113,8 +155,11 @@ fn dump(args: &[String]) -> Result<(), String> {
         }
         out.flush().map_err(|e| e.to_string())?;
         let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
-        write!(out, "\x1b[0m\r\n[dump] done file={path} bytes={bytes} elapsed_ms={elapsed_ms:.0}\r\n")
-            .map_err(|e| e.to_string())?;
+        write!(
+            out,
+            "\x1b[0m\r\n[dump] done file={path} bytes={bytes} elapsed_ms={elapsed_ms:.0}\r\n"
+        )
+        .map_err(|e| e.to_string())?;
         out.flush().map_err(|e| e.to_string())?;
         drop(out);
         let json = format!(
@@ -126,7 +171,10 @@ fn dump(args: &[String]) -> Result<(), String> {
         let target = match (&report, &report_dir) {
             (Some(r), _) if files.len() == 1 => Some(r.clone()),
             (_, Some(dir)) => {
-                let stem = std::path::Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or("dump");
+                let stem = std::path::Path::new(path)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("dump");
                 Some(dir.join(format!("dump-{stem}.json")))
             }
             _ => None,
@@ -142,7 +190,10 @@ fn dump(args: &[String]) -> Result<(), String> {
 /// `stamp FILE`: writes the current time, so a script can tell when a task started.
 fn stamp(args: &[String]) -> Result<(), String> {
     let path = args.first().ok_or("stamp needs a file")?;
-    write_report(std::path::Path::new(path), &format!("{{\"epochMs\":{:.0}}}\n", epoch_ms()))
+    write_report(
+        std::path::Path::new(path),
+        &format!("{{\"epochMs\":{:.0}}}\n", epoch_ms()),
+    )
 }
 
 // --- run ----------------------------------------------------------------------------------------
@@ -215,13 +266,25 @@ impl Ui {
         };
         let rows = [
             ("─".repeat(w.min(200)), "\x1b[38;5;240m".to_string()),
-            (format!("{spin} Working… ({secs}s · frame {})", self.frame), "\x1b[38;5;208m".to_string()),
+            (
+                format!("{spin} Working… ({secs}s · frame {})", self.frame),
+                "\x1b[38;5;208m".to_string(),
+            ),
             (format!("  {bar} {pct:3}%"), "\x1b[32m".to_string()),
             (format!("  ⎿ Reading {file}"), "\x1b[36m".to_string()),
-            (format!("  ⎿ {} lines streamed", self.seq), "\x1b[36m".to_string()),
-            (format!("  ⎿ cache hits {}", self.frame * 3 % 997), "\x1b[36m".to_string()),
+            (
+                format!("  ⎿ {} lines streamed", self.seq),
+                "\x1b[36m".to_string(),
+            ),
+            (
+                format!("  ⎿ cache hits {}", self.frame * 3 % 997),
+                "\x1b[36m".to_string(),
+            ),
             (format!("> {tail}"), "\x1b[1m".to_string()),
-            (format!("tui-load · {}x{} · seq {}", self.cols, self.rows, self.seq), "\x1b[2m".to_string()),
+            (
+                format!("tui-load · {}x{} · seq {}", self.cols, self.rows, self.seq),
+                "\x1b[2m".to_string(),
+            ),
         ];
         rows.into_iter()
             .map(|(plain, sgr)| {
@@ -286,8 +349,12 @@ impl Ui {
 
 fn run(args: &[String]) -> Result<(), String> {
     let seconds: Option<f64> = flag(args, "--seconds").and_then(|s| s.parse().ok());
-    let seed: u64 = flag(args, "--seed").and_then(|s| s.parse().ok()).unwrap_or(1);
-    let fps: f64 = flag(args, "--fps").and_then(|s| s.parse().ok()).unwrap_or(30.0);
+    let seed: u64 = flag(args, "--seed")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+    let fps: f64 = flag(args, "--fps")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(30.0);
     let report = flag(args, "--report").map(PathBuf::from);
 
     let (cols, rows) = terminal_size().unwrap_or((80, 24));
@@ -412,7 +479,11 @@ fn run(args: &[String]) -> Result<(), String> {
         let _ = crossterm::terminal::disable_raw_mode();
     }
     if let Some(report) = report {
-        let panel: Vec<String> = ui.panel().into_iter().map(|(plain, _)| json_string(&plain)).collect();
+        let panel: Vec<String> = ui
+            .panel()
+            .into_iter()
+            .map(|(plain, _)| json_string(&plain))
+            .collect();
         let json = format!(
             "{{\"seed\":{seed},\"frames\":{},\"lastSeq\":{},\"cols\":{},\"rows\":{},\"bytes\":{},\
              \"elapsedMs\":{:.1},\"panel\":[{}]}}\n",
@@ -431,7 +502,9 @@ fn run(args: &[String]) -> Result<(), String> {
 
 /// The terminal's size, or nothing when it reports zero (no terminal, or one with no size yet).
 fn terminal_size() -> Option<(u16, u16)> {
-    crossterm::terminal::size().ok().filter(|&(c, r)| c > 0 && r > 0)
+    crossterm::terminal::size()
+        .ok()
+        .filter(|&(c, r)| c > 0 && r > 0)
 }
 
 fn display_width(s: &str) -> usize {
@@ -441,7 +514,9 @@ fn display_width(s: &str) -> usize {
 /// Enough of wcwidth for the characters tui-load prints.
 fn char_width(c: char) -> usize {
     match c as u32 {
-        0x1100..=0x115f | 0x2e80..=0xa4cf | 0xac00..=0xd7a3 | 0xf900..=0xfaff | 0xff00..=0xff60 => 2,
+        0x1100..=0x115f | 0x2e80..=0xa4cf | 0xac00..=0xd7a3 | 0xf900..=0xfaff | 0xff00..=0xff60 => {
+            2
+        }
         _ => 1,
     }
 }
@@ -461,7 +536,11 @@ fn crc32(bytes: &[u8]) -> u32 {
     for &b in bytes {
         crc ^= b as u32;
         for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
         }
     }
     !crc

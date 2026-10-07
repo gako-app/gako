@@ -71,7 +71,9 @@ impl State {
                 if let Some(dir) = path.parent() {
                     std::fs::create_dir_all(dir)?;
                 }
-                Some(Mutex::new(OpenOptions::new().create(true).append(true).open(path)?))
+                Some(Mutex::new(
+                    OpenOptions::new().create(true).append(true).open(path)?,
+                ))
             }
             None => None,
         };
@@ -88,7 +90,13 @@ impl State {
 
     /// Kills every terminal's child process. Called before the core exits.
     pub fn shutdown(&self) {
-        let terms: Vec<_> = self.terminals.lock().unwrap().drain().map(|(_, t)| t).collect();
+        let terms: Vec<_> = self
+            .terminals
+            .lock()
+            .unwrap()
+            .drain()
+            .map(|(_, t)| t)
+            .collect();
         // The core exits next, so it waits until each program is gone (a few seconds at most).
         let ending: Vec<_> = terms.iter().filter_map(|t| t.close()).collect();
         for e in ending {
@@ -168,9 +176,10 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
     // The error type is tungstenite's, fixed by its callback signature.
     #[allow(clippy::result_large_err)]
     let ws = tokio_tungstenite::accept_hdr_async(stream, move |req: &Request, resp: Response| {
-        let token = req.uri().query().and_then(|q| {
-            q.split('&').find_map(|kv| kv.strip_prefix("token="))
-        });
+        let token = req
+            .uri()
+            .query()
+            .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("token=")));
         match token {
             Some(t) if constant_time_eq(t.as_bytes(), expected.as_bytes()) => Ok(resp),
             _ => {
@@ -257,7 +266,11 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                         tokio::spawn(async move {
                             let result = match ws {
                                 Some(ws) if m.starts_with("git") => git_request(&ws, &m, p).await,
-                                Some(ws) if m.starts_with("search") || m.starts_with("symbol") || m == "findFiles" => {
+                                Some(ws)
+                                    if m.starts_with("search")
+                                        || m.starts_with("symbol")
+                                        || m == "findFiles" =>
+                                {
                                     search_request(&ws, &m, p).await
                                 }
                                 Some(ws) => file_request(&ws, &m, p).await,
@@ -278,7 +291,9 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                         };
                         let _ = tx.send(Event::Text(reply.to_string()));
                         if m == "termOpen"
-                            && let Some(t) = reply["r"]["term"].as_u64().and_then(|id| mine.get(&(id as u32)))
+                            && let Some(t) = reply["r"]["term"]
+                                .as_u64()
+                                .and_then(|id| mine.get(&(id as u32)))
                         {
                             t.start();
                         }
@@ -312,7 +327,11 @@ async fn request(
         "hello" => Ok(state.hello()),
         "readFile" => {
             let path: PathBuf = serde_json::from_value(params["path"].clone())?;
-            let path = if path.is_absolute() { path } else { state.root.join(path) };
+            let path = if path.is_absolute() {
+                path
+            } else {
+                state.root.join(path)
+            };
             let bytes = tokio::fs::read(&path).await?;
             Ok(json!({"text": String::from_utf8_lossy(&bytes)}))
         }
@@ -331,7 +350,9 @@ async fn request(
         }
         "termStats" => {
             let id: u32 = serde_json::from_value(params["term"].clone())?;
-            let t = mine.get(&id).ok_or_else(|| anyhow::anyhow!("no terminal {id}"))?;
+            let t = mine
+                .get(&id)
+                .ok_or_else(|| anyhow::anyhow!("no terminal {id}"))?;
             Ok(serde_json::to_value(t.stats())?)
         }
         "agents" => {
@@ -357,7 +378,9 @@ async fn request(
                 Some(ws) => ws.settings.editor.clone(),
                 None => settings::load(settings::user_file().as_deref(), None)?.editor,
             };
-            let (found, default) = tokio::task::spawn_blocking(move || crate::editors::offered(setting.as_ref())).await?;
+            let (found, default) =
+                tokio::task::spawn_blocking(move || crate::editors::offered(setting.as_ref()))
+                    .await?;
             Ok(json!({"editors": found, "default": default}))
         }
         "workspaceOpen" => {
@@ -365,9 +388,9 @@ async fn request(
             let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;
             let base = match given {
                 Some(b) => b,
-                None => settings::load(user.as_deref(), None)?
-                    .base
-                    .ok_or_else(|| anyhow::anyhow!("no base folder given, and none in the settings"))?,
+                None => settings::load(user.as_deref(), None)?.base.ok_or_else(|| {
+                    anyhow::anyhow!("no base folder given, and none in the settings")
+                })?,
             };
             let settings = settings::load(user.as_deref(), Some(&base))?;
             // The previous workspace, if any, stops watching when it's dropped here.
@@ -392,8 +415,12 @@ fn param<T: serde::de::DeserializeOwned>(params: &Value, key: &str) -> Result<T>
 /// Search and go-to-file. Results stream as `{"t":"searchResults"}` events; the reply carries the
 /// totals once the search ends.
 async fn search_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result<Value> {
-    let kind = params["scope"]["kind"].as_str().unwrap_or("all").to_string();
-    let chosen: Vec<String> = serde_json::from_value(params["scope"]["repos"].clone()).unwrap_or_default();
+    let kind = params["scope"]["kind"]
+        .as_str()
+        .unwrap_or("all")
+        .to_string();
+    let chosen: Vec<String> =
+        serde_json::from_value(params["scope"]["repos"].clone()).unwrap_or_default();
     match method {
         "search" => {
             let query: crate::search::Query = param(&params, "query")?;
@@ -415,15 +442,23 @@ async fn search_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Res
         }
         "symbolDefinitions" => {
             let name: String = param(&params, "name")?;
-            let from: Option<PathBuf> = serde_json::from_value(params["path"].clone()).unwrap_or(None);
-            let Some(index) = ws.symbols() else { return Ok(json!({"ready": false, "symbols": []})) };
+            let from: Option<PathBuf> =
+                serde_json::from_value(params["path"].clone()).unwrap_or(None);
+            let Some(index) = ws.symbols() else {
+                return Ok(json!({"ready": false, "symbols": []}));
+            };
             let repo = from.as_deref().and_then(|p| ws.repo_of(p));
-            let found = index.read().unwrap().definitions(&name, from.as_deref(), repo.as_deref());
+            let found = index
+                .read()
+                .unwrap()
+                .definitions(&name, from.as_deref(), repo.as_deref());
             Ok(json!({"ready": true, "symbols": found}))
         }
         "symbolSearch" => {
             let query: String = param(&params, "query")?;
-            let Some(index) = ws.symbols() else { return Ok(json!({"ready": false, "symbols": []})) };
+            let Some(index) = ws.symbols() else {
+                return Ok(json!({"ready": false, "symbols": []}));
+            };
             let found: Vec<Value> = index
                 .read()
                 .unwrap()
@@ -437,7 +472,10 @@ async fn search_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Res
             let query: String = param(&params, "query")?;
             let files = ws.files().await;
             let base = ws.base.clone();
-            let hits = tokio::task::spawn_blocking(move || crate::search::find_files(&files, &base, &query, 50)).await?;
+            let hits = tokio::task::spawn_blocking(move || {
+                crate::search::find_files(&files, &base, &query, 50)
+            })
+            .await?;
             Ok(serde_json::to_value(hits)?)
         }
         _ => anyhow::bail!("unknown method {method}"),
@@ -453,14 +491,22 @@ async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Resul
             let listing = tokio::task::spawn_blocking(move || crate::files::list(&path)).await??;
             Ok(serde_json::to_value(listing)?)
         }
-        "fileRead" => Ok(serde_json::to_value(crate::files::read(&path, 50 << 20).await?)?),
+        "fileRead" => Ok(serde_json::to_value(
+            crate::files::read(&path, 50 << 20).await?,
+        )?),
         "openInEditor" => {
             let line = params["line"].as_u64().unwrap_or(1) as u32;
             let column = params["column"].as_u64().unwrap_or(1) as u32;
             let choice = params["editor"].as_str().map(str::to_string);
             let setting = ws.settings.editor.clone();
             let cmd = tokio::task::spawn_blocking(move || -> Result<Vec<String>> {
-                let cmd = crate::editors::command(setting.as_ref(), choice.as_deref(), &path, line, column)?;
+                let cmd = crate::editors::command(
+                    setting.as_ref(),
+                    choice.as_deref(),
+                    &path,
+                    line,
+                    column,
+                )?;
                 crate::editors::spawn(&cmd)?;
                 Ok(cmd)
             })
@@ -487,16 +533,22 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
                 "index" => git::Rev::Index,
                 c => git::Rev::Commit(c),
             };
-            Ok(serde_json::to_value(git::file(g, &repo.root, rev, &path, 50 << 20).await?)?)
+            Ok(serde_json::to_value(
+                git::file(g, &repo.root, rev, &path, 50 << 20).await?,
+            )?)
         }
         "gitLog" => {
             let skip = params["skip"].as_u64().unwrap_or(0) as usize;
             let limit = params["limit"].as_u64().unwrap_or(200) as usize;
-            Ok(serde_json::to_value(git::log(g, &repo.root, skip, limit).await?)?)
+            Ok(serde_json::to_value(
+                git::log(g, &repo.root, skip, limit).await?,
+            )?)
         }
         "gitCommitDetails" => {
             let hash: String = param(&params, "hash")?;
-            Ok(serde_json::to_value(git::show_commit(g, &repo.root, &hash).await?)?)
+            Ok(serde_json::to_value(
+                git::show_commit(g, &repo.root, &hash).await?,
+            )?)
         }
         "gitRevert" => {
             let path: String = param(&params, "path")?;

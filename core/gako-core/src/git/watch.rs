@@ -42,13 +42,21 @@ pub struct Changes {
     pub rediscover: bool,
 }
 
-pub fn watch(paths: &[PathBuf], debounce: Duration, tx: UnboundedSender<Vec<PathBuf>>) -> Result<Watcher> {
+pub fn watch(
+    paths: &[PathBuf],
+    debounce: Duration,
+    tx: UnboundedSender<Vec<PathBuf>>,
+) -> Result<Watcher> {
     let mut debouncer = new_debouncer(debounce, None, move |result: DebounceEventResult| {
         if let Ok(events) = result {
             if std::env::var_os("GAKO_DEBUG_WATCH").is_some()
                 && let Some(first) = events.first()
             {
-                eprintln!("watch: batch of {} events, first arrived {} ms ago", events.len(), first.time.elapsed().as_millis());
+                eprintln!(
+                    "watch: batch of {} events, first arrived {} ms ago",
+                    events.len(),
+                    first.time.elapsed().as_millis()
+                );
             }
             let paths: Vec<PathBuf> = events.into_iter().flat_map(|e| e.event.paths).collect();
             if !paths.is_empty() {
@@ -59,15 +67,22 @@ pub fn watch(paths: &[PathBuf], debounce: Duration, tx: UnboundedSender<Vec<Path
     for p in paths {
         debouncer.watch(p, RecursiveMode::Recursive)?;
     }
-    Ok(Watcher { _debouncer: debouncer })
+    Ok(Watcher {
+        _debouncer: debouncer,
+    })
 }
 
 /// Paths inside a git dir that never change a repo's status: object storage, reflogs, and lock
 /// files (the rename that releases a lock shows up as a change to the real file).
 fn irrelevant_in_git_dir(rel: &Path) -> bool {
-    let first = rel.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned());
-    matches!(first.as_deref(), Some("objects" | "logs" | "hooks" | "info" | "lfs"))
-        || rel.extension().is_some_and(|e| e == "lock")
+    let first = rel
+        .components()
+        .next()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned());
+    matches!(
+        first.as_deref(),
+        Some("objects" | "logs" | "hooks" | "info" | "lfs")
+    ) || rel.extension().is_some_and(|e| e == "lock")
 }
 
 /// Maps changed paths to the repos they belong to: the innermost repo whose working tree or git
@@ -84,7 +99,9 @@ pub fn classify(repos: &[Repo], paths: &[PathBuf]) -> Changes {
             .filter(|(_, r)| path.starts_with(&r.git_dir))
             .max_by_key(|(_, r)| r.git_dir.components().count());
         let hit = match in_git_dir {
-            Some((i, r)) => (!irrelevant_in_git_dir(path.strip_prefix(&r.git_dir).unwrap_or(path))).then_some(i),
+            Some((i, r)) => {
+                (!irrelevant_in_git_dir(path.strip_prefix(&r.git_dir).unwrap_or(path))).then_some(i)
+            }
             None => repos
                 .iter()
                 .enumerate()
@@ -108,7 +125,11 @@ mod tests {
     use crate::git::RepoKind;
 
     fn repo(root: &str, git_dir: &str) -> Repo {
-        Repo { root: root.into(), git_dir: git_dir.into(), kind: RepoKind::Normal }
+        Repo {
+            root: root.into(),
+            git_dir: git_dir.into(),
+            kind: RepoKind::Normal,
+        }
     }
 
     #[test]
@@ -120,11 +141,26 @@ mod tests {
         ];
         let p = |s: &str| PathBuf::from(s);
         assert_eq!(classify(&repos, &[p("/w/README.md")]).repos, vec![0]);
-        assert_eq!(classify(&repos, &[p("/w/services/auth/src/a.ts")]).repos, vec![1]);
-        assert_eq!(classify(&repos, &[p("/w/services/auth/.git/index")]).repos, vec![1]);
-        assert_eq!(classify(&repos, &[p("/w/services/auth/.git/objects/ab/cdef")]).repos, Vec::<usize>::new());
-        assert_eq!(classify(&repos, &[p("/w/services/auth/.git/index.lock")]).repos, Vec::<usize>::new());
-        assert_eq!(classify(&repos, &[p("/w/services/auth/.git/worktrees/wt/HEAD")]).repos, vec![2]);
+        assert_eq!(
+            classify(&repos, &[p("/w/services/auth/src/a.ts")]).repos,
+            vec![1]
+        );
+        assert_eq!(
+            classify(&repos, &[p("/w/services/auth/.git/index")]).repos,
+            vec![1]
+        );
+        assert_eq!(
+            classify(&repos, &[p("/w/services/auth/.git/objects/ab/cdef")]).repos,
+            Vec::<usize>::new()
+        );
+        assert_eq!(
+            classify(&repos, &[p("/w/services/auth/.git/index.lock")]).repos,
+            Vec::<usize>::new()
+        );
+        assert_eq!(
+            classify(&repos, &[p("/w/services/auth/.git/worktrees/wt/HEAD")]).repos,
+            vec![2]
+        );
         let c = classify(&repos, &[p("/w/new/.git"), p("/w/a"), p("/w/b")]);
         assert!(c.rediscover);
         assert_eq!(c.repos, vec![0]);

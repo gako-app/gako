@@ -60,14 +60,22 @@ fn main() -> Result<()> {
     // app keeps none.
     let log_path = match std::env::var_os("GAKO_LOG") {
         Some(p) => Some(PathBuf::from(p)),
-        None => is_repo(&root).then(|| root.join("bench").join("out").join("logs").join("gako.jsonl")),
+        None => is_repo(&root).then(|| {
+            root.join("bench")
+                .join("out")
+                .join("logs")
+                .join("gako.jsonl")
+        }),
     };
     let flow = FlowConfig {
         high: env_usize("GAKO_FLOW_HIGH", 512 * 1024),
         low: env_usize("GAKO_FLOW_LOW", 128 * 1024),
         chunk: env_usize("GAKO_CHUNK", 32 * 1024),
     };
-    let port: u16 = std::env::var("GAKO_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(0);
+    let port: u16 = std::env::var("GAKO_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(0);
 
     // Settings and scenario for the frontend: every GAKO_* variable except the token.
     let env: BTreeMap<String, String> = std::env::vars()
@@ -75,7 +83,13 @@ fn main() -> Result<()> {
         .collect();
 
     shellenv::start();
-    let state = Arc::new(State::new(root, token.clone(), log_path.as_deref(), flow, env)?);
+    let state = Arc::new(State::new(
+        root,
+        token.clone(),
+        log_path.as_deref(),
+        flow,
+        env,
+    )?);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -153,7 +167,10 @@ fn random_token() -> Result<String> {
 }
 
 fn env_usize(name: &str, default: usize) -> usize {
-    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 /// Walks up from the executable and the working directory to the folder holding `docs/PLAN.md`.
@@ -163,8 +180,10 @@ fn is_repo(p: &Path) -> bool {
 
 fn find_root() -> Option<PathBuf> {
     let starts = [std::env::current_exe().ok(), std::env::current_dir().ok()];
-    starts
-        .into_iter()
-        .flatten()
-        .find_map(|start| start.ancestors().find(|p| is_repo(p)).map(Path::to_path_buf))
+    starts.into_iter().flatten().find_map(|start| {
+        start
+            .ancestors()
+            .find(|p| is_repo(p))
+            .map(Path::to_path_buf)
+    })
 }

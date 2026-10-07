@@ -22,14 +22,30 @@ use super::*;
 
 fn sh_git(dir: &Path, args: &[&str]) -> String {
     let out = std::process::Command::new("git")
-        .args(["-c", "init.defaultBranch=main", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+        .args([
+            "-c",
+            "init.defaultBranch=main",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+        ])
         .args(args)
         .current_dir(dir)
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", if cfg!(windows) { "NUL" } else { "/dev/null" })
+        .env(
+            "GIT_CONFIG_GLOBAL",
+            if cfg!(windows) { "NUL" } else { "/dev/null" },
+        )
         .output()
         .expect("git");
-    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
@@ -46,7 +62,14 @@ fn configure(dir: &Path) {
     sh_git(dir, &["config", "user.name", "t"]);
     sh_git(dir, &["config", "user.email", "t@t"]);
     sh_git(dir, &["config", "commit.gpgsign", "false"]);
-    sh_git(dir, &["config", "core.hooksPath", if cfg!(windows) { "NUL" } else { "/dev/null" }]);
+    sh_git(
+        dir,
+        &[
+            "config",
+            "core.hooksPath",
+            if cfg!(windows) { "NUL" } else { "/dev/null" },
+        ],
+    );
 }
 
 fn init(dir: &Path) {
@@ -88,12 +111,37 @@ async fn contents_log_and_commit_details() {
     std::fs::write(dir.join("a.txt"), "three\n").unwrap();
 
     let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
-    assert_eq!((st.entries[0].index, st.entries[0].worktree), (Some(Change::Modified), Some(Change::Modified)));
+    assert_eq!(
+        (st.entries[0].index, st.entries[0].worktree),
+        (Some(Change::Modified), Some(Change::Modified))
+    );
     let text = |c: Option<FileContent>| c.unwrap().text;
-    assert_eq!(text(file(&g, &dir, Rev::Commit("HEAD"), "a.txt", 1 << 20).await.unwrap()), "one\n");
-    assert_eq!(text(file(&g, &dir, Rev::Index, "a.txt", 1 << 20).await.unwrap()), "two\n");
-    assert_eq!(text(file(&g, &dir, Rev::WorkTree, "a.txt", 1 << 20).await.unwrap()), "three\n");
-    assert!(file(&g, &dir, Rev::Commit("HEAD"), "missing.txt", 1 << 20).await.unwrap().is_none());
+    assert_eq!(
+        text(
+            file(&g, &dir, Rev::Commit("HEAD"), "a.txt", 1 << 20)
+                .await
+                .unwrap()
+        ),
+        "one\n"
+    );
+    assert_eq!(
+        text(file(&g, &dir, Rev::Index, "a.txt", 1 << 20).await.unwrap()),
+        "two\n"
+    );
+    assert_eq!(
+        text(
+            file(&g, &dir, Rev::WorkTree, "a.txt", 1 << 20)
+                .await
+                .unwrap()
+        ),
+        "three\n"
+    );
+    assert!(
+        file(&g, &dir, Rev::Commit("HEAD"), "missing.txt", 1 << 20)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let commits = log(&g, &dir, 0, 10).await.unwrap();
     assert_eq!(commits.len(), 1);
@@ -102,7 +150,10 @@ async fn contents_log_and_commit_details() {
     let details = show_commit(&g, &dir, head.trim()).await.unwrap();
     assert_eq!(details.message, "First\n\nWith a body.");
     assert_eq!(details.files.len(), 1);
-    assert_eq!((details.files[0].status, details.files[0].path.as_str()), ('A', "a.txt"));
+    assert_eq!(
+        (details.files[0].status, details.files[0].path.as_str()),
+        ('A', "a.txt")
+    );
 }
 
 #[tokio::test]
@@ -120,15 +171,31 @@ async fn merge_conflict_and_rename() {
     sh_git(&dir, &["checkout", "-q", "main"]);
     std::fs::write(dir.join("f.txt"), "main\n").unwrap();
     sh_git(&dir, &["commit", "-q", "-am", "main"]);
-    let _ = std::process::Command::new("git").args(["merge", "other"]).current_dir(&dir).output();
+    let _ = std::process::Command::new("git")
+        .args(["merge", "other"])
+        .current_dir(&dir)
+        .output();
     sh_git(&dir, &["mv", "old name.txt", "new name.txt"]);
 
     let st = status(&git(), &repo(&dir), &[], 100).await.unwrap();
     assert_eq!(st.operation, Some(Operation::Merge));
-    let f = st.status.entries.iter().find(|e| e.path == "f.txt").unwrap();
+    let f = st
+        .status
+        .entries
+        .iter()
+        .find(|e| e.path == "f.txt")
+        .unwrap();
     assert_eq!(f.conflict, Some(Conflict::BothModified));
-    let r = st.status.entries.iter().find(|e| e.path == "new name.txt").unwrap();
-    assert_eq!((r.index, r.orig_path.as_deref()), (Some(Change::Renamed), Some("old name.txt")));
+    let r = st
+        .status
+        .entries
+        .iter()
+        .find(|e| e.path == "new name.txt")
+        .unwrap();
+    assert_eq!(
+        (r.index, r.orig_path.as_deref()),
+        (Some(Change::Renamed), Some("old name.txt"))
+    );
 }
 
 #[tokio::test]
@@ -186,7 +253,10 @@ async fn fetch_pull_and_push_against_a_remote() {
     assert_eq!(s.status.ahead, 0);
 
     sh_git(&b, &["fetch", "-q"]);
-    sh_git(&b, &["checkout", "-q", "-b", "main", "--track", "origin/main"]);
+    sh_git(
+        &b,
+        &["checkout", "-q", "-b", "main", "--track", "origin/main"],
+    );
     sh_git(&b, &["reset", "-q", "--hard", "HEAD~1"]);
     remote(&b, "fetch").await.unwrap();
     let s = status(&git(), &repo(&b), &[], 100).await.unwrap();
@@ -222,27 +292,48 @@ async fn revert_each_kind_of_change() {
     std::fs::write(dir.join("a.txt"), "two\n").unwrap();
     sh_git(&dir, &["add", "a.txt"]);
     std::fs::write(dir.join("a.txt"), "three\n").unwrap();
-    revert(&g, &dir, Revert::Changes, "a.txt", None).await.unwrap();
+    revert(&g, &dir, Revert::Changes, "a.txt", None)
+        .await
+        .unwrap();
     assert_eq!(read("a.txt").as_deref(), Some("two\n"));
     // Staged changes go back to HEAD, in the index too.
-    revert(&g, &dir, Revert::Staged, "a.txt", None).await.unwrap();
+    revert(&g, &dir, Revert::Staged, "a.txt", None)
+        .await
+        .unwrap();
     assert_eq!(read("a.txt").as_deref(), Some("one\n"));
 
     // A staged new file is unstaged and deleted; a rename puts the old name back.
     std::fs::write(dir.join("new.txt"), "new\n").unwrap();
     sh_git(&dir, &["add", "new.txt"]);
-    revert(&g, &dir, Revert::Staged, "new.txt", None).await.unwrap();
+    revert(&g, &dir, Revert::Staged, "new.txt", None)
+        .await
+        .unwrap();
     assert_eq!(read("new.txt"), None);
     sh_git(&dir, &["mv", "old.txt", "moved.txt"]);
-    revert(&g, &dir, Revert::Staged, "moved.txt", Some("old.txt")).await.unwrap();
-    assert_eq!((read("moved.txt"), read("old.txt").as_deref()), (None, Some("old\n")));
+    revert(&g, &dir, Revert::Staged, "moved.txt", Some("old.txt"))
+        .await
+        .unwrap();
+    assert_eq!(
+        (read("moved.txt"), read("old.txt").as_deref()),
+        (None, Some("old\n"))
+    );
 
     // An untracked file is deleted; a tracked one never is, nor anything outside the repo.
     std::fs::write(dir.join("scratch.txt"), "x").unwrap();
-    revert(&g, &dir, Revert::Untracked, "scratch.txt", None).await.unwrap();
+    revert(&g, &dir, Revert::Untracked, "scratch.txt", None)
+        .await
+        .unwrap();
     assert_eq!(read("scratch.txt"), None);
-    assert!(revert(&g, &dir, Revert::Untracked, "a.txt", None).await.is_err());
-    assert!(revert(&g, &dir, Revert::Untracked, "../outside", None).await.is_err());
+    assert!(
+        revert(&g, &dir, Revert::Untracked, "a.txt", None)
+            .await
+            .is_err()
+    );
+    assert!(
+        revert(&g, &dir, Revert::Untracked, "../outside", None)
+            .await
+            .is_err()
+    );
     let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
     assert!(st.entries.is_empty(), "{:?}", st.entries);
 }
@@ -267,14 +358,21 @@ async fn list_and_switch_branches() {
     let mut b = branches(&g, &dir).await.unwrap();
     b.local.sort();
     assert_eq!(b.local, vec!["local-only", "main", "shared"]);
-    assert_eq!(b.remote, vec!["origin/feature"], "remote branches with a local one are left out");
+    assert_eq!(
+        b.remote,
+        vec!["origin/feature"],
+        "remote branches with a local one are left out"
+    );
 
     switch(&g, &dir, "local-only", false).await.unwrap();
     let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
     assert_eq!(st.branch.as_deref(), Some("local-only"));
     switch(&g, &dir, "origin/feature", true).await.unwrap();
     let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
-    assert_eq!((st.branch.as_deref(), st.upstream.as_deref()), (Some("feature"), Some("origin/feature")));
+    assert_eq!(
+        (st.branch.as_deref(), st.upstream.as_deref()),
+        (Some("feature"), Some("origin/feature"))
+    );
     assert!(switch(&g, &dir, "nope", false).await.is_err());
     assert!(switch(&g, &dir, "--detach", false).await.is_err());
 }

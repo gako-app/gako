@@ -78,14 +78,30 @@ impl Default for Settings {
             untracked_limit: 2000,
             git_timeout_secs: 30,
             agents: vec![
-                Agent { name: "Claude Code".into(), command: vec!["claude".into()] },
-                Agent { name: "Codex".into(), command: vec!["codex".into()] },
-                Agent { name: "OpenCode".into(), command: vec!["opencode".into()] },
-                Agent { name: "Pi".into(), command: vec!["pi".into()] },
+                Agent {
+                    name: "Claude Code".into(),
+                    command: vec!["claude".into()],
+                },
+                Agent {
+                    name: "Codex".into(),
+                    command: vec!["codex".into()],
+                },
+                Agent {
+                    name: "OpenCode".into(),
+                    command: vec!["opencode".into()],
+                },
+                Agent {
+                    name: "Pi".into(),
+                    command: vec!["pi".into()],
+                },
             ],
             terminal_scrollback: 1000,
             terminal_renderer: "webgl".into(),
-            terminal_font_size: if cfg!(target_os = "macos") { 12.0 } else { 14.0 },
+            terminal_font_size: if cfg!(target_os = "macos") {
+                12.0
+            } else {
+                14.0
+            },
             terminal_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
             terminal_max_combining: 4,
             editor: None,
@@ -96,7 +112,11 @@ impl Default for Settings {
 
 /// `~/Library/Application Support/Gako`, `%APPDATA%\Gako` or `~/.config/gako`.
 pub fn user_file() -> Option<PathBuf> {
-    let name = if cfg!(any(target_os = "macos", windows)) { "Gako" } else { "gako" };
+    let name = if cfg!(any(target_os = "macos", windows)) {
+        "Gako"
+    } else {
+        "gako"
+    };
     dirs::config_dir().map(|d| d.join(name).join("settings.json"))
 }
 
@@ -106,7 +126,9 @@ pub fn workspace_file(base: &Path) -> PathBuf {
 
 fn read(path: &Path) -> Result<Option<Value>> {
     match std::fs::read_to_string(path) {
-        Ok(text) => Ok(Some(serde_json::from_str(&text).with_context(|| format!("{}", path.display()))?)),
+        Ok(text) => Ok(Some(
+            serde_json::from_str(&text).with_context(|| format!("{}", path.display()))?,
+        )),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e).with_context(|| format!("{}", path.display())),
     }
@@ -130,7 +152,11 @@ pub fn load(user: Option<&Path>, base: Option<&Path>) -> Result<Settings> {
     if let Some(v) = user.map(read).transpose()?.flatten() {
         merge(&mut value, v);
     }
-    if let Some(v) = base.map(|b| read(&workspace_file(b))).transpose()?.flatten() {
+    if let Some(v) = base
+        .map(|b| read(&workspace_file(b)))
+        .transpose()?
+        .flatten()
+    {
         merge(&mut value, v);
     }
     let mut settings: Settings = serde_json::from_value(value).context("settings")?;

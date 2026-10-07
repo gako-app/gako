@@ -58,7 +58,13 @@ pub fn get() -> &'static HashMap<String, String> {
 }
 
 fn resolve() -> Option<HashMap<String, String>> {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| if cfg!(target_os = "macos") { "/bin/zsh".into() } else { "/bin/bash".into() });
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+        if cfg!(target_os = "macos") {
+            "/bin/zsh".into()
+        } else {
+            "/bin/bash".into()
+        }
+    });
     let script = format!("printf '%s' '{MARKER}'; env -0; printf '%s' '{MARKER}'");
     let mut child = Command::new(&shell)
         .args(["-l", "-i", "-c", &script])
@@ -78,9 +84,13 @@ fn resolve() -> Option<HashMap<String, String>> {
     loop {
         match child.try_wait() {
             Ok(Some(_)) => break,
-            Ok(None) if started.elapsed() < TIMEOUT => std::thread::sleep(Duration::from_millis(20)),
+            Ok(None) if started.elapsed() < TIMEOUT => {
+                std::thread::sleep(Duration::from_millis(20))
+            }
             _ => {
-                eprintln!("gako-core: reading the login shell's environment took too long; using the app's own");
+                eprintln!(
+                    "gako-core: reading the login shell's environment took too long; using the app's own"
+                );
                 let _ = child.kill();
                 let _ = child.wait();
                 return None;
@@ -95,7 +105,15 @@ fn resolve() -> Option<HashMap<String, String>> {
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
     // Shell-session details that don't belong to the programs Gako starts.
-    for k in ["GAKO_RESOLVING_SHELL_ENV", "SHLVL", "PWD", "OLDPWD", "_", "TERM_PROGRAM", "TERM_SESSION_ID"] {
+    for k in [
+        "GAKO_RESOLVING_SHELL_ENV",
+        "SHLVL",
+        "PWD",
+        "OLDPWD",
+        "_",
+        "TERM_PROGRAM",
+        "TERM_SESSION_ID",
+    ] {
         env.remove(k);
     }
     env.retain(|k, _| !k.starts_with("GAKO_"));
@@ -108,14 +126,23 @@ pub fn which(program: &str) -> Option<std::path::PathBuf> {
     if p.components().count() > 1 {
         return p.is_file().then(|| p.to_path_buf());
     }
-    let path = get().get("PATH").cloned().or_else(|| std::env::var("PATH").ok())?;
+    let path = get()
+        .get("PATH")
+        .cloned()
+        .or_else(|| std::env::var("PATH").ok())?;
     let exts: Vec<String> = if cfg!(windows) {
         // Only names with one of these extensions run (an extensionless file beside an npm `.cmd`
         // is a script for Git Bash); a name that already has one is tried as it is first.
-        let mut exts: Vec<String> =
-            std::env::var("PATHEXT").unwrap_or_else(|_| ".EXE;.CMD;.BAT".into()).split(';').map(|e| e.to_lowercase()).collect();
+        let mut exts: Vec<String> = std::env::var("PATHEXT")
+            .unwrap_or_else(|_| ".EXE;.CMD;.BAT".into())
+            .split(';')
+            .map(|e| e.to_lowercase())
+            .collect();
         let lower = program.to_lowercase();
-        if exts.iter().any(|e| !e.is_empty() && lower.ends_with(e.as_str())) {
+        if exts
+            .iter()
+            .any(|e| !e.is_empty() && lower.ends_with(e.as_str()))
+        {
             exts.insert(0, String::new());
         }
         exts
@@ -137,7 +164,8 @@ fn is_executable(path: &std::path::Path) -> bool {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        path.metadata().is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        path.metadata()
+            .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
     }
     #[cfg(not(unix))]
     {

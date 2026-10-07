@@ -113,7 +113,10 @@ fn walker(root: &Path, scope: &Scope, query: &Query) -> Result<ignore::WalkParal
         overrides.add(&format!("!{g}"))?;
     }
     let skip = scope.inner(root);
-    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(8);
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(8);
     Ok(ignore::WalkBuilder::new(root)
         .hidden(false)
         .git_ignore(!query.include_ignored)
@@ -125,7 +128,9 @@ fn walker(root: &Path, scope: &Scope, query: &Query) -> Result<ignore::WalkParal
         .max_filesize(Some(MAX_FILESIZE))
         .overrides(overrides.build()?)
         .threads(threads)
-        .filter_entry(move |e| e.file_name() != ".git" && !skip.iter().any(|s| s.as_path() == e.path()))
+        .filter_entry(move |e| {
+            e.file_name() != ".git" && !skip.iter().any(|s| s.as_path() == e.path())
+        })
         .build_parallel())
 }
 
@@ -162,19 +167,34 @@ fn line_match(matcher: &impl Matcher, line_no: u64, line: &str) -> LineMatch {
         .filter(|(s, e)| *s >= start && *e <= end)
         .map(|(s, e)| (utf16_len(&line[start..*s]), utf16_len(&line[start..*e])))
         .collect();
-    let columns = byte_ranges.iter().map(|(s, e)| (utf16_len(&line[..*s]), utf16_len(&line[..*e]))).collect();
+    let columns = byte_ranges
+        .iter()
+        .map(|(s, e)| (utf16_len(&line[..*s]), utf16_len(&line[..*e])))
+        .collect();
     let prefix = if start > 0 { "…" } else { "" };
     let shift = utf16_len(prefix);
     LineMatch {
         line: line_no,
         text: format!("{prefix}{text}"),
-        ranges: if shift == 0 { ranges } else { ranges.into_iter().map(|(a, b)| (a + shift, b + shift)).collect() },
+        ranges: if shift == 0 {
+            ranges
+        } else {
+            ranges
+                .into_iter()
+                .map(|(a, b)| (a + shift, b + shift))
+                .collect()
+        },
         columns,
     }
 }
 
 /// Searches the scope. `emit` gets batches of results as they're found (at most every 50 ms).
-pub fn search(scope: &Scope, query: &Query, cancel: &AtomicBool, emit: &(dyn Fn(Vec<FileMatches>) + Sync)) -> Result<Stats> {
+pub fn search(
+    scope: &Scope,
+    query: &Query,
+    cancel: &AtomicBool,
+    emit: &(dyn Fn(Vec<FileMatches>) + Sync),
+) -> Result<Stats> {
     let started = Instant::now();
     let matcher = RegexMatcherBuilder::new()
         .case_insensitive(!query.case_sensitive)
@@ -200,7 +220,9 @@ pub fn search(scope: &Scope, query: &Query, cancel: &AtomicBool, emit: &(dyn Fn(
                     Err(mpsc::RecvTimeoutError::Timeout) => {}
                     Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 }
-                if !batch.is_empty() && (last.elapsed() >= Duration::from_millis(50) || batch.len() >= 200) {
+                if !batch.is_empty()
+                    && (last.elapsed() >= Duration::from_millis(50) || batch.len() >= 200)
+                {
                     emit(std::mem::take(&mut batch));
                     last = Instant::now();
                 }
@@ -216,13 +238,19 @@ pub fn search(scope: &Scope, query: &Query, cancel: &AtomicBool, emit: &(dyn Fn(
             walker(root, scope, query)?.run(|| {
                 let tx = tx.clone();
                 let matcher = matcher.clone();
-                let mut searcher = SearcherBuilder::new().binary_detection(BinaryDetection::quit(0)).line_number(true).build();
-                let (matches, files, searched, limit_hit, first_result) = (&matches, &files, &searched, &limit_hit, &first_result);
+                let mut searcher = SearcherBuilder::new()
+                    .binary_detection(BinaryDetection::quit(0))
+                    .line_number(true)
+                    .build();
+                let (matches, files, searched, limit_hit, first_result) =
+                    (&matches, &files, &searched, &limit_hit, &first_result);
                 Box::new(move |entry| {
                     if cancel.load(Ordering::Relaxed) || limit_hit.load(Ordering::Relaxed) {
                         return WalkState::Quit;
                     }
-                    let Ok(entry) = entry else { return WalkState::Continue };
+                    let Ok(entry) = entry else {
+                        return WalkState::Continue;
+                    };
                     if !entry.file_type().is_some_and(|t| t.is_file()) {
                         return WalkState::Continue;
                     }
@@ -239,13 +267,19 @@ pub fn search(scope: &Scope, query: &Query, cancel: &AtomicBool, emit: &(dyn Fn(
                     if found.is_empty() {
                         return WalkState::Continue;
                     }
-                    first_result.lock().unwrap().get_or_insert(started.elapsed().as_secs_f64() * 1000.0);
+                    first_result
+                        .lock()
+                        .unwrap()
+                        .get_or_insert(started.elapsed().as_secs_f64() * 1000.0);
                     let total = matches.fetch_add(found.len(), Ordering::Relaxed) + found.len();
                     let nfiles = files.fetch_add(1, Ordering::Relaxed) + 1;
                     if total >= MAX_MATCHES || nfiles >= MAX_FILES {
                         limit_hit.store(true, Ordering::Relaxed);
                     }
-                    let _ = tx.send(FileMatches { path: entry.into_path(), matches: found });
+                    let _ = tx.send(FileMatches {
+                        path: entry.into_path(),
+                        matches: found,
+                    });
                     WalkState::Continue
                 })
             });
@@ -269,7 +303,9 @@ pub fn search(scope: &Scope, query: &Query, cancel: &AtomicBool, emit: &(dyn Fn(
 pub fn list_files(scope: &Scope) -> Vec<PathBuf> {
     let out = Mutex::new(Vec::new());
     for root in &scope.roots {
-        let Ok(w) = walker(root, scope, &Query::default()) else { continue };
+        let Ok(w) = walker(root, scope, &Query::default()) else {
+            continue;
+        };
         w.run(|| {
             let out = &out;
             Box::new(move |e| {
@@ -298,16 +334,28 @@ pub struct FileHit {
 
 /// Go to file: `query`'s characters as a subsequence of the path, best matches first.
 pub fn find_files(files: &[PathBuf], base: &Path, query: &str, limit: usize) -> Vec<FileHit> {
-    let q: Vec<char> = query.chars().filter(|c| !c.is_whitespace()).flat_map(char::to_lowercase).collect();
+    let q: Vec<char> = query
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .flat_map(char::to_lowercase)
+        .collect();
     if q.is_empty() {
         return Vec::new();
     }
     let mut hits: Vec<FileHit> = files
         .iter()
         .filter_map(|p| {
-            let rel = p.strip_prefix(base).unwrap_or(p).to_string_lossy().replace('\\', "/");
+            let rel = p
+                .strip_prefix(base)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .replace('\\', "/");
             let (score, positions) = fuzzy_score(&rel, &q)?;
-            Some(FileHit { path: p.clone(), score, positions })
+            Some(FileHit {
+                path: p.clone(),
+                score,
+                positions,
+            })
         })
         .collect();
     hits.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.path.cmp(&b.path)));
@@ -324,7 +372,10 @@ pub fn fuzzy_score(path: &str, q: &[char]) -> Option<(i64, Vec<usize>)> {
     if lower.len() != chars.len() {
         return None; // case mapping changed the length; skip rather than misplace highlights
     }
-    let name_start = path.rfind('/').map(|i| path[..=i].chars().count()).unwrap_or(0);
+    let name_start = path
+        .rfind('/')
+        .map(|i| path[..=i].chars().count())
+        .unwrap_or(0);
     // Greedy from the right, so the file name gets the match when it can.
     let mut positions = Vec::with_capacity(q.len());
     let mut j = lower.len();
@@ -341,7 +392,9 @@ pub fn fuzzy_score(path: &str, q: &[char]) -> Option<(i64, Vec<usize>)> {
             score += 15;
         }
         let prev = if i == 0 { '/' } else { chars[i - 1] };
-        if matches!(prev, '/' | '_' | '-' | '.' | ' ') || (prev.is_lowercase() && chars[i].is_uppercase()) {
+        if matches!(prev, '/' | '_' | '-' | '.' | ' ')
+            || (prev.is_lowercase() && chars[i].is_uppercase())
+        {
             score += 20;
         }
         if i >= name_start {
@@ -349,7 +402,10 @@ pub fn fuzzy_score(path: &str, q: &[char]) -> Option<(i64, Vec<usize>)> {
         }
     }
     score -= (chars.len() / 8) as i64;
-    let positions = positions.iter().map(|&i| chars[..i].iter().map(|c| c.len_utf16()).sum()).collect();
+    let positions = positions
+        .iter()
+        .map(|&i| chars[..i].iter().map(|c| c.len_utf16()).sum())
+        .collect();
     Some((score, positions))
 }
 
@@ -359,7 +415,14 @@ mod tests {
 
     fn git_init(dir: &Path) {
         std::fs::create_dir_all(dir).unwrap();
-        assert!(std::process::Command::new("git").args(["init", "-q"]).current_dir(dir).status().unwrap().success());
+        assert!(
+            std::process::Command::new("git")
+                .args(["init", "-q"])
+                .current_dir(dir)
+                .status()
+                .unwrap()
+                .success()
+        );
     }
 
     fn layout() -> (tempfile::TempDir, PathBuf) {
@@ -371,7 +434,11 @@ mod tests {
         std::fs::create_dir_all(base.join("build")).unwrap();
         std::fs::write(base.join("build/out.txt"), "needle in build output\n").unwrap();
         git_init(&base.join("services/auth"));
-        std::fs::write(base.join("services/auth/main.rs"), "fn needle() {}\nlet Needle = 1;\n").unwrap();
+        std::fs::write(
+            base.join("services/auth/main.rs"),
+            "fn needle() {}\nlet Needle = 1;\n",
+        )
+        .unwrap();
         std::fs::write(base.join("services/auth/.gitignore"), "*.log\n").unwrap();
         std::fs::write(base.join("services/auth/debug.log"), "needle in a log\n").unwrap();
         (t, base)
@@ -383,7 +450,10 @@ mod tests {
             let mut f = found.lock().unwrap();
             for fm in batch {
                 for m in fm.matches {
-                    f.push((fm.path.file_name().unwrap().to_string_lossy().into_owned(), m.line));
+                    f.push((
+                        fm.path.file_name().unwrap().to_string_lossy().into_owned(),
+                        m.line,
+                    ));
                 }
             }
         })
@@ -397,42 +467,129 @@ mod tests {
     fn scopes_and_ignore_rules() {
         let (_t, base) = layout();
         let auth = base.join("services/auth");
-        let q = || Query { pattern: "needle".into(), ..Query::default() };
+        let q = || Query {
+            pattern: "needle".into(),
+            ..Query::default()
+        };
         // All: the nested repo is searched as itself, despite the base repo ignoring it.
-        let (all, _) = run(&Scope { roots: vec![base.clone(), auth.clone()], skip: vec![] }, q());
-        assert_eq!(all, vec![("README.md".into(), 1), ("main.rs".into(), 1), ("main.rs".into(), 2)]);
+        let (all, _) = run(
+            &Scope {
+                roots: vec![base.clone(), auth.clone()],
+                skip: vec![],
+            },
+            q(),
+        );
+        assert_eq!(
+            all,
+            vec![
+                ("README.md".into(), 1),
+                ("main.rs".into(), 1),
+                ("main.rs".into(), 2)
+            ]
+        );
         // The base repo only.
-        let (only_base, _) = run(&Scope { roots: vec![base.clone()], skip: vec![auth.clone()] }, q());
+        let (only_base, _) = run(
+            &Scope {
+                roots: vec![base.clone()],
+                skip: vec![auth.clone()],
+            },
+            q(),
+        );
         assert_eq!(only_base, vec![("README.md".into(), 1)]);
         // One nested repo, case-sensitive.
-        let (cs, _) = run(&Scope { roots: vec![auth.clone()], skip: vec![] }, Query { case_sensitive: true, ..q() });
+        let (cs, _) = run(
+            &Scope {
+                roots: vec![auth.clone()],
+                skip: vec![],
+            },
+            Query {
+                case_sensitive: true,
+                ..q()
+            },
+        );
         assert_eq!(cs, vec![("main.rs".into(), 1)]);
         // Ignored files included on request.
-        let (ign, _) = run(&Scope { roots: vec![base.clone(), auth.clone()], skip: vec![] }, Query { include_ignored: true, ..q() });
+        let (ign, _) = run(
+            &Scope {
+                roots: vec![base.clone(), auth.clone()],
+                skip: vec![],
+            },
+            Query {
+                include_ignored: true,
+                ..q()
+            },
+        );
         assert_eq!(ign.len(), 5);
         // The base repo only, with ignored files included: the nested repo still stays out.
-        let (ign_base, _) = run(&Scope { roots: vec![base.clone()], skip: vec![auth.clone()] }, Query { include_ignored: true, ..q() });
-        assert_eq!(ign_base, vec![("README.md".into(), 1), ("out.txt".into(), 1)]);
+        let (ign_base, _) = run(
+            &Scope {
+                roots: vec![base.clone()],
+                skip: vec![auth.clone()],
+            },
+            Query {
+                include_ignored: true,
+                ..q()
+            },
+        );
+        assert_eq!(
+            ign_base,
+            vec![("README.md".into(), 1), ("out.txt".into(), 1)]
+        );
     }
 
     #[test]
     fn regex_word_and_globs() {
         let (_t, base) = layout();
         let auth = base.join("services/auth");
-        let scope = Scope { roots: vec![base.clone(), auth], skip: vec![] };
-        let (re, _) = run(&scope, Query { pattern: r"fn \w+\(".into(), regex: true, ..Query::default() });
+        let scope = Scope {
+            roots: vec![base.clone(), auth],
+            skip: vec![],
+        };
+        let (re, _) = run(
+            &scope,
+            Query {
+                pattern: r"fn \w+\(".into(),
+                regex: true,
+                ..Query::default()
+            },
+        );
         assert_eq!(re, vec![("main.rs".into(), 1)]);
-        let (word, _) = run(&scope, Query { pattern: "needl".into(), whole_word: true, ..Query::default() });
+        let (word, _) = run(
+            &scope,
+            Query {
+                pattern: "needl".into(),
+                whole_word: true,
+                ..Query::default()
+            },
+        );
         assert!(word.is_empty());
-        let (globbed, _) = run(&scope, Query { pattern: "needle".into(), include: vec!["*.md".into()], ..Query::default() });
+        let (globbed, _) = run(
+            &scope,
+            Query {
+                pattern: "needle".into(),
+                include: vec!["*.md".into()],
+                ..Query::default()
+            },
+        );
         assert_eq!(globbed, vec![("README.md".into(), 1)]);
-        let (excluded, _) = run(&scope, Query { pattern: "needle".into(), exclude: vec!["*.rs".into()], ..Query::default() });
+        let (excluded, _) = run(
+            &scope,
+            Query {
+                pattern: "needle".into(),
+                exclude: vec!["*.rs".into()],
+                ..Query::default()
+            },
+        );
         assert_eq!(excluded, vec![("README.md".into(), 1)]);
     }
 
     #[test]
     fn match_ranges_in_utf16() {
-        let m = line_match(&grep_regex::RegexMatcher::new("x").unwrap(), 1, "日本x😀x\n");
+        let m = line_match(
+            &grep_regex::RegexMatcher::new("x").unwrap(),
+            1,
+            "日本x😀x\n",
+        );
         assert_eq!(m.ranges, vec![(2, 3), (5, 6)]);
         assert_eq!(m.columns, m.ranges);
         // A long line is shown as a window around the first match; columns still count from its start.
@@ -445,8 +602,14 @@ mod tests {
     #[test]
     fn fuzzy_prefers_file_names() {
         let base = PathBuf::from("/w");
-        let files: Vec<PathBuf> =
-            ["src/server/handler.rs", "src/home/readme.md", "services/auth/src/user_handler.ts"].iter().map(|p| base.join(p)).collect();
+        let files: Vec<PathBuf> = [
+            "src/server/handler.rs",
+            "src/home/readme.md",
+            "services/auth/src/user_handler.ts",
+        ]
+        .iter()
+        .map(|p| base.join(p))
+        .collect();
         let hits = find_files(&files, &base, "handler", 10);
         assert_eq!(hits.len(), 2);
         assert!(hits[0].path.ends_with("handler.rs"));
