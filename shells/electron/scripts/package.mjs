@@ -18,7 +18,6 @@ const exe = process.platform === 'win32' ? '.exe' : '';
 const core = path.join(root, 'core', 'target', 'release', `gako-core${exe}`);
 const frontend = path.join(root, 'frontend', 'dist');
 const notices = path.join(root, 'THIRD-PARTY-NOTICES.txt');
-const electronDist = path.join(path.dirname(require.resolve('electron/package.json')), 'dist');
 
 for (const [what, p] of [['the core', core], ['the frontend', path.join(frontend, 'index.html')], ['the notices', notices]]) {
   if (!fs.existsSync(p)) {
@@ -42,8 +41,19 @@ const [out] = await packager({
   prune: false,
   // The shell is two files; its dependencies are build tools.
   ignore: [/^\/build($|\/)/, /^\/scripts($|\/)/, /^\/node_modules($|\/)/],
-  // Resources/gako-core, Resources/dist, and the licence notices: Gako's third-party notices and
-  // Electron's own two files (which would otherwise sit beside the app, not in it).
-  extraResource: [core, frontend, notices, path.join(electronDist, 'LICENSE'), path.join(electronDist, 'LICENSES.chromium.html')],
+  // Resources/gako-core, Resources/dist, and Gako's third-party notices.
+  extraResource: [core, frontend, notices],
 });
+
+// Electron's own licence files come with the Electron the packager downloaded, beside the app. On
+// Windows and Linux that's inside the app's folder; on macOS it's outside Gako.app, so they move
+// into its resources, to be carried wherever the app is copied.
+if (process.platform === 'darwin') {
+  const resources = path.join(out, 'Gako.app', 'Contents', 'Resources');
+  for (const f of ['LICENSE', 'LICENSES.chromium.html']) {
+    const from = path.join(out, f);
+    if (fs.existsSync(from)) fs.renameSync(from, path.join(resources, f));
+    else console.warn(`warning: Electron's ${f} wasn't in the package; the app goes without it`);
+  }
+}
 console.log(`packaged: ${out}`);
