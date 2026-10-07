@@ -1,3 +1,17 @@
+// Gako: a workspace app for reviewing and supervising coding agents across many repositories.
+// Copyright (C) 2026 João Sena Ribeiro
+//
+// This program is free software: you can redistribute it and/or modify it under the terms of the
+// GNU Affero General Public License as published by the Free Software Foundation, either version 3
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+// even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License along with this program.
+// If not, see <https://www.gnu.org/licenses/>.
+
 // Navigation by name (phase 5): go to definition (F12, ⌘/Ctrl-click), find references (Shift+F12)
 // and go to symbol (⌘T, Ctrl+T), backed by the core's symbol index. The index resolves by name,
 // not by binding (PLAN.md), so several definitions are offered as a list.

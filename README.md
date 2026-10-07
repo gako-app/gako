@@ -47,3 +47,15 @@ the files packaging uses from it.
 Packaging also regenerates [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt): the npm packages and
 Rust crates Gako includes, with their licences. The app carries it, with Electron's and Chromium's
 own notices, and opens it from the Gako menu (Third-Party Notices…).
+
+## Licence
+
+Gako is free software: you can redistribute it and/or modify it under the terms of the GNU Affero
+General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version. See [LICENSE](LICENSE).
+
+It's distributed in the hope that it will be useful, but without any warranty; without even the
+implied warranty of merchantability or fitness for a particular purpose.
+
+Copyright © 2026 João Sena Ribeiro. The packaged app carries the licence and opens it from the Gako
+menu (Licence…).

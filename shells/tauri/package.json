@@ -1,6 +1,7 @@
 {
   "name": "@gako/tauri",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "scripts": {
     "build": "cargo build --release --manifest-path src-tauri/Cargo.toml",
     "start": "cargo run --release --manifest-path src-tauri/Cargo.toml"

@@ -28,6 +28,9 @@ search and navigation. It never edits code; editing is handed off to an external
   transport layer described in PHASE0.md, so the shell stays replaceable.
 - **Cross-platform from the start:** macOS (primary), Windows (required at work), Linux. Don't use
   platform-specific paths, shells or tools without a fallback for the other two.
+- **Every source file starts with the licence notice** (AGPL-3.0-or-later): copy it from an
+  existing file in the same language, above any doc comment or docstring, below a shebang or
+  `<!doctype html>`.
 - **Ask before** installing system-wide tools or toolchains, downloading anything outside the
   normal package managers' lockfile-driven installs, pushing, or opening pull requests.
 

@@ -2,7 +2,7 @@
 name = "gako-tauri"
 version = "0.0.0"
 edition = "2024"
-license = "UNLICENSED"
+license = "AGPL-3.0-or-later"
 publish = false
 
 [build-dependencies]

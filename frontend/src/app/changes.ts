@@ -1,3 +1,17 @@
+// Gako: a workspace app for reviewing and supervising coding agents across many repositories.
+// Copyright (C) 2026 João Sena Ribeiro
+//
+// This program is free software: you can redistribute it and/or modify it under the terms of the
+// GNU Affero General Public License as published by the Free Software Foundation, either version 3
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+// even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License along with this program.
+// If not, see <https://www.gnu.org/licenses/>.
+
 // Change markers in the file viewer, as VS Code's editor gutter shows them: a bar beside lines added
 // (green) or changed (blue), and a mark where lines were deleted (red), against the last commit, so
 // every change not yet committed, staged or not. Clicking a marker opens the change inline: the

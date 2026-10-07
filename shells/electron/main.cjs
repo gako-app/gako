@@ -1,3 +1,17 @@
+// Gako: a workspace app for reviewing and supervising coding agents across many repositories.
+// Copyright (C) 2026 João Sena Ribeiro
+//
+// This program is free software: you can redistribute it and/or modify it under the terms of the
+// GNU Affero General Public License as published by the Free Software Foundation, either version 3
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+// even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License along with this program.
+// If not, see <https://www.gnu.org/licenses/>.
+
 // Bare Electron shell: one window, gako-core as a child process, no app logic.
 //
 // Starts gako-core with a random token, reads the port from its first stdout line, and hands
@@ -109,6 +123,8 @@ let core = null;
 
 /** THIRD-PARTY-NOTICES.txt: in the app's resources, or at the repository root. */
 const noticesFile = () => path.join(app.isPackaged ? process.resourcesPath : root, 'THIRD-PARTY-NOTICES.txt');
+// Packaging renames it: on macOS, Electron's own LICENSE sits in the same folder.
+const licenceFile = () => (app.isPackaged ? path.join(process.resourcesPath, 'GAKO-LICENSE.txt') : path.join(root, 'LICENSE'));
 
 // The window comes back where it was left: its size and position (if they still fit a display) and
 // whether it was maximised or full screen. The first time, it opens centred at up to 1600 × 1000.
@@ -163,6 +179,7 @@ function setMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Gako', submenu: [
       { role: 'about' },
+      { label: 'Licence…', click: () => shell.openPath(licenceFile()) },
       { label: 'Third-Party Notices…', click: () => shell.openPath(noticesFile()) },
       { type: 'separator' },
       { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' },
@@ -180,7 +197,12 @@ function setMenu() {
 
 app.whenReady().then(async () => {
   setMenu();
-  app.setAboutPanelOptions({ applicationName: 'Gako', applicationVersion: app.getVersion(), credits: 'Third-party software: Gako menu › Third-Party Notices' });
+  app.setAboutPanelOptions({
+    applicationName: 'Gako',
+    applicationVersion: app.getVersion(),
+    copyright: 'Copyright © 2026 João Sena Ribeiro',
+    credits: 'Free software under the GNU Affero General Public License, version 3 or later, with no warranty: Gako menu › Licence. Third-party software: Gako menu › Third-Party Notices',
+  });
   // Packaged, the Dock icon comes from the app bundle; run from the repository, it's set here.
   if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, 'build', 'icon.png'));
 
