@@ -15,14 +15,16 @@
 // Checks the integrity checkers against xterm.js's real buffer (headless), so a "NOT INTACT" in a
 // measurement run means the terminal pipeline, not the checker.
 //
-//   node --test test/          (needs the fixtures and a release build of tui-load)
+// Needs a release build of tui-load. The dump tests also need the measurement fixtures
+// (`uv run fixtures/generate.py` in bench/), and are skipped without them.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { closeSync, openSync, readFileSync, readSync, statSync, mkdtempSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import xtermHeadless from '@xterm/headless';
 import unicode11 from '@xterm/addon-unicode11';
 
@@ -30,9 +32,11 @@ import { checkSeqLines, checkTail, logicalLines, screenTail } from '../src/check
 
 const { Terminal } = xtermHeadless;
 const { Unicode11Addon } = unicode11;
-const root = new URL('../../', import.meta.url).pathname;
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const fixtures = join(root, 'bench/out/fixtures');
-const manifest = JSON.parse(readFileSync(join(fixtures, 'manifest.json'), 'utf8'));
+const manifestFile = join(fixtures, 'manifest.json');
+const manifest = existsSync(manifestFile) ? JSON.parse(readFileSync(manifestFile, 'utf8')) : null;
+const needsFixtures = { skip: !manifest && 'needs the measurement fixtures (bench/README.md)' };
 
 function terminal(convertEol: boolean) {
   const term = new Terminal({ cols: 200, rows: 50, scrollback: 1000, allowProposedApi: true, convertEol });
@@ -83,7 +87,7 @@ test('tui-load output passes the line and panel checks', { skip: process.platfor
   assert.ok(!lines2.ok || !panelOk, 'damage went unnoticed');
 });
 
-test('log dump passes, and a dropped chunk fails', async () => {
+test('log dump passes, and a dropped chunk fails', needsFixtures, async () => {
   const d = manifest.load;
   const data = tail(join(fixtures, d.path), 4 * 1024 * 1024);
   const term = terminal(true);
@@ -99,7 +103,7 @@ test('log dump passes, and a dropped chunk fails', async () => {
 });
 
 for (const kind of ['long', 'emoji'] as const) {
-  test(`${kind} dump tail check`, async () => {
+  test(`${kind} dump tail check`, needsFixtures, async () => {
     const d = manifest[kind];
     const data = tail(join(fixtures, d.path), 12 * 1024 * 1024);
     const term = terminal(true);
