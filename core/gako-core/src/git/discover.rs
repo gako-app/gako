@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn nested_worktree_submodule_and_depth() {
         let t = tempfile::tempdir().unwrap();
-        let base = t.path().canonicalize().unwrap();
+        let base = crate::files::canonical(&t.path()).unwrap();
         init(&base);
         init(&base.join("services/auth"));
         init(&base.join("services/deep/er/too-deep"));

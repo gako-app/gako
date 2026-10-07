@@ -427,7 +427,7 @@ mod tests {
 
     fn layout() -> (tempfile::TempDir, PathBuf) {
         let t = tempfile::tempdir().unwrap();
-        let base = t.path().canonicalize().unwrap();
+        let base = crate::files::canonical(&t.path()).unwrap();
         git_init(&base);
         std::fs::write(base.join(".gitignore"), "/services/\nbuild/\n").unwrap();
         std::fs::write(base.join("README.md"), "needle in the base\n").unwrap();

@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/"
+    "test": "node --test \"test/*.test.ts\""
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

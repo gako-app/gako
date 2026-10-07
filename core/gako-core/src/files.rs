@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn lists_with_ignored_marked_and_git_hidden() {
         let t = tempfile::tempdir().unwrap();
-        let d = t.path().canonicalize().unwrap();
+        let d = crate::files::canonical(&t.path()).unwrap();
         git(&d, &["init", "-q"]);
         std::fs::write(d.join(".gitignore"), "build/\n*.log\n").unwrap();
         std::fs::create_dir_all(d.join("build")).unwrap();
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn outside_the_workspace_is_refused() {
         let t = tempfile::tempdir().unwrap();
-        let root = t.path().canonicalize().unwrap();
+        let root = crate::files::canonical(&t.path()).unwrap();
         std::fs::create_dir(root.join("in")).unwrap();
         assert!(inside(&[root.join("in")], &root.join("in")).is_ok());
         assert!(inside(&[root.join("in")], &root.join("in/../")).is_err());

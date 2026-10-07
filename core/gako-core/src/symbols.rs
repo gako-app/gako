@@ -394,7 +394,7 @@ mod tests {
     #[test]
     fn ranking_and_updates() {
         let t = tempfile::tempdir().unwrap();
-        let root = t.path().canonicalize().unwrap();
+        let root = crate::files::canonical(&t.path()).unwrap();
         let (a, b) = (root.join("a"), root.join("b"));
         std::fs::create_dir_all(&a).unwrap();
         std::fs::create_dir_all(&b).unwrap();

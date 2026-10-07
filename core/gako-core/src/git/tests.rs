@@ -81,7 +81,7 @@ fn init(dir: &Path) {
 #[tokio::test]
 async fn nested_repos_are_not_untracked_folders() {
     let t = tempfile::tempdir().unwrap();
-    let base = t.path().canonicalize().unwrap();
+    let base = crate::files::canonical(&t.path()).unwrap();
     init(&base);
     std::fs::write(base.join("README.md"), "base").unwrap();
     init(&base.join("services/auth"));
@@ -97,7 +97,7 @@ async fn nested_repos_are_not_untracked_folders() {
 #[tokio::test]
 async fn contents_log_and_commit_details() {
     let t = tempfile::tempdir().unwrap();
-    let dir = t.path().canonicalize().unwrap();
+    let dir = crate::files::canonical(&t.path()).unwrap();
     init(&dir);
     std::fs::write(dir.join("a.txt"), "one\n").unwrap();
     let g = git();
@@ -159,7 +159,7 @@ async fn contents_log_and_commit_details() {
 #[tokio::test]
 async fn merge_conflict_and_rename() {
     let t = tempfile::tempdir().unwrap();
-    let dir = t.path().canonicalize().unwrap();
+    let dir = crate::files::canonical(&t.path()).unwrap();
     init(&dir);
     std::fs::write(dir.join("f.txt"), "base\n").unwrap();
     std::fs::write(dir.join("old name.txt"), "a\nb\nc\nd\ne\n").unwrap();
@@ -207,7 +207,7 @@ async fn detached_head_and_ahead_behind() {
     sh_git(&upstream, &["add", "."]);
     sh_git(&upstream, &["commit", "-q", "-m", "1"]);
     sh_git(t.path(), &["clone", "-q", "up", "down"]);
-    let down = t.path().join("down").canonicalize().unwrap();
+    let down = crate::files::canonical(&t.path().join("down")).unwrap();
     configure(&down);
     std::fs::write(down.join("g"), "2").unwrap();
     sh_git(&down, &["add", "."]);
@@ -279,7 +279,7 @@ async fn fetch_pull_and_push_against_a_remote() {
 #[tokio::test]
 async fn revert_each_kind_of_change() {
     let t = tempfile::tempdir().unwrap();
-    let dir = t.path().canonicalize().unwrap();
+    let dir = crate::files::canonical(&t.path()).unwrap();
     init(&dir);
     std::fs::write(dir.join("a.txt"), "one\n").unwrap();
     std::fs::write(dir.join("old.txt"), "old\n").unwrap();
@@ -349,7 +349,7 @@ async fn list_and_switch_branches() {
     sh_git(&origin, &["branch", "feature"]);
     sh_git(&origin, &["branch", "shared"]);
     sh_git(t.path(), &["clone", "-q", "origin", "clone"]);
-    let dir = t.path().join("clone").canonicalize().unwrap();
+    let dir = crate::files::canonical(&t.path().join("clone")).unwrap();
     configure(&dir);
     sh_git(&dir, &["branch", "shared", "origin/shared"]);
     sh_git(&dir, &["branch", "local-only"]);
