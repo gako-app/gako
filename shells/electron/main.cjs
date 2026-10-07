@@ -25,6 +25,7 @@ const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, net, screen, shell 
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
 const readline = require('node:readline');
 const { pathToFileURL } = require('node:url');
@@ -121,10 +122,85 @@ function startCore() {
 let quitting = false;
 let core = null;
 
-/** THIRD-PARTY-NOTICES.txt: in the app's resources, or at the repository root. */
-const noticesFile = () => path.join(app.isPackaged ? process.resourcesPath : root, 'THIRD-PARTY-NOTICES.txt');
-// Packaging renames it: on macOS, Electron's own LICENSE sits in the same folder.
-const licenceFile = () => (app.isPackaged ? path.join(process.resourcesPath, 'GAKO-LICENSE.txt') : path.join(root, 'LICENSE'));
+// The texts the About window shows, served to it at app://gako/legal/: Gako's licence and
+// THIRD-PARTY-NOTICES.txt, in the app's resources or at the repository root. Packaging renames the
+// licence: on macOS, Electron's own LICENSE sits in the same folder.
+const legalFiles = {
+  'licence.txt': () => (app.isPackaged ? path.join(process.resourcesPath, 'GAKO-LICENSE.txt') : path.join(root, 'LICENSE')),
+  'notices.txt': () => path.join(app.isPackaged ? process.resourcesPath : root, 'THIRD-PARTY-NOTICES.txt'),
+};
+
+/** Electron's and Chromium's own notices: beside the app (in its resources on macOS), or in the
+ * Electron that npm installed. */
+function electronNotice(which) {
+  const name = which === 'chromium' ? 'LICENSES.chromium.html' : 'LICENSE';
+  if (!app.isPackaged) return path.join(path.dirname(require.resolve('electron/package.json')), 'dist', name);
+  return path.join(process.platform === 'darwin' ? process.resourcesPath : path.dirname(process.execPath), name);
+}
+
+/** Where the core reads settings from (settings.rs, user_file), and Chromium's data (above). */
+const settingsFile = () => path.join(app.getPath('appData'), process.platform === 'linux' ? 'gako' : 'Gako', 'settings.json');
+
+function aboutInfo() {
+  const osName = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' }[process.platform] ?? process.platform;
+  return {
+    version: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    os: `${osName} ${process.platform === 'linux' ? os.release() : process.getSystemVersion()}`,
+    arch: process.arch,
+    home: app.getPath('home'),
+    settingsFile: settingsFile(),
+    settingsExists: fs.existsSync(settingsFile()),
+    dataFolder: app.getPath('userData'),
+  };
+}
+
+/** Links open in the user's browser, never inside the app, and a window never navigates away. */
+function keepInApp(win) {
+  const outside = (url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); };
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    outside(url);
+    return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    if (url.startsWith('app://gako/')) return;
+    e.preventDefault();
+    outside(url);
+  });
+}
+
+/** The About window, on one of its tabs: about, licence or notices. One at a time. */
+let aboutWin = null;
+function showAbout(tab) {
+  if (!['about', 'licence', 'notices'].includes(tab)) tab = 'about';
+  if (aboutWin) {
+    aboutWin.webContents.executeJavaScript(`location.hash = ${JSON.stringify(tab)}`).catch(() => {});
+    aboutWin.show();
+    return;
+  }
+  aboutWin = new BrowserWindow({
+    width: 780,
+    height: 660,
+    minWidth: 560,
+    minHeight: 420,
+    title: 'About Gako',
+    backgroundColor: '#1e1e1e',
+    show: false,
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'about-preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+    },
+  });
+  keepInApp(aboutWin);
+  aboutWin.once('ready-to-show', () => aboutWin.show());
+  aboutWin.on('closed', () => { aboutWin = null; });
+  aboutWin.loadURL(`app://gako/about.html#${tab}`);
+}
 
 // The window comes back where it was left: its size and position (if they still fit a display) and
 // whether it was maximised or full screen. The first time, it opens centred at up to 1600 × 1000.
@@ -178,9 +254,9 @@ function setMenu() {
   }
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { label: 'Gako', submenu: [
-      { role: 'about' },
-      { label: 'Licence…', click: () => shell.openPath(licenceFile()) },
-      { label: 'Third-Party Notices…', click: () => shell.openPath(noticesFile()) },
+      { label: 'About Gako', click: () => showAbout('about') },
+      { label: 'Licence', click: () => showAbout('licence') },
+      { label: 'Third-Party Notices', click: () => showAbout('notices') },
       { type: 'separator' },
       { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' },
       { role: 'quit' },
@@ -197,17 +273,13 @@ function setMenu() {
 
 app.whenReady().then(async () => {
   setMenu();
-  app.setAboutPanelOptions({
-    applicationName: 'Gako',
-    applicationVersion: app.getVersion(),
-    copyright: 'Copyright © 2026 João Sena Ribeiro',
-    credits: 'Free software under the GNU Affero General Public License, version 3 or later, with no warranty: Gako menu › Licence. Third-party software: Gako menu › Third-Party Notices',
-  });
   // Packaged, the Dock icon comes from the app bundle; run from the repository, it's set here.
   if (!app.isPackaged && process.platform === 'darwin') app.dock?.setIcon(path.join(__dirname, 'build', 'icon.png'));
 
   protocol.handle('app', (req) => {
     const rel = decodeURIComponent(new URL(req.url).pathname).replace(/^\/+/, '') || 'index.html';
+    const legal = rel.startsWith('legal/') && Object.hasOwn(legalFiles, rel.slice(6)) ? legalFiles[rel.slice(6)]() : null;
+    if (legal) return net.fetch(pathToFileURL(legal).toString());
     const file = path.join(dist, rel);
     if (!file.startsWith(dist)) return new Response('not found', { status: 404 });
     return net.fetch(pathToFileURL(file).toString());
@@ -228,6 +300,20 @@ app.whenReady().then(async () => {
     });
     return r.canceled ? null : r.filePaths[0] ?? null;
   });
+  // The About window: opened from the main window's status bar, and fed by about-preload.cjs.
+  ipcMain.on('gako:showAbout', (_e, tab) => showAbout(tab));
+  ipcMain.on('gako:about', (e) => {
+    e.returnValue = aboutInfo();
+  });
+  ipcMain.handle('gako:reveal', (_e, what) => {
+    if (what === 'settings' && fs.existsSync(settingsFile())) shell.showItemInFolder(settingsFile());
+    else if (what === 'data') shell.openPath(app.getPath('userData'));
+  });
+  ipcMain.handle('gako:openNotice', (_e, which) => {
+    const file = electronNotice(which);
+    if (fs.existsSync(file)) return shell.openPath(file);
+    dialog.showErrorBox('Notices not found', `${file} isn't there.`);
+  });
 
   const saved = savedWindow();
   const win = new BrowserWindow({
@@ -246,11 +332,10 @@ app.whenReady().then(async () => {
   if (saved?.maximized) win.maximize();
   if (saved?.fullScreen) win.setFullScreen(true);
   rememberWindow(win);
-  // Links (from terminal output) open in the user's browser, never inside the app.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url)) shell.openExternal(url);
-    return { action: 'deny' };
-  });
+  // Links (from terminal output) open in the user's browser.
+  keepInApp(win);
+  // The main window going takes the About window with it, so Gako quits.
+  win.on('closed', () => aboutWin?.close());
   // bench/ measures what's drawn: a window left behind other apps counts as hidden on macOS and
   // stops drawing, so under the bench it comes to the front.
   if (process.env.GAKO_BENCH) win.once('ready-to-show', () => { app.focus({ steal: true }); win.moveTop(); });

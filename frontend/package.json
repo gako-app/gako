@@ -19,6 +19,7 @@
     "monaco-editor": "^0.57.0"
   },
   "devDependencies": {
+    "@types/node": "^24.19.1",
     "@xterm/headless": "^6.0.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.2"

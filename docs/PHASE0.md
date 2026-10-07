@@ -46,10 +46,11 @@ and transport code, and the frontend's transport layer, are meant to be kept.
 - **The frontend talks to the core only through one `Transport` interface.** No shell APIs in
   frontend code, apart from one small module that obtains the core's address and token from
   whichever shell it's running in (and, since 2026-10-07, the shell's native folder picker for
-  "Open folder…", when it has one).
+  "Open folder…", when it has one, and a way to open the About window). The About window is a page
+  of its own (`about.html`) that takes its facts (version, paths) from the shell's preload script.
 - **The shells contain no app logic.** Window creation, starting and stopping `gako-core`, passing
   the address and token, and the native dialogs only a shell can show (the folder picker, the
-  warning before quitting with agents running). Nothing else.
+  warning before quitting with agents running, showing a file in the file manager). Nothing else.
 
 ## Repository layout
 

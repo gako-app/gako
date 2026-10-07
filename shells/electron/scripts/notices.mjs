@@ -99,9 +99,9 @@ function section(title, packages) {
     if (!p.texts.length) out.push('(The package ships no licence file; its licence is the one named above.)\n');
     for (const t of p.texts) {
       const first = written.get(t.text);
-      if (first) out.push(`\n--- ${t.name}: the same text as ${first}'s, above ---\n`);
+      if (first) out.push(`\n--- ${t.name}: the same text as ${first}, above ---\n`);
       else {
-        written.set(t.text, id);
+        written.set(t.text, `${id}'s ${t.name}`);
         out.push(`\n--- ${t.name} ---\n${t.text}\n`);
       }
     }

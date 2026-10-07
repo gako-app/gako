@@ -46,7 +46,8 @@ the files packaging uses from it.
 
 Packaging also regenerates [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt): the npm packages and
 Rust crates Gako includes, with their licences. The app carries it, with Electron's and Chromium's
-own notices, and opens it from the Gako menu (Third-Party Notices…).
+own notices, and lists it in its About window (the ⓘ button at the right of the status bar, or the
+Gako menu on macOS).
 
 ## Licence
 
@@ -57,5 +58,5 @@ License, or (at your option) any later version. See [LICENSE](LICENSE).
 It's distributed in the hope that it will be useful, but without any warranty; without even the
 implied warranty of merchantability or fitness for a particular purpose.
 
-Copyright © 2026 João Sena Ribeiro. The packaged app carries the licence and opens it from the Gako
-menu (Licence…).
+Copyright © 2026 João Sena Ribeiro. The packaged app carries the licence and shows it in its About
+window.

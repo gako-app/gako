@@ -14,7 +14,7 @@
 
 import './style.css';
 
-import { boot } from '../boot';
+import { type Boot, boot } from '../boot';
 import { connect, type Transport } from '../transport';
 import { DiffPanel } from './diff';
 import { basename, fill, h } from './dom';
@@ -87,7 +87,7 @@ class App {
   private openedAt = 0;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
-  constructor(private t: Transport, env: Record<string, string>, private pickFolder?: (defaultPath?: string) => Promise<string | null>) {
+  constructor(private t: Transport, env: Record<string, string>, private pickFolder?: Boot['pickFolder'], private showAbout?: Boot['showAbout']) {
     this.git = new Git(t);
     this.log = env.GAKO_LOG
       ? (ev, data = {}) => t.send({ t: 'log', rec: { ev, epochMs: performance.timeOrigin + performance.now(), ...data } })
@@ -636,6 +636,7 @@ class App {
       this.indexInfo ? h('span', { class: 'status-item dim' }, icon('symbols'), h('span', { class: 'status-text' }, this.indexInfo)) : null,
       h('span', { class: 'spacer' }),
       h('button', { class: 'status-button', onclick: () => this.chooseFolder() }, icon('folder-open'), 'Open folder…'),
+      this.showAbout ? h('button', { class: 'status-button icon-only', 'data-tip': 'About Gako', 'aria-label': 'About Gako', onclick: () => this.showAbout?.() }, icon('info')) : null,
     );
   }
 
@@ -724,7 +725,7 @@ async function main(): Promise<void> {
   const b = boot();
   const t = await connect(b);
   const hello = await t.request<{ env: Record<string, string> }>('hello');
-  const app = new App(t, hello.env, b.pickFolder);
+  const app = new App(t, hello.env, b.pickFolder, b.showAbout);
   let last: string | undefined;
   try { last = localStorage.getItem(LAST_BASE) ?? undefined; } catch { /* storage unavailable */ }
   // The folder given on the command line, then the last one opened, then the settings file's.

@@ -16,9 +16,10 @@
 // are bundled.
 
 import {
-  ArrowDown, ArrowUp, Braces, ChevronDown, ChevronUp, Columns2, createElement, FileDiff, FilePen, FileText, Folder, FolderOpen,
-  GitBranch, History, type IconNode, LoaderCircle, Proportions, PanelLeftClose, PanelLeftOpen, PanelRightClose,
-  PanelRightOpen, Plus, RefreshCw, RotateCcw, Rows2, SquareSplitHorizontal, Undo2,
+  ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, Code, Columns2, Copy, createElement,
+  ExternalLink, FileDiff, FilePen, FileText, Folder, FolderOpen, GitBranch, Globe, History, type IconNode, Info,
+  LoaderCircle, Proportions, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, RefreshCw,
+  RotateCcw, Rows2, Search, SquareSplitHorizontal, Undo2,
 } from 'lucide';
 import { h } from './dom';
 
@@ -49,6 +50,16 @@ const ICONS = {
   branch: GitBranch,
   symbols: Braces,
   busy: LoaderCircle,
+  // The About window.
+  info: Info,
+  copy: Copy,
+  done: Check,
+  external: ExternalLink,
+  search: Search,
+  website: Globe,
+  source: Code,
+  issue: Bug,
+  expand: ChevronRight,
 } satisfies Record<string, IconNode>;
 
 export type IconName = keyof typeof ICONS;

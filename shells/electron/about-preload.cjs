@@ -12,12 +12,12 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// Hands the core's address and token to the frontend's boot module, the native folder picker, and
-// a way to open the About window. Nothing else.
+// The About window's facts (version, paths), and the two things it asks the shell to do: show a
+// file or folder, and open Electron's and Chromium's own notices. Nothing else.
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('__GAKO_BOOT__', ipcRenderer.sendSync('gako:boot'));
-contextBridge.exposeInMainWorld('__GAKO_SHELL__', {
-  pickFolder: (defaultPath) => ipcRenderer.invoke('gako:pickFolder', defaultPath ?? null),
-  showAbout: (tab) => ipcRenderer.send('gako:showAbout', tab ?? 'about'),
+contextBridge.exposeInMainWorld('__GAKO_ABOUT__', {
+  info: ipcRenderer.sendSync('gako:about'),
+  reveal: (what) => ipcRenderer.invoke('gako:reveal', what),
+  openNotice: (which) => ipcRenderer.invoke('gako:openNotice', which),
 });

@@ -12,17 +12,36 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
+/// <reference types="node" />
+import { execFileSync } from 'node:child_process';
 import { defineConfig } from 'vite';
+
+/** git's output, or '' outside a repository (a source archive) or without git. */
+function git(...args: string[]): string {
+  try {
+    return execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return '';
+  }
+}
 
 // Relative asset paths, so the same build loads from Tauri's and Electron's custom protocols.
 export default defineConfig({
   base: './',
+  // What the About window shows as the build: the nearest tag, commits since and the commit
+  // (v0.9.0-3-gabc1234), marked when built from uncommitted changes; and the commit's date.
+  define: {
+    __GAKO_BUILD__: JSON.stringify({
+      describe: git('describe', '--tags', '--always', '--dirty=-modified') || 'unknown',
+      date: git('log', '-1', '--format=%cs'),
+    }),
+  },
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 6000,
     rollupOptions: {
-      // The app, and the phase 0 measurement harness that bench/ drives.
-      input: { index: 'index.html', bench: 'bench.html' },
+      // The app, its About window, and the phase 0 measurement harness that bench/ drives.
+      input: { index: 'index.html', about: 'about.html', bench: 'bench.html' },
     },
   },
   worker: {

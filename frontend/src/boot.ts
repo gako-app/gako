@@ -13,7 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 // The one place that knows which shell the frontend runs in. It finds out how to reach gako-core,
-// and whether the shell offers a native folder picker; everything else goes through the Transport.
+// and whether the shell offers a native folder picker and an About window; everything else goes
+// through the Transport.
 //
 // - Tauri injects `window.__GAKO_BOOT__` with an initialization script.
 // - Electron exposes `window.__GAKO_BOOT__` and `window.__GAKO_SHELL__` from its preload script.
@@ -26,17 +27,21 @@ export interface Boot {
   shell: string;
   /** The shell's native folder picker, if it has one: the folder chosen, or null if cancelled. */
   pickFolder?: (defaultPath?: string) => Promise<string | null>;
+  /** The shell's About window, if it has one, on its about, licence or notices tab. */
+  showAbout?: (tab?: 'about' | 'licence' | 'notices') => void;
 }
 
 declare global {
   interface Window {
     __GAKO_BOOT__?: Boot;
-    __GAKO_SHELL__?: { pickFolder?: Boot['pickFolder'] };
+    __GAKO_SHELL__?: { pickFolder?: Boot['pickFolder']; showAbout?: Boot['showAbout'] };
   }
 }
 
 export function boot(): Boot {
-  if (window.__GAKO_BOOT__) return { ...window.__GAKO_BOOT__, pickFolder: window.__GAKO_SHELL__?.pickFolder };
+  if (window.__GAKO_BOOT__) {
+    return { ...window.__GAKO_BOOT__, pickFolder: window.__GAKO_SHELL__?.pickFolder, showAbout: window.__GAKO_SHELL__?.showAbout };
+  }
   const q = new URLSearchParams(location.search);
   const url = q.get('core');
   const token = q.get('token');

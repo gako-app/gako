@@ -1,0 +1,133 @@
+/*
+ * Gako: a workspace app for reviewing and supervising coding agents across many repositories.
+ * Copyright (C) 2026 João Sena Ribeiro
+ *
+ * This program is free software: you can redistribute it and/or modify it under the terms of the
+ * GNU Affero General Public License as published by the Free Software Foundation, either version 3
+ * of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+ * even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License along with this program.
+ * If not, see <https://www.gnu.org/licenses/>.
+ */
+/* The About window. The app's palette (app/style.css), on a page of its own. */
+
+:root {
+  --bg: #1e1e1e;
+  --panel: #252526;
+  --panel-2: #2d2d30;
+  --border: #3c3c3c;
+  --text: #cccccc;
+  --bright: #e8e8e8;
+  --dim: #8b8b8b;
+  --link: #3794ff;
+  --accent: #0e639c;
+  font: 13px system-ui, -apple-system, 'Segoe UI', Ubuntu, sans-serif;
+  color-scheme: dark;
+}
+
+:root:not(.mac) ::-webkit-scrollbar { width: 10px; height: 10px; }
+:root:not(.mac) ::-webkit-scrollbar-track, :root:not(.mac) ::-webkit-scrollbar-corner { background: transparent; }
+:root:not(.mac) ::-webkit-scrollbar-thumb { background: transparent; }
+:root:not(.mac) :hover::-webkit-scrollbar-thumb { background: rgb(121 121 121 / 0.4); }
+:root:not(.mac) ::-webkit-scrollbar-thumb:hover { background: rgb(100 100 100 / 0.7); }
+
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+#app { height: 100%; display: flex; flex-direction: column; }
+a { color: var(--link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font: 12px Menlo, Consolas, 'DejaVu Sans Mono', monospace; }
+h1, h2, h3 { color: var(--bright); }
+.svg-icon { width: 14px; height: 14px; stroke-width: 1.75; flex: none; }
+.note { color: var(--dim); }
+[hidden] { display: none !important; }
+
+button.quiet {
+  display: inline-flex; align-items: center; gap: 5px; flex: none; height: 24px; padding: 0 9px;
+  font: inherit; font-size: 12px; color: var(--text); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 4px; cursor: pointer;
+}
+button.quiet:hover { background: #3a3d41; }
+
+/* Tabs */
+.tabs { flex: none; display: flex; justify-content: center; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.tabs a { padding: 5px 14px; border-radius: 5px; color: var(--dim); }
+.tabs a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+.tabs a[aria-selected='true'] { color: var(--bright); background: #37373d; }
+main { flex: 1; min-height: 0; }
+.panel { height: 100%; overflow: auto; }
+.loading { padding: 24px; }
+
+/* About */
+.about { max-width: 600px; margin: 0 auto; padding: 28px 28px 20px; }
+.hero { display: flex; gap: 22px; align-items: center; margin-bottom: 26px; }
+.app-icon { width: 104px; height: 104px; flex: none; filter: drop-shadow(0 4px 12px rgb(0 0 0 / 0.45)); }
+.hero h1 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.version { color: var(--dim); margin-top: 2px; }
+.tagline { margin: 10px 0 12px; line-height: 1.45; }
+.links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.links a { display: inline-flex; align-items: center; gap: 5px; }
+.about section { margin-top: 18px; }
+.about h2 { margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.section-head h2 { margin: 0; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 7px 18px; margin: 0; padding: 12px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+.facts dt { color: var(--dim); }
+.facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.path-row { display: flex; align-items: center; gap: 10px; }
+.path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bright); }
+.facts .note { margin-top: 2px; font-size: 12px; }
+.legal { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--border); color: var(--dim); font-size: 12px; line-height: 1.5; }
+.legal p { margin: 0 0 4px; }
+
+/* Licence */
+.licence { display: flex; min-height: 100%; }
+.toc { position: sticky; top: 0; align-self: flex-start; flex: none; width: 230px; max-height: 100vh; box-sizing: border-box; overflow: auto; padding: 18px 8px 18px 14px; border-right: 1px solid var(--border); font-size: 12px; }
+.toc a { display: block; padding: 3px 6px 3px 22px; text-indent: -16px; border-radius: 4px; color: var(--dim); line-height: 1.35; }
+.toc a:hover { color: var(--text); background: var(--panel-2); text-decoration: none; }
+.panel-licence { overflow: hidden; }
+.panel-licence > .licence { height: 100%; }
+.panel-licence .toc { max-height: 100%; }
+.doc { flex: 1; min-width: 0; overflow: auto; padding: 22px 32px 40px; line-height: 1.6; }
+.doc > * { max-width: 680px; }
+.doc p { margin: 0 0 12px; }
+.summary { padding: 14px 16px; margin-bottom: 26px; background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; }
+.summary h2 { margin: 0 0 6px; font-size: 13px; }
+.summary p:last-child { margin: 0; font-size: 12px; }
+.lic-title { text-align: center; margin-bottom: 10px; color: var(--dim); }
+.lic-title h1 { margin: 0 0 2px; font-size: 18px; letter-spacing: 0.02em; }
+.lic-lines { white-space: pre-wrap; color: var(--dim); margin: 0 0 14px; line-height: 1.5; }
+.doc .lic-copyright { text-align: center; color: var(--dim); font-size: 12px; line-height: 1.5; margin-bottom: 4px; }
+.lic-heading { margin: 30px 0 12px; font-size: 15px; scroll-margin-top: 16px; }
+.lic-section { display: flex; gap: 8px; margin: 22px 0 8px; font-size: 13.5px; scroll-margin-top: 16px; }
+.lic-item { display: flex; gap: 8px; padding-left: 18px; }
+.num { color: var(--dim); font-variant-numeric: tabular-nums; flex: none; }
+
+/* Third-party notices */
+.notices { max-width: 760px; margin: 0 auto; padding: 18px 24px 30px; }
+.notices-head p { margin: 0 0 10px; line-height: 1.5; }
+.buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter { display: flex; align-items: center; gap: 7px; margin: 14px 0 6px; padding: 0 9px; height: 30px; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; color: var(--dim); }
+.filter:focus-within { border-color: var(--accent); }
+.filter input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font: inherit; }
+.pkg-list h2 { display: flex; align-items: baseline; gap: 8px; margin: 20px 0 6px; font-size: 13px; }
+.count { color: var(--dim); font-weight: normal; font-size: 12px; }
+.pkg { border-bottom: 1px solid var(--panel-2); }
+.pkg summary { display: flex; align-items: center; gap: 8px; padding: 5px 4px; cursor: pointer; list-style: none; border-radius: 4px; }
+.pkg summary::-webkit-details-marker { display: none; }
+.pkg summary:hover { background: var(--panel); }
+.pkg summary > .svg-icon { color: var(--dim); transition: transform 0.12s; }
+.pkg[open] summary > .svg-icon { transform: rotate(90deg); }
+.pkg-name { color: var(--bright); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pkg-version { color: var(--dim); font-size: 12px; }
+.spacer { flex: 1; }
+.chip { flex: none; padding: 1px 7px; border-radius: 9px; background: var(--panel-2); border: 1px solid var(--border); font-size: 11px; color: var(--text); white-space: nowrap; }
+.icon-link { display: inline-flex; width: 22px; justify-content: center; color: var(--dim); }
+.icon-link:hover { color: var(--text); }
+.pkg-texts { padding: 4px 4px 12px 26px; }
+.pkg-file { margin: 8px 0 4px; font-size: 12px; color: var(--text); }
+.pkg-texts pre { margin: 0; padding: 10px 12px; max-height: 320px; overflow: auto; white-space: pre-wrap; background: var(--panel); border: 1px solid var(--border); border-radius: 5px; color: var(--text); line-height: 1.45; }
+.empty { margin-top: 16px; }
