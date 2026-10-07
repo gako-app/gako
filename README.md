@@ -31,6 +31,16 @@ Windows, and a `gako` folder on Linux. A packaged Gako opens the folder given on
 (`open -a Gako --args /path/to/folder` on macOS), or the last one it had open. It isn't signed, so
 it's for the machine it was built on.
 
+On Windows, keep the whole `Gako` folder (not only `Gako.exe`) on a local disk, such as
+`C:\Tools\Gako` or `%LOCALAPPDATA%\Programs\Gako`. Run from a network drive or a redirected folder,
+as corporate profiles and remote desktop hosts often have, Chromium can't start its sandboxed helper
+processes, and Gako says so and quits.
+
+Gako keeps its window state, open tabs and Chromium's caches in an `Electron` folder: in
+`%LOCALAPPDATA%\Gako` on Windows, `~/Library/Application Support/Gako` on macOS and `~/.config/Gako`
+on Linux. Deleting it starts Gako as if for the first time. Settings, if you have any, are in
+`settings.json` in `%APPDATA%\Gako`, `~/Library/Application Support/Gako` or `~/.config/gako`.
+
 The icon's source is `shells/electron/build/icon.svg`; `npm run icons -w shells/electron` renders
 the files packaging uses from it.
 

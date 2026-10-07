@@ -2,8 +2,8 @@
 // files; clean repos collapsed at the bottom), the file tree and search.
 //
 // Staging and committing are left to the agents; each repo offers its history, a fetch, and a pull
-// or push when its branch is behind or ahead of its upstream. When any are behind, a bar at the
-// top pulls them all.
+// or push when its branch is behind or ahead of its upstream. A bar at the top fetches them all,
+// and pulls them all while any are behind.
 
 import { basename, dirname, fill, h } from './dom';
 import type { Explorer } from './explorer';
@@ -56,8 +56,8 @@ interface Section {
 
 const GROUP_LABEL = { conflicts: 'Merge conflicts', staged: 'Staged changes', changes: 'Changes', untracked: 'Untracked' };
 const REMOTE_BUSY = { fetch: 'Fetching…', pull: 'Pulling…', push: 'Pushing…' };
-/** How many pulls "Pull all" runs at once. */
-const PULL_ALL_AT_ONCE = 4;
+/** How many fetches or pulls "Fetch all" and "Pull all" run at once. */
+const ALL_AT_ONCE = 4;
 
 export class Sidebar {
   readonly el = h('aside', { class: 'sidebar' });
@@ -69,9 +69,9 @@ export class Sidebar {
   private items: Item[] = [];
   /** Repos with a fetch, pull or push running. */
   private busy = new Map<string, RemoteAction>();
-  /** "Pull all" in progress: how many are done of how many. */
-  private pullingAll: { done: number; total: number } | null = null;
-  /** Repos waiting for their turn in "Pull all" (it runs a few at a time). */
+  /** "Fetch all" or "Pull all" in progress: how many are done of how many. */
+  private batch: { action: 'fetch' | 'pull'; done: number; total: number } | null = null;
+  /** Repos waiting for their turn in "Fetch all" or "Pull all" (they run a few at a time). */
   private queued = new Set<string>();
   view: View = 'repos';
   selected: string | null = null;
@@ -207,43 +207,51 @@ export class Sidebar {
     return this.repos.filter((r) => r.status?.upstream && !r.status.upstreamGone && r.status.behind > 0);
   }
 
-  /** Pulls every repo that's behind (fast-forward only), a few at a time, then reports the ones
-   * git refused in one message. */
-  private async pullAll(): Promise<void> {
-    if (this.pullingAll) return;
-    const repos = this.behind().filter((r) => !this.busy.has(r.root));
+  /** Repos whose branch tracks an upstream that still exists: the ones a fetch can say are behind. */
+  private tracking(): Repo[] {
+    return this.repos.filter((r) => r.status?.upstream && !r.status.upstreamGone);
+  }
+
+  /** Fetches every repo that tracks an upstream, or pulls every one that's behind (fast-forward
+   * only), a few at a time; then reports the ones git refused in one message. */
+  private async runAll(action: 'fetch' | 'pull'): Promise<void> {
+    if (this.batch) return;
+    const repos = (action === 'fetch' ? this.tracking() : this.behind()).filter((r) => !this.busy.has(r.root));
     if (!repos.length) return;
-    this.pullingAll = { done: 0, total: repos.length };
+    this.batch = { action, done: 0, total: repos.length };
     for (const r of repos) this.queued.add(r.root);
+    this.render();
     const failed: string[] = [];
     const queue = [...repos];
     const worker = async () => {
       for (let r = queue.shift(); r; r = queue.shift()) {
-        const error = await this.run(r, 'pull', true);
+        const error = await this.run(r, action, true);
         if (error) failed.push(`${this.name(r)}: ${error}`);
-        this.pullingAll!.done++;
+        this.batch!.done++;
         this.render();
       }
     };
-    await Promise.all(Array.from({ length: Math.min(PULL_ALL_AT_ONCE, repos.length) }, worker));
-    this.pullingAll = null;
+    await Promise.all(Array.from({ length: Math.min(ALL_AT_ONCE, repos.length) }, worker));
+    this.batch = null;
     this.render();
     if (failed.length) {
-      this.hooks.toast(`Couldn't pull ${failed.length} of ${repos.length} repositor${repos.length === 1 ? 'y' : 'ies'}:\n${failed.join('\n')}`);
+      this.hooks.toast(`Couldn't ${action} ${failed.length} of ${repos.length} repositor${repos.length === 1 ? 'y' : 'ies'}:\n${failed.join('\n')}`);
     }
   }
 
-  /** "N repositories are behind" and Pull all, while any are. */
-  private pullAllBar(): HTMLElement | null {
+  /** Atop the repos: Fetch all, and Pull all while any repo is behind, with how it's going. */
+  private reposBar(): HTMLElement | null {
+    if (!this.repos.length) return null;
     const n = this.behind().length;
-    if (this.pullingAll) {
-      return h('div', { class: 'pull-all' }, h('span', { class: 'dim' }, `Pulling… ${this.pullingAll.done} of ${this.pullingAll.total} done`));
-    }
-    if (!n) return null;
-    return h('div', { class: 'pull-all' },
-      h('span', { class: 'dim' }, `${n} repositor${n === 1 ? 'y is' : 'ies are'} behind`),
+    const b = this.batch;
+    const text = b
+      ? `${b.action === 'fetch' ? 'Fetching' : 'Pulling'}… ${b.done} of ${b.total} done`
+      : n ? `${n} repositor${n === 1 ? 'y is' : 'ies are'} behind` : '';
+    return h('div', { class: 'repos-bar' },
+      h('span', { class: 'dim' }, text),
       h('span', { class: 'spacer' }),
-      iconButton('pull', `Pull every repository that's behind (fast-forward only)`, () => this.pullAll(), { label: 'Pull all', class: 'sync' }));
+      iconButton('refresh', 'Fetch every repository that tracks a remote branch, to see which are behind', () => this.runAll('fetch'), { label: 'Fetch all', disabled: !!b }),
+      n && !b ? iconButton('pull', `Pull every repository that's behind (fast-forward only)`, () => this.runAll('pull'), { label: 'Pull all', class: 'sync' }) : null);
   }
 
   /** The repo's buttons: fetch and history on hover, then pull and push when behind or ahead (with
@@ -253,9 +261,9 @@ export class Sidebar {
     const busy = this.busy.get(r.root);
     const upstream = s?.upstream && !s.upstreamGone ? s.upstream : null;
     const plural = (n: number) => `${n} commit${n === 1 ? '' : 's'}`;
-    // Waiting its turn in "Pull all": its buttons show, greyed out.
+    // Waiting its turn in "Fetch all" or "Pull all": its buttons show, greyed out.
     const queued = this.queued.has(r.root);
-    const waiting = queued ? 'Waiting to be pulled by Pull all' : '';
+    const waiting = queued ? `Waiting for ${this.batch?.action === 'fetch' ? 'Fetch' : 'Pull'} all` : '';
     return h('span', { class: 'repo-actions' },
       busy || queued ? null : iconButton('refresh', upstream ? `Fetch from ${upstream.split('/')[0]} and refresh` : 'Fetch from the remote and refresh', () => this.run(r, 'fetch'), { class: 'hover' }),
       iconButton('history', 'Show the history', () => this.hooks.history(r), { class: 'hover' }),
@@ -282,7 +290,7 @@ export class Sidebar {
     }
     if (!changed.length && !clean.length) wanted.push(h('div', { class: 'empty dim' }, 'Looking for repositories…'));
     else if (!changed.length) wanted.unshift(h('div', { class: 'empty dim' }, 'No changes in any repository.'));
-    const bar = this.pullAllBar();
+    const bar = this.reposBar();
     if (bar) wanted.unshift(bar);
     // Move nodes only where the order changed.
     const current = [...this.list.children];

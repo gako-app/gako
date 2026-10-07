@@ -32,8 +32,36 @@ const dist = app.isPackaged ? path.join(process.resourcesPath, 'dist') : path.jo
 
 app.setName('Gako');
 // Chromium's own files (local storage, caches) apart from the core's settings.json, which lives in
-// the same Gako folder.
-app.setPath('userData', path.join(app.getPath('appData'), 'Gako', 'Electron'));
+// the same Gako folder. On Windows they go to the local AppData, not the roaming one, which a
+// corporate profile may put on a network drive (where Chromium's caches end up locked or slow).
+const chromiumData = process.platform === 'win32' && process.env.LOCALAPPDATA ? process.env.LOCALAPPDATA : app.getPath('appData');
+app.setPath('userData', path.join(chromiumData, 'Gako', 'Electron'));
+
+// Chromium can't start its helper processes (graphics, the page) when Windows won't run them in
+// their sandbox: most often because Gako was started from a network drive or a redirected folder.
+// Chromium then retries and quits with only a console message, or leaves a blank window; this says
+// what happened and what to do. One failed graphics start can be recovered from, so it takes three.
+let gpuLaunchFailures = 0;
+function launchFailed(what) {
+  console.error(`gako: ${what} failed to start`);
+  if (what === 'the GPU process' && ++gpuLaunchFailures < 3) return;
+  const here = path.dirname(process.execPath);
+  dialog.showErrorBox('Gako can\'t start',
+    `Chromium, which Gako is built on, couldn't start ${what}.\n\n` +
+    (process.platform === 'win32'
+      ? `This usually happens when Gako runs from a network drive or a redirected folder. Gako is in:\n${here}\n\n` +
+        'Copy the Gako folder to a local disk, such as C:\\Tools\\Gako, and start it from there.'
+      : `Gako is in:\n${here}`));
+  app.exit(1);
+}
+app.on('child-process-gone', (_e, d) => {
+  if (d.reason === 'launch-failed') launchFailed(d.type === 'GPU' ? 'the GPU process' : `a helper process (${d.type})`);
+  else if (d.reason !== 'clean-exit' && d.reason !== 'killed') console.error(`gako: ${d.type} process gone (${d.reason}, exit code ${d.exitCode})`);
+});
+app.on('render-process-gone', (_e, _wc, d) => {
+  if (d.reason === 'launch-failed') launchFailed('the process that draws the window');
+  else if (d.reason !== 'clean-exit' && d.reason !== 'killed') console.error(`gako: the window's process is gone (${d.reason}, exit code ${d.exitCode})`);
+});
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } },
