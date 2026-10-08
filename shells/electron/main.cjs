@@ -257,6 +257,13 @@ function setMenu() {
       { label: 'Licence', click: () => showAbout('licence') },
       { label: 'Third-Party Notices', click: () => showAbout('notices') },
       { type: 'separator' },
+      // The page has the shortcut too (Ctrl+, elsewhere); the menu takes it first on macOS.
+      { label: 'Settings…', accelerator: 'Cmd+,', click: () => {
+        const win = BrowserWindow.getAllWindows().find((w) => w !== aboutWin);
+        win?.show();
+        win?.webContents.send('gako:showSettings');
+      } },
+      { type: 'separator' },
       { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' },
       { role: 'quit' },
     ] },

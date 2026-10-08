@@ -11,6 +11,9 @@ All notable changes to Gako are listed here, newest first. The format follows
 - Settings for the file viewer's and the diff view's font, apart from the terminals':
   `fileFontFamily`, `fileFontSize` and `fileFontLigatures`.
 - Font ligatures in terminals, off by default: `terminalFontLigatures`.
+- A settings screen (⌘, or Ctrl+,, or the gear in the status bar), saving each change to the
+  settings file as it's made. The file keeps only what differs from the defaults, and keys Gako
+  doesn't know.
 - Changes to the settings file apply as soon as it's saved, without opening the folder again. A
   file that can't be read is reported in the status bar, and the last good settings stay in use.
 

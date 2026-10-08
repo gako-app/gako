@@ -48,6 +48,12 @@ export class Editors {
     this.current = this.list.some((e) => e.id === chosen) ? chosen : r.default;
   }
 
+  /** Forgets the editor picked from the Files view, so the settings' one is used again. */
+  async forget(): Promise<void> {
+    try { localStorage.removeItem(CHOSEN); } catch { /* storage unavailable */ }
+    await this.load();
+  }
+
   /** "Open in VS Code", or the generic label before the editors are known or when none is. */
   label(id = this.current): string {
     const e = this.list.find((x) => x.id === id);

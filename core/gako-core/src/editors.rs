@@ -207,6 +207,11 @@ fn installed(k: &Known) -> Option<PathBuf> {
 
 /// The editors to offer: those found, plus the settings' own command if there is one (as
 /// `custom`), and which one to use when the user hasn't picked.
+/// Every editor Gako knows, installed or not: its id and name.
+pub fn known() -> Vec<(&'static str, &'static str)> {
+    KNOWN.iter().map(|k| (k.id, k.name)).collect()
+}
+
 pub fn offered(setting: Option<&EditorSetting>) -> (Vec<Found>, Option<String>) {
     let mut found = detect();
     if let Some(EditorSetting::Command(cmd)) = setting

@@ -12,12 +12,13 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// Hands the core's address and token to the frontend's boot module, the native folder picker, and
-// a way to open the About window. Nothing else.
+// Hands the core's address and token to the frontend's boot module, the native folder picker, a
+// way to open the About window, and the menu's call to show the settings. Nothing else.
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('__GAKO_BOOT__', ipcRenderer.sendSync('gako:boot'));
 contextBridge.exposeInMainWorld('__GAKO_SHELL__', {
   pickFolder: (defaultPath) => ipcRenderer.invoke('gako:pickFolder', defaultPath ?? null),
   showAbout: (tab) => ipcRenderer.send('gako:showAbout', tab ?? 'about'),
+  onShowSettings: (fn) => { ipcRenderer.on('gako:showSettings', () => fn()); },
 });

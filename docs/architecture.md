@@ -77,6 +77,7 @@ The requests, by area:
 | Files | `filesList`, `fileRead`, `readFile` (the measurement harness's) |
 | Search and navigation | `search`, `searchCancel`, `findFiles`, `symbolDefinitions`, `symbolSearch` |
 | Editors | `editors`, `openInEditor` |
+| Settings | `settingsGet`, `settingsSave` |
 
 The interface is shaped for long-lived two-way streams, not only request and reply, so terminal
 output and pushed events share it with requests.

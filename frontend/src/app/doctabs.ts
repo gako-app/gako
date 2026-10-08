@@ -22,7 +22,7 @@
 
 import { h } from './dom';
 
-export type DocKind = 'diff' | 'file' | 'history';
+export type DocKind = 'diff' | 'file' | 'history' | 'settings';
 
 export interface DocSpec {
   /** What the tab shows: opening the same key again goes to the same tab. */
@@ -50,7 +50,7 @@ interface Doc extends DocSpec {
   saved: unknown;
 }
 
-const GLYPH: Record<DocKind, string> = { diff: '±', file: '', history: '⏱' };
+const GLYPH: Record<DocKind, string> = { diff: '±', file: '', history: '⏱', settings: '⚙' };
 
 export interface DocHooks {
   /** The scroll position of what's shown for `kind`. */

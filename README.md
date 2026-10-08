@@ -78,12 +78,14 @@ or the last one it had open, or asks. **Open folder…** in the status bar picks
 | F12, or ⌘-click / Ctrl-click | Go to definition |
 | Shift+F12 | Find references (by name) |
 | ⌘W / Ctrl+W | Close the tab in front |
+| ⌘, / Ctrl+, | Settings |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next and previous tab |
 | ↑ ↓ in the sidebar | Next and previous changed file |
 
-Gako has no settings screen: settings are a JSON file, described in
-[docs/settings.md](docs/settings.md). The About window (ⓘ at the right of the status bar) shows
-where it is, along with the version, the licence and the third-party notices.
+Settings are on the settings screen (⌘, or Ctrl+,, or the gear at the right of the status bar),
+which saves them to a JSON file you can also edit by hand; both are described in
+[docs/settings.md](docs/settings.md). The About window (ⓘ in the status bar) shows the version,
+the licence and the third-party notices.
 
 ## Documentation
 

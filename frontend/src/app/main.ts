@@ -25,6 +25,7 @@ import { type Item, Sidebar } from './sidebar';
 import { type Folder, Terminals } from './terminals';
 import { Explorer } from './explorer';
 import { Viewer } from './viewer';
+import { SettingsView } from './settingsview';
 import { type Reveal, SearchView } from './search';
 import { GoToFile } from './gotofile';
 import { Navigator } from './navigate';
@@ -50,6 +51,7 @@ type Persist =
   | { diff: string }
   | { file: string }
   | { history: string }
+  | { settings: true }
   | { commit: { root: string; target: DiffTarget } };
 
 interface Session {
@@ -74,9 +76,10 @@ class App {
   private opened: Opened | null = null;
   private scanInfo = '';
   private renderQueued = false;
-  private mode: 'welcome' | 'diff' | 'history' | 'file' = 'welcome';
+  private mode: 'welcome' | 'diff' | 'history' | 'file' | 'settings' = 'welcome';
   private explorer: Explorer;
   private viewer: Viewer;
+  private settingsView: SettingsView;
   private search: SearchView;
   private goto: GoToFile;
   private nav: Navigator;
@@ -143,6 +146,10 @@ class App {
       (path) => this.baseline(path),
       (path) => this.diffOf(path),
     );
+    this.settingsView = new SettingsView(t, {
+      pickFolder,
+      editorSaved: () => this.editors.forget().catch((e) => this.toast(String(e.message ?? e))),
+    });
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
     this.viewer.attachNavigation(this.nav);
     this.diff.attachNavigation(this.nav, (repo, path) => this.join(repo, path));
@@ -233,6 +240,11 @@ class App {
           this.goto.show();
           return;
         }
+        if (e.key === ',' && !e.shiftKey) {
+          e.preventDefault();
+          this.showSettings();
+          return;
+        }
         if (e.key.toLowerCase() === 't' && !e.shiftKey) {
           e.preventDefault();
           this.nav.goToSymbol();
@@ -309,6 +321,7 @@ class App {
   private onSettings(settings: Settings | undefined, error: string | undefined): void {
     this.settingsError = error ?? null;
     this.renderStatusbar();
+    this.settingsView.refresh().catch(() => { /* shown again when its tab is */ });
     const opened = this.opened;
     // With no folder open, opening one reads the file.
     if (!settings || !opened) return;
@@ -493,11 +506,32 @@ class App {
     };
   }
 
+  /** The settings screen, in a tab of its own. */
+  showSettings(): void {
+    this.docs.open(this.settingsSpec(), true);
+  }
+
+  private settingsSpec(): DocSpec {
+    return {
+      key: 'settings',
+      kind: 'settings',
+      title: 'Settings',
+      detail: '',
+      tooltip: 'Your settings, for every folder',
+      show: () => {
+        this.setMode('settings');
+        this.settingsView.show().catch((e) => this.toast(String(e.message ?? e)));
+      },
+      persist: { settings: true } satisfies Persist,
+    };
+  }
+
   private setMode(mode: App['mode']): void {
     if (this.terminals && !this.terminals.reviewActive) this.terminals.select(null);
     if (this.mode === mode) return;
     this.mode = mode;
-    const view = mode === 'diff' ? this.diff.el : mode === 'history' ? this.history.el : mode === 'file' ? this.viewer.el : this.welcome();
+    const view = mode === 'diff' ? this.diff.el : mode === 'history' ? this.history.el : mode === 'file' ? this.viewer.el
+      : mode === 'settings' ? this.settingsView.el : this.welcome();
     this.review.replaceChildren(view);
   }
 
@@ -532,6 +566,7 @@ class App {
       return item ? this.diffSpec(item) : null;
     }
     if ('file' in p) return this.fileSpec(p.file);
+    if ('settings' in p) return this.settingsSpec();
     if ('history' in p) {
       const r = repo(p.history);
       return r ? this.historySpec(r) : null;
@@ -678,9 +713,10 @@ class App {
       this.scanInfo ? h('span', { class: `status-item dim ${scanning ? 'spinning' : ''}` }, icon(scanning ? 'busy' : 'repos'), h('span', { class: 'status-text' }, this.scanInfo)) : null,
       this.indexInfo ? h('span', { class: 'status-item dim' }, icon('symbols'), h('span', { class: 'status-text' }, this.indexInfo)) : null,
       h('span', { class: 'spacer' }),
-      this.settingsError ? h('button', { class: 'status-button warning', 'data-tip': this.settingsError, onclick: () => this.settingsError && this.toast(this.settingsError) },
+      this.settingsError ? h('button', { class: 'status-button warning', 'data-tip': this.settingsError, onclick: () => this.showSettings() },
         icon('warning'), 'Settings file has an error') : null,
       h('button', { class: 'status-button', onclick: () => this.chooseFolder() }, icon('folder-open'), 'Open folder…'),
+      h('button', { class: 'status-button icon-only', 'data-tip': `Settings (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'},)`, 'aria-label': 'Settings', onclick: () => this.showSettings() }, icon('settings')),
       this.showAbout ? h('button', { class: 'status-button icon-only', 'data-tip': 'About Gako', 'aria-label': 'About Gako', onclick: () => this.showAbout?.() }, icon('info')) : null,
     );
   }
@@ -771,6 +807,7 @@ async function main(): Promise<void> {
   const t = await connect(b);
   const hello = await t.request<{ env: Record<string, string> }>('hello');
   const app = new App(t, hello.env, b.pickFolder, b.showAbout);
+  b.onShowSettings?.(() => app.showSettings());
   let last: string | undefined;
   try { last = localStorage.getItem(LAST_BASE) ?? undefined; } catch { /* storage unavailable */ }
   // The folder given on the command line, then the last one opened, then the settings file's.

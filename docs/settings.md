@@ -1,7 +1,8 @@
 # Settings
 
-Gako has no settings screen. Its settings are a JSON file, which you create when you want to
-change something:
+Gako's settings are a JSON file. You can edit it on the settings screen (⌘, on macOS, Ctrl+,
+elsewhere, or the gear at the right of the status bar) or in any editor; it's created the first time
+something is changed:
 
 | Platform | File |
 |---|---|
@@ -9,7 +10,14 @@ change something:
 | Windows | `%APPDATA%\Gako\settings.json` |
 | Linux | `~/.config/gako/settings.json` |
 
-The About window shows the path for your system, with a button to show the file once it exists.
+The settings screen and the About window show the path for your system.
+
+The settings screen saves each change as it's made. It writes only what differs from the defaults:
+setting a value back to its default, or **Reset**, takes it out of the file, so a later change of
+default still reaches you. Keys it doesn't know are kept, in the file's order. The file is
+rewritten with two-space indentation, replaced in one step, and written through a symbolic link if
+it's one (a settings file kept with your dotfiles stays where it is). A setting the file sets has a
+bar at its left on the screen.
 
 Every key is optional; a key you leave out keeps its default.
 
@@ -26,7 +34,8 @@ Gako watches the file, so a change applies as soon as you save it:
 
 If the file can't be read (it isn't valid JSON, or a value has the wrong type), Gako keeps the
 last settings that worked and says so in the status bar, naming the file, the line and the column,
-until the file is fixed. Opening a folder with the file in that state fails with the same message.
+until the file is fixed. Opening a folder with the file in that state fails with the same message,
+and the settings screen saves nothing until it's fixed.
 
 These are your settings for every folder. A folder Gako opens can't change them: there are no
 per-folder settings files.
@@ -101,4 +110,4 @@ The known editors' ids are `vscode`, `vscode-insiders`, `vscodium`, `cursor`, `w
 ```
 
 An editor picked from the Files view's context menu is remembered on that machine and wins over
-this setting.
+this setting, until the editor is next set on the settings screen.

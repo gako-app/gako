@@ -435,6 +435,41 @@ async fn request(
                     .await?;
             Ok(json!({"editors": found, "default": default}))
         }
+        "settingsGet" => {
+            // For the settings screen: the settings in use, the defaults, which keys the file
+            // sets, and what the file's error is, if it has one.
+            let path = settings::user_file();
+            let in_file: Vec<String> = path
+                .as_deref()
+                .and_then(|p| std::fs::read_to_string(p).ok())
+                .and_then(|t| serde_json::from_str::<serde_json::Map<String, Value>>(&t).ok())
+                .map(|m| m.keys().cloned().collect())
+                .unwrap_or_default();
+            let c = current.lock().unwrap();
+            let known: Vec<Value> = crate::editors::known()
+                .into_iter()
+                .map(|(id, name)| json!({"id": id, "name": name}))
+                .collect();
+            Ok(json!({
+                "path": path,
+                "settings": c.settings,
+                "defaults": Settings::default(),
+                "inFile": in_file,
+                "error": c.error,
+                "knownEditors": known,
+            }))
+        }
+        "settingsSave" => {
+            let path = settings::user_file()
+                .ok_or_else(|| anyhow::anyhow!("no folder for the settings file on this system"))?;
+            let changes: serde_json::Map<String, Value> = param(&params, "changes")?;
+            let saved = settings::save(&path, &changes)?;
+            // Applied now rather than when the watcher sees the file (it then finds nothing new).
+            if let Some(ev) = current.lock().unwrap().update(Ok(saved.clone())) {
+                let _ = tx.send(Event::Text(ev.to_string()));
+            }
+            Ok(json!({"settings": saved}))
+        }
         "workspaceOpen" => {
             let settings = settings::load(settings::user_file().as_deref())?;
             let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;

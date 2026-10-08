@@ -24,7 +24,7 @@ use anyhow::{Context, Result};
 use notify::RecursiveMode;
 use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
@@ -156,6 +156,62 @@ pub fn load(user: Option<&Path>) -> Result<Settings> {
     Ok(settings)
 }
 
+/// Saves `changes` into the settings file at `path`, and returns the settings it now holds. A key
+/// set to null or to its default is taken out, so the file names only what differs and a later
+/// change of default still applies. Every other key stays as it was, ones Gako doesn't know
+/// included, in the file's order. The file is replaced in one step (a new file renamed over it),
+/// through a symbolic link if it's one. A file that can't be read is left alone: it says why.
+pub fn save(path: &Path, changes: &Map<String, Value>) -> Result<Settings> {
+    let defaults = match serde_json::to_value(Settings::default())? {
+        Value::Object(m) => m,
+        _ => unreachable!("settings are an object"),
+    };
+    let existed = path.exists();
+    let mut file = match read(path)? {
+        Some(Value::Object(m)) => m,
+        Some(_) => anyhow::bail!("{}: not a JSON object", path.display()),
+        None => Map::new(),
+    };
+    for (key, value) in changes {
+        let Some(default) = defaults.get(key) else {
+            anyhow::bail!("{key}: not a setting");
+        };
+        // Checked one by one, so an error names its setting. Null is the default, whatever the type.
+        if !value.is_null() {
+            let mut one = Map::new();
+            one.insert(key.clone(), value.clone());
+            serde_json::from_value::<Settings>(Value::Object(one)).with_context(|| key.clone())?;
+        }
+        // 12 and 12.0 are the same font size.
+        let same = match (value.as_f64(), default.as_f64()) {
+            (Some(a), Some(b)) => a == b,
+            _ => value == default,
+        };
+        if value.is_null() || same {
+            file.shift_remove(key);
+        } else {
+            file.insert(key.clone(), value.clone());
+        }
+    }
+    let settings = serde_json::from_value::<Settings>(Value::Object(file.clone()))?;
+    if existed || !file.is_empty() {
+        let target = if existed {
+            std::fs::canonicalize(path).with_context(|| format!("{}", path.display()))?
+        } else {
+            let dir = path.parent().context("the settings file has no folder")?;
+            std::fs::create_dir_all(dir).with_context(|| format!("{}", dir.display()))?;
+            path.to_path_buf()
+        };
+        let mut name = target.file_name().unwrap_or_default().to_os_string();
+        name.push(".tmp");
+        let tmp = target.with_file_name(name);
+        let text = serde_json::to_string_pretty(&Value::Object(file))? + "\n";
+        std::fs::write(&tmp, text).with_context(|| format!("{}", tmp.display()))?;
+        std::fs::rename(&tmp, &target).with_context(|| format!("{}", target.display()))?;
+    }
+    Ok(settings)
+}
+
 pub struct Watcher {
     _debouncer: Debouncer<notify::RecommendedWatcher, RecommendedCache>,
 }
@@ -239,6 +295,86 @@ mod tests {
 
         std::fs::remove_file(&path).unwrap();
         while next() != Ok(Settings::default()) {}
+    }
+
+    fn changes(v: Value) -> Map<String, Value> {
+        match v {
+            Value::Object(m) => m,
+            _ => panic!("not an object"),
+        }
+    }
+
+    #[test]
+    fn saving_keeps_other_keys_and_drops_defaults() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"zKey": 1, "scanDepth": 3, "editor": "zed", "terminalFontSize": 16}"#,
+        )
+        .unwrap();
+        let s = save(
+            &path,
+            &changes(serde_json::json!({
+                "scanDepth": 2,          // the default: taken out
+                "editor": null,          // taken out
+                "agentHooks": null,      // not in the file: nothing to take out
+                "terminalFontSize": 15,  // changed in place
+                "fileFontSize": 12,      // the default, 12.0
+                "fileFontLigatures": true,
+            })),
+        )
+        .unwrap();
+        assert!(s.file_font_ligatures);
+        assert_eq!(s.terminal_font_size, 15.0);
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text,
+            "{\n  \"zKey\": 1,\n  \"terminalFontSize\": 15,\n  \"fileFontLigatures\": true\n}\n"
+        );
+        assert_eq!(load(Some(&path)).unwrap(), s);
+    }
+
+    #[test]
+    fn saving_refuses_bad_values_and_bad_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let err = save(&path, &changes(serde_json::json!({"scanDepth": "deep"}))).unwrap_err();
+        assert!(format!("{err:#}").starts_with("scanDepth: "), "{err:#}");
+        let err = save(&path, &changes(serde_json::json!({"colour": "red"}))).unwrap_err();
+        assert_eq!(format!("{err:#}"), "colour: not a setting");
+        assert!(!path.exists());
+
+        std::fs::write(&path, "{,}").unwrap();
+        assert!(save(&path, &changes(serde_json::json!({"scanDepth": 3}))).is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{,}");
+
+        // Nothing to save into a file that isn't there: none is made.
+        let other = dir.path().join("new").join("settings.json");
+        save(&other, &changes(serde_json::json!({"scanDepth": 2}))).unwrap();
+        assert!(!other.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saving_writes_through_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("dotfiles-settings.json");
+        let link = dir.path().join("settings.json");
+        std::fs::write(&real, "{}").unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        save(&link, &changes(serde_json::json!({"scanDepth": 3}))).unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(
+            std::fs::read_to_string(&real)
+                .unwrap()
+                .contains("\"scanDepth\": 3")
+        );
     }
 
     #[test]
