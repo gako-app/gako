@@ -487,7 +487,7 @@ async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Resul
             Ok(serde_json::to_value(listing)?)
         }
         "fileRead" => Ok(serde_json::to_value(
-            crate::files::read(&path, 50 << 20).await?,
+            crate::files::read(&path, 50 << 20, params["raw"].as_bool().unwrap_or(false)).await?,
         )?),
         "openInEditor" => {
             let line = params["line"].as_u64().unwrap_or(1) as u32;
@@ -529,7 +529,15 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
                 c => git::Rev::Commit(c),
             };
             Ok(serde_json::to_value(
-                git::file(g, &repo.root, rev, &path, 50 << 20).await?,
+                git::file(
+                    g,
+                    &repo.root,
+                    rev,
+                    &path,
+                    50 << 20,
+                    params["raw"].as_bool().unwrap_or(false),
+                )
+                .await?,
             )?)
         }
         "gitLog" => {

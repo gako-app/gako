@@ -24,7 +24,14 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
 - **Change markers:** lines added, changed or deleted since the last commit are marked in the
   gutter, in VS Code's colours, whether the changes are staged or not. Clicking a marker shows the
   old lines under the new ones, with steps to the previous and next change.
-- Binary files show their size instead of their contents, and files over 50 MB are cut off there.
+- **Images and PDFs** show as they are. An image (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO) sits on a
+  checkerboard, fitted to the view, with its dimensions and size; a click shows it at its actual
+  size. A PDF opens in Chromium's own viewer, with its pages, zoom and search. The type comes from
+  the file's extension, and the browser is told that type rather than left to guess, so a
+  mislabelled file fails to show rather than being treated as something else. SVG files are text,
+  and show as text.
+- Other binary files show their size instead of their contents, and files over 50 MB are cut off
+  there (images and PDFs over 50 MB aren't shown).
 - **Open in editor** opens the file at the cursor's line, or at the top of the view.
 
 Tabs work as VS Code's editor tabs do: a single click opens a preview tab (in italics) that the

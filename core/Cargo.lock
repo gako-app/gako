@@ -370,6 +370,7 @@ name = "gako-core"
 version = "0.9.0"
 dependencies = [
  "anyhow",
+ "data-encoding",
  "dirs",
  "futures-util",
  "getrandom",

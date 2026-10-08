@@ -133,7 +133,7 @@ class App {
       toast: (m) => this.toast(m),
     });
     this.viewer = new Viewer(
-      (path) => this.t.request<FileContent>('fileRead', { path }),
+      (path, raw) => this.t.request<FileContent>('fileRead', { path, raw: !!raw }),
       this.editors,
       (path) => this.relative(path),
       (path) => this.baseline(path),

@@ -86,6 +86,10 @@ tree for changes, the last commit against the staged version for staged changes,
 against the working tree for a conflict. Diffs are Monaco's, read-only, with syntax highlighting,
 and side by side, inline, or automatic (side by side unless the diff is narrow), remembered.
 
+Images and PDFs are compared as they look: before and after side by side, each with where it
+comes from, its dimensions and its size. A new or deleted file shows one side empty. See
+[navigation.md](navigation.md#the-viewer).
+
 ## History
 
 Each repository's history button opens its commit log, loading more as it scrolls. Picking a

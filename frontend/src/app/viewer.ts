@@ -23,6 +23,8 @@ import type { Navigator } from './navigate';
 import { type Editors, spotIn } from './editors';
 import { ChangeMarkers } from './changes';
 import { iconButton } from './icons';
+import { mediaType } from './media';
+import { type MediaView, mediaView } from './mediaview';
 
 export class Viewer {
   readonly el = h('section', { class: 'diff' });
@@ -30,6 +32,9 @@ export class Viewer {
   private actions = h('div', { class: 'diff-actions' });
   private notice = h('div', { class: 'diff-notice', hidden: true });
   private host = h('div', { class: 'diff-editor' });
+  /** Where an image or a PDF shows instead of the editor. */
+  private mediaHost = h('div', { class: 'media-host', hidden: true });
+  private media: MediaView | null = null;
   private editor: monaco.editor.IStandaloneCodeEditor;
   path: string | null = null;
   private ticket = 0;
@@ -37,7 +42,7 @@ export class Viewer {
   private markers: ChangeMarkers;
 
   constructor(
-    private read: (path: string) => Promise<FileContent>,
+    private read: (path: string, raw?: boolean) => Promise<FileContent>,
     private editors: Editors,
     private relative: (path: string) => string,
     /** The file at the last commit ('' if it's new), or null if it has no changes to mark. */
@@ -45,7 +50,7 @@ export class Viewer {
     /** What opens a changed file's diff; null if it has none to show. */
     private diffOf: (path: string) => (() => void) | null,
   ) {
-    this.el.append(this.header, this.notice, this.host);
+    this.el.append(this.header, this.notice, this.host, this.mediaHost);
     this.editor = monaco.editor.create(this.host, {
       readOnly: true,
       domReadOnly: true,
@@ -64,6 +69,7 @@ export class Viewer {
     const path = this.path;
     if (!path) return;
     this.renderActions();
+    if (mediaType(path)) return;
     this.baseline(path).then((before) => { if (this.path === path) this.markers.show(before); }).catch(() => this.markers.clear());
   }
 
@@ -79,8 +85,26 @@ export class Viewer {
       this.actions,
     );
     this.renderActions();
-    const content = await this.read(path);
+    const type = mediaType(path);
+    const content = await this.read(path, !!type);
     if (ticket !== this.ticket) return;
+    this.media?.dispose();
+    this.media = null;
+    this.host.hidden = !!type;
+    this.mediaHost.hidden = !type;
+    if (type) {
+      // An image or a PDF: shown as it is, with nothing for the editor to hold.
+      this.notice.hidden = true;
+      this.media = mediaView(content, type);
+      this.mediaHost.replaceChildren(this.media.el);
+      const previous = this.editor.getModel();
+      this.editor.setModel(monaco.editor.createModel('', 'plaintext'));
+      previous?.dispose();
+      this.decorations?.clear();
+      this.markers.clear();
+      return;
+    }
+    this.mediaHost.replaceChildren();
     const notes = [
       content.binary ? `A binary file (${content.size.toLocaleString()} bytes).` : '',
       content.truncated ? 'Cut off at 50 MB.' : '',

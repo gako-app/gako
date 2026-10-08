@@ -118,30 +118,49 @@ async fn contents_log_and_commit_details() {
     let text = |c: Option<FileContent>| c.unwrap().text;
     assert_eq!(
         text(
-            file(&g, &dir, Rev::Commit("HEAD"), "a.txt", 1 << 20)
+            file(&g, &dir, Rev::Commit("HEAD"), "a.txt", 1 << 20, false)
                 .await
                 .unwrap()
         ),
         "one\n"
     );
     assert_eq!(
-        text(file(&g, &dir, Rev::Index, "a.txt", 1 << 20).await.unwrap()),
+        text(
+            file(&g, &dir, Rev::Index, "a.txt", 1 << 20, false)
+                .await
+                .unwrap()
+        ),
         "two\n"
     );
     assert_eq!(
         text(
-            file(&g, &dir, Rev::WorkTree, "a.txt", 1 << 20)
+            file(&g, &dir, Rev::WorkTree, "a.txt", 1 << 20, false)
                 .await
                 .unwrap()
         ),
         "three\n"
     );
     assert!(
-        file(&g, &dir, Rev::Commit("HEAD"), "missing.txt", 1 << 20)
+        file(&g, &dir, Rev::Commit("HEAD"), "missing.txt", 1 << 20, false)
             .await
             .unwrap()
             .is_none()
     );
+    // Raw, for images and PDFs: the bytes and no text, and nothing over the limit.
+    let png = [0x89u8, b'P', b'N', b'G', 0, 1, 2];
+    std::fs::write(dir.join("i.png"), png).unwrap();
+    let raw = file(&g, &dir, Rev::WorkTree, "i.png", 1 << 20, true)
+        .await
+        .unwrap()
+        .unwrap();
+    let encoded = data_encoding::BASE64.encode(&png);
+    assert_eq!(raw.base64.as_deref(), Some(encoded.as_str()));
+    assert!(raw.binary && raw.text.is_empty());
+    let big = file(&g, &dir, Rev::WorkTree, "i.png", 4, true)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(big.truncated && big.base64.is_none());
 
     let commits = log(&g, &dir, 0, 10).await.unwrap();
     assert_eq!(commits.len(), 1);

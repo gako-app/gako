@@ -26,8 +26,9 @@ function git(...args: string[]): string {
 }
 
 /** The pages' content security policy: Gako's own scripts, workers, fonts and files, images from
- * them or inlined, and connections to the core on the loopback interface. Styles may be inline,
- * since Monaco and xterm.js set them. The dev server also needs its hot-reload connection. */
+ * them or inlined, PDFs in frames from in-memory blobs (which only the page's own scripts can
+ * make), and connections to the core on the loopback interface. Styles may be inline, since Monaco
+ * and xterm.js set them. The dev server also needs its hot-reload connection. */
 function csp(dev: boolean): string {
   return [
     "default-src 'self'",
@@ -37,6 +38,7 @@ function csp(dev: boolean): string {
     "font-src 'self'",
     `connect-src 'self' ws://127.0.0.1:*${dev ? ' ws://localhost:*' : ''}`,
     "worker-src 'self'",
+    'frame-src blob:',
     "object-src 'none'",
     "base-uri 'none'",
     "form-action 'none'",

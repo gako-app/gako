@@ -31,8 +31,9 @@ export class Git {
     return this.t.request('workspaceOpen', { base: base ?? null });
   }
 
-  file(repo: string, rev: string, path: string): Promise<FileContent | null> {
-    return this.t.request('gitFile', { repo, rev, path });
+  /** A file at a revision; with `raw`, its bytes rather than its text (for images and PDFs). */
+  file(repo: string, rev: string, path: string, raw = false): Promise<FileContent | null> {
+    return this.t.request('gitFile', { repo, rev, path, raw });
   }
 
   log(repo: string, skip: number, limit: number): Promise<Commit[]> {

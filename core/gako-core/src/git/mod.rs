@@ -136,14 +136,15 @@ pub enum Rev<'a> {
     Commit(&'a str),
 }
 
-/// A file's content at a revision; `None` when it doesn't exist there. Content is capped at
-/// `limit` bytes; binary content is reported, not returned.
+/// A file's content at a revision; `None` when it doesn't exist there. See `FileContent::new` for
+/// `limit` and `raw`.
 pub async fn file(
     git: &Git,
     repo: &Path,
     rev: Rev<'_>,
     path: &str,
     limit: usize,
+    raw: bool,
 ) -> Result<Option<FileContent>> {
     let bytes = match rev {
         Rev::WorkTree => match tokio::fs::read(repo.join(path)).await {
@@ -163,20 +164,7 @@ pub async fn file(
             }
         }
     };
-    let size = bytes.len();
-    let binary = bytes.iter().take(8000).any(|&b| b == 0);
-    let truncated = size > limit;
-    let text = if binary {
-        String::new()
-    } else {
-        String::from_utf8_lossy(&bytes[..size.min(limit)]).into_owned()
-    };
-    Ok(Some(FileContent {
-        text,
-        size,
-        binary,
-        truncated,
-    }))
+    Ok(Some(FileContent::new(&bytes, limit, raw)))
 }
 
 fn is_missing(e: &anyhow::Error) -> bool {
@@ -195,6 +183,33 @@ pub struct FileContent {
     pub size: usize,
     pub binary: bool,
     pub truncated: bool,
+    /// The bytes themselves, base64-encoded, when they were asked for and fit the limit: for
+    /// images and PDFs, which the frontend shows as they are.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base64: Option<String>,
+}
+
+impl FileContent {
+    /// A file's content for the viewer: its text up to `limit` bytes, or, binary, only reported as
+    /// binary. With `raw`, the bytes instead, unless they're over `limit` (then only reported).
+    pub fn new(bytes: &[u8], limit: usize, raw: bool) -> FileContent {
+        let size = bytes.len();
+        let binary = bytes.iter().take(8000).any(|&b| b == 0);
+        let truncated = size > limit;
+        let text = if binary || raw {
+            String::new()
+        } else {
+            String::from_utf8_lossy(&bytes[..size.min(limit)]).into_owned()
+        };
+        let base64 = (raw && !truncated).then(|| data_encoding::BASE64.encode(bytes));
+        FileContent {
+            text,
+            size,
+            binary,
+            truncated,
+            base64,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]

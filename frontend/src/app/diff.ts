@@ -22,6 +22,8 @@ import type { Git } from './git';
 import type { Navigator } from './navigate';
 import { type Editors, type Spot, spotIn } from './editors';
 import { icon, iconButton, type IconName } from './icons';
+import { mediaType } from './media';
+import { type MediaView, mediaView } from './mediaview';
 
 const LAYOUT = 'gako.diffLayout';
 
@@ -46,6 +48,16 @@ const KIND_LABEL: Record<DiffTarget['kind'], string> = {
   commit: 'Commit',
 };
 
+/** Where a side comes from: the working tree, the index, a commit, or nowhere. */
+function sideLabel(s: Side | null): string {
+  return s ? (s.rev === 'worktree' ? 'working tree' : s.rev === 'index' ? 'index' : s.rev.slice(0, 7)) : '(none)';
+}
+
+/** The media type a diff shows, if its file is an image or a PDF on either side. */
+function diffMedia(t: DiffTarget) {
+  return mediaType(t.right?.path ?? t.left?.path ?? t.path);
+}
+
 export interface DiffActions {
   prev?: () => void;
   next?: () => void;
@@ -62,6 +74,9 @@ export class DiffPanel {
   private header = h('header', { class: 'diff-header' });
   private notice = h('div', { class: 'diff-notice' });
   private host = h('div', { class: 'diff-editor' });
+  /** Where an image's or a PDF's two sides show instead of the editor. */
+  private mediaHost = h('div', { class: 'media-host pair', hidden: true });
+  private media: MediaView[] = [];
   private editor: monaco.editor.IStandaloneDiffEditor;
   target: DiffTarget | null = null;
   private loading = 0;
@@ -72,7 +87,7 @@ export class DiffPanel {
       const saved = localStorage.getItem(LAYOUT);
       if (saved === 'side' || saved === 'inline' || saved === 'auto') this.layout = saved;
     } catch { /* storage unavailable */ }
-    this.el.append(this.header, this.notice, this.host);
+    this.el.append(this.header, this.notice, this.host, this.mediaHost);
     this.editor = monaco.editor.createDiffEditor(this.host, {
       readOnly: true,
       domReadOnly: true,
@@ -87,9 +102,15 @@ export class DiffPanel {
     });
   }
 
-  private async side(repo: string, side: Side | null): Promise<FileContent | null> {
+  private async side(repo: string, side: Side | null, raw: boolean): Promise<FileContent | null> {
     if (!side) return null;
-    return this.git.file(repo, side.rev, side.path);
+    return this.git.file(repo, side.rev, side.path, raw);
+  }
+
+  private disposeMedia(): void {
+    for (const m of this.media) m.dispose();
+    this.media = [];
+    this.mediaHost.replaceChildren();
   }
 
   /** Shows a diff. With `keepView`, the scroll position survives (a refresh of the same file); `view`
@@ -100,8 +121,29 @@ export class DiffPanel {
       this.target.kind === target.kind;
     this.target = target;
     this.renderHeader(target, actions);
-    const [left, right] = await Promise.all([this.side(target.repo, target.left), this.side(target.repo, target.right)]);
+    const type = diffMedia(target);
+    const [left, right] = await Promise.all([this.side(target.repo, target.left, !!type), this.side(target.repo, target.right, !!type)]);
     if (ticket !== this.loading) return; // a newer request won
+    this.disposeMedia();
+    this.host.hidden = !!type;
+    this.mediaHost.hidden = !type;
+    if (type) {
+      // An image or a PDF: before and after, side by side, as they are.
+      this.notice.hidden = true;
+      this.media = [
+        mediaView(left, type, target.left ? 'Not there.' : 'New: nothing before.'),
+        mediaView(right, type, target.right ? 'Not there.' : 'Deleted.'),
+      ];
+      const head = (side: Side | null, which: string) => h('div', { class: 'media-side-head' }, `${which} · ${sideLabel(side)}`);
+      this.mediaHost.append(
+        h('div', { class: 'media-side' }, head(target.left, 'Before'), this.media[0].el),
+        h('div', { class: 'media-side' }, head(target.right, 'After'), this.media[1].el));
+      const previous = this.editor.getModel();
+      this.editor.setModel({ original: monaco.editor.createModel(''), modified: monaco.editor.createModel('') });
+      previous?.original.dispose();
+      previous?.modified.dispose();
+      return;
+    }
     const notes: string[] = [];
     for (const [name, c] of [['left', left], ['right', right]] as const) {
       if (c?.binary) notes.push(`The ${name} side is a binary file (${c.size.toLocaleString()} bytes).`);
@@ -126,7 +168,6 @@ export class DiffPanel {
   private renderHeader(t: DiffTarget, a: DiffActions): void {
     const renamed = t.left && t.right && t.left.path !== t.right.path ? `${t.left.path} → ` : '';
     const what = t.kind === 'commit' ? `Commit ${t.hash?.slice(0, 7)}` : KIND_LABEL[t.kind];
-    const sideLabel = (s: Side | null) => (s ? (s.rev === 'worktree' ? 'working tree' : s.rev === 'index' ? 'index' : s.rev.slice(0, 7)) : '(none)');
     fill(this.header,
       a.back ? h('button', { class: 'link', onclick: a.back }, '← Back') : null,
       h('div', { class: 'diff-title' },
@@ -138,7 +179,7 @@ export class DiffPanel {
         a.file ? iconButton('file', 'Open file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
         a.file ? this.editors.button(() => this.spot(a.file!)) : null,
         a.revert ? iconButton('revert', 'Revert changes', a.revert, { class: 'framed' }) : null,
-        this.modeSwitch(),
+        diffMedia(t) ? null : this.modeSwitch(),
         iconButton('prev', 'Previous changed file (↑ in the sidebar)', () => a.prev?.(), { class: 'framed', disabled: !a.prev }),
         iconButton('next', 'Next changed file (↓ in the sidebar)', () => a.next?.(), { class: 'framed', disabled: !a.next })),
     );
@@ -188,6 +229,9 @@ export class DiffPanel {
   clear(message: string): void {
     this.loading++;
     this.target = null;
+    this.disposeMedia();
+    this.mediaHost.hidden = true;
+    this.host.hidden = false;
     const previous = this.editor.getModel();
     this.editor.setModel(null);
     previous?.original.dispose();

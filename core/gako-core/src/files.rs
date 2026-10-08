@@ -158,22 +158,9 @@ pub fn list(dir: &Path) -> Result<Listing> {
     Ok(Listing { entries, omitted })
 }
 
-/// A file's content for the viewer: text up to `limit` bytes, binary reported.
-pub async fn read(path: &Path, limit: usize) -> Result<FileContent> {
-    let bytes = tokio::fs::read(path).await?;
-    let size = bytes.len();
-    let binary = bytes.iter().take(8000).any(|&b| b == 0);
-    let text = if binary {
-        String::new()
-    } else {
-        String::from_utf8_lossy(&bytes[..size.min(limit)]).into_owned()
-    };
-    Ok(FileContent {
-        text,
-        size,
-        binary,
-        truncated: size > limit,
-    })
+/// A file's content for the viewer; see `FileContent::new` for `limit` and `raw`.
+pub async fn read(path: &Path, limit: usize, raw: bool) -> Result<FileContent> {
+    Ok(FileContent::new(&tokio::fs::read(path).await?, limit, raw))
 }
 
 #[cfg(test)]

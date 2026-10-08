@@ -72,6 +72,8 @@ export interface FileContent {
   size: number;
   binary: boolean;
   truncated: boolean;
+  /** The bytes, base64-encoded, when asked for (images and PDFs) and within the limit. */
+  base64?: string;
 }
 
 /** One side of a diff: a file at a revision ('worktree', 'index', or a commit), or nothing. */
