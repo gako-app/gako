@@ -77,7 +77,7 @@ The method stays fixed, so numbers taken months apart can be compared:
 
 ## Latest results
 
-All budgets pass on macOS (Apple M5, 16 GB), with one known exception. The headline numbers:
+All budgets pass on macOS (a MacBook Air M5 with 16 GB), with one known exception. The headline numbers:
 
 | | Gako | VS Code |
 |---|---|---|
