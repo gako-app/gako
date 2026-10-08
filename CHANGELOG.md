@@ -4,7 +4,7 @@ All notable changes to Gako are listed here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.9.0] — unreleased
+## [0.9.0] — 2026-10-08
 
 The first public release. Gako is used every day on macOS; Windows and Linux have had less use.
 
