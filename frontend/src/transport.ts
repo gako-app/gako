@@ -39,7 +39,9 @@ export type CoreEvent =
   | { t: 'filesChanged'; dirs: string[] }
   | { t: 'searchResults'; search: number; files: unknown[] }
   | { t: 'indexReady'; files: number; symbols: number; ms: number }
-  | { t: 'scanDone'; ms: number; repos: number };
+  | { t: 'scanDone'; ms: number; repos: number }
+  // The settings file changed: its settings, or why it can't be read.
+  | { t: 'settings'; settings?: unknown; error?: string };
 
 export interface Transport {
   request<T = unknown>(method: string, params?: unknown): Promise<T>;

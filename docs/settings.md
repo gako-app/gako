@@ -11,9 +11,22 @@ change something:
 
 The About window shows the path for your system, with a button to show the file once it exists.
 
-Every key is optional; a key you leave out keeps its default. Gako reads the file each time it
-opens a folder, lists agents, or finds editors, so changes apply the next time you do one of those.
-If the file isn't valid JSON, Gako says so and names it.
+Every key is optional; a key you leave out keeps its default.
+
+Gako watches the file, so a change applies as soon as you save it:
+
+- **At once:** the fonts, in the files, diffs and terminals already open; the agents offered for
+  new terminals; the editor; `agentHooks`, for agents started from then on.
+- **By opening the folder again**, which Gako does for you, keeping what's open: the repository
+  settings (`scanDepth`, `scanIgnore`, `extraFolders`, `maxGitProcesses`, `debounceMs`,
+  `untrackedLimit`, `gitTimeoutSecs`).
+- **In terminals opened from then on:** `terminalScrollback`, `terminalRenderer` and
+  `terminalMaxCombining`.
+- **The next time Gako starts:** `base`.
+
+If the file can't be read (it isn't valid JSON, or a value has the wrong type), Gako keeps the
+last settings that worked and says so in the status bar, naming the file, the line and the column,
+until the file is fixed. Opening a folder with the file in that state fails with the same message.
 
 These are your settings for every folder. A folder Gako opens can't change them: there are no
 per-folder settings files.
@@ -66,8 +79,7 @@ The defaults suit 10–30 repositories, one or two levels deep. For a larger lay
 
 ## Files and diffs
 
-The font of the file viewer and the diff view, set apart from the terminals'. Changes apply the
-next time you open a folder.
+The font of the file viewer and the diff view, set apart from the terminals'.
 
 | Key | Default | What it does |
 |---|---|---|

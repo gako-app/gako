@@ -92,6 +92,8 @@ export class TerminalTab {
   exit: Exit | null = null;
   contextLosses = 0;
   private webgl: WebglAddon | null = null;
+  private ligatures: LigaturesAddon | null = null;
+  private wantLigatures: boolean;
   private fit: FitAddon | null = null;
   private opened = false;
   private exitWaiters: ((e: Exit) => void)[] = [];
@@ -106,6 +108,7 @@ export class TerminalTab {
     parent: HTMLElement,
     readonly opts: TermOptions,
   ) {
+    this.wantLigatures = !!opts.fontLigatures;
     this.el = document.createElement('div');
     this.el.className = 'view terminal';
     this.el.style.display = 'none';
@@ -209,12 +212,35 @@ export class TerminalTab {
     if (!this.opened) {
       this.term.open(this.el);
       this.opened = true;
-      if (this.opts.fontLigatures) this.term.loadAddon(new LigaturesAddon());
+      if (this.wantLigatures) this.term.loadAddon(this.ligatures = new LigaturesAddon());
     }
     if (this.opts.renderer === 'webgl' && !this.webgl) this.attachWebgl();
     this.refit();
     this.term.refresh(0, this.term.rows - 1);
     if (focus) this.term.focus();
+  }
+
+  /** Changes the font while the terminal runs (the settings changed). */
+  setFont(fontFamily: string, fontSize: number, ligatures: boolean): void {
+    if (this.term.options.fontFamily !== fontFamily) this.term.options.fontFamily = fontFamily;
+    if (this.term.options.fontSize !== fontSize) this.term.options.fontSize = fontSize;
+    if (ligatures !== this.wantLigatures) {
+      this.wantLigatures = ligatures;
+      if (this.opened) {
+        if (ligatures) this.term.loadAddon(this.ligatures = new LigaturesAddon());
+        else {
+          this.ligatures?.dispose();
+          this.ligatures = null;
+        }
+        // WebGL's glyphs were drawn with the font's features as they were: start it again.
+        if (this.webgl) {
+          this.webgl.dispose();
+          this.webgl = null;
+          this.attachWebgl();
+        }
+      }
+    }
+    this.refit();
   }
 
   hide(): void {

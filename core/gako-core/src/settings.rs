@@ -14,11 +14,15 @@
 
 //! Settings: one JSON file in the platform's config folder. Every key is optional; defaults suit a
 //! layout of 10–30 repos, one or two levels deep. Folders that Gako opens have no settings of
-//! their own, so nothing in a repository can change what Gako runs.
+//! their own, so nothing in a repository can change what Gako runs. The file is watched, so edits
+//! reach the running app.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::{Context, Result};
+use notify::RecursiveMode;
+use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -152,6 +156,42 @@ pub fn load(user: Option<&Path>) -> Result<Settings> {
     Ok(settings)
 }
 
+pub struct Watcher {
+    _debouncer: Debouncer<notify::RecommendedWatcher, RecommendedCache>,
+}
+
+/// Calls `changed` with the file's settings, or why they can't be read, each time `path` is
+/// written, replaced or deleted (deleted: the defaults). Its folder is watched rather than the file,
+/// since editors often save by renaming a new file over the old one; it's created if it's missing,
+/// so a settings file made later is seen too.
+pub fn watch(
+    path: PathBuf,
+    changed: impl Fn(Result<Settings>) + Send + 'static,
+) -> Result<Watcher> {
+    let dir = path.parent().context("the settings file has no folder")?;
+    std::fs::create_dir_all(dir).with_context(|| format!("{}", dir.display()))?;
+    let name = path.file_name().map(|n| n.to_os_string());
+    let file = path.clone();
+    let mut debouncer = new_debouncer(
+        Duration::from_millis(100),
+        None,
+        move |result: DebounceEventResult| {
+            let Ok(events) = result else { return };
+            if events
+                .iter()
+                .flat_map(|e| &e.event.paths)
+                .any(|p| p.file_name() == name.as_deref())
+            {
+                changed(load(Some(&file)));
+            }
+        },
+    )?;
+    debouncer.watch(dir, RecursiveMode::NonRecursive)?;
+    Ok(Watcher {
+        _debouncer: debouncer,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,6 +205,40 @@ mod tests {
         assert_eq!(s.scan_depth, 4);
         assert_eq!(s.max_git_processes, 8);
         assert_eq!(s.debounce_ms, Settings::default().debounce_ms);
+    }
+
+    #[test]
+    fn edits_are_seen_and_bad_ones_reported() {
+        let dir = tempfile::tempdir().unwrap();
+        // The folder doesn't exist yet: watching creates it.
+        let path = dir.path().join("Gako").join("settings.json");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let _w = watch(path.clone(), move |r| {
+            let _ = tx.send(r.map_err(|e| format!("{e:#}")));
+        })
+        .unwrap();
+        let next = || rx.recv_timeout(Duration::from_secs(10)).unwrap();
+
+        std::fs::write(&path, r#"{"scanDepth": 4}"#).unwrap();
+        assert_eq!(next().unwrap().scan_depth, 4);
+
+        std::fs::write(&path, r#"{"scanDepth": 4,}"#).unwrap();
+        let err = loop {
+            match next() {
+                Ok(_) => continue, // the write before, seen again
+                Err(e) => break e,
+            }
+        };
+        assert!(err.contains("settings.json"), "{err}");
+
+        // Saved by renaming a new file over the old one.
+        let tmp = path.with_file_name("settings.json.tmp");
+        std::fs::write(&tmp, r#"{"scanDepth": 5}"#).unwrap();
+        std::fs::rename(&tmp, &path).unwrap();
+        while next().map(|s| s.scan_depth) != Ok(5) {}
+
+        std::fs::remove_file(&path).unwrap();
+        while next() != Ok(Settings::default()) {}
     }
 
     #[test]

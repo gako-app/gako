@@ -62,7 +62,8 @@ output it announces.
     error message.
   - `ack`, `resize`, `close` for terminals (see below), and `log` for timing records.
   - Events pushed by the core: `exit` (a terminal's program ended), `repoStatus`, `repoTouched`,
-    `repos`, `scanDone`, `filesChanged`, `searchResults`, `indexReady`.
+    `repos`, `scanDone`, `filesChanged`, `searchResults`, `indexReady`, and `settings` (the
+    settings file changed, or can't be read).
 - **Binary frames** carry terminal bytes in both directions: a 4-byte big-endian terminal id, then
   the bytes. Terminal output is never base64'd into JSON.
 

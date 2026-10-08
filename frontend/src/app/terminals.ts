@@ -148,9 +148,16 @@ export class Terminals {
 
   /** Called once the workspace is open: the settings, and which agents are installed. */
   async configure(settings: Settings, shell: string, agents: { name: string; command: string[]; path: string | null }[]): Promise<void> {
-    this.settings = settings;
+    this.applySettings(settings);
     const shellName = shell.split(/[\\/]/).pop() ?? 'Shell';
     this.programs = [{ name: `Shell (${shellName})` }, ...agents.filter((a) => a.path).map((a) => ({ name: a.name, cmd: a.command }))];
+  }
+
+  /** New settings: open terminals take the font now; scrollback, the renderer and the combining
+   * limit apply to terminals opened from now on. */
+  applySettings(settings: Settings): void {
+    this.settings = settings;
+    for (const tab of this.tabs) tab.term.setFont(settings.terminalFontFamily, settings.terminalFontSize, settings.terminalFontLigatures);
   }
 
   /** The terminals open (exited ones aren't kept), and which one is in front (-1: none). */

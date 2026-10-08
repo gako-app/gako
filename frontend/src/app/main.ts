@@ -20,7 +20,7 @@ import { DiffPanel } from './diff';
 import { basename, fill, h } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
-import type { DiffTarget, Repo, RepoInfo, Status } from './model';
+import type { DiffTarget, Repo, RepoInfo, Settings, Status } from './model';
 import { type Item, Sidebar } from './sidebar';
 import { type Folder, Terminals } from './terminals';
 import { Explorer } from './explorer';
@@ -40,6 +40,8 @@ import { confirmAction } from './confirm';
 import { showMenu } from './menu';
 
 const LAST_BASE = 'gako.lastBase';
+/** Settings the open folder was opened with: a change opens it again. */
+const REPO_SETTINGS: (keyof Settings)[] = ['scanDepth', 'scanIgnore', 'extraFolders', 'maxGitProcesses', 'debounceMs', 'untrackedLimit', 'gitTimeoutSecs'];
 /** The open tabs and terminals, per base folder: `gako.session:<base>`. */
 const SESSION = 'gako.session:';
 
@@ -85,6 +87,8 @@ class App {
   private layout: Layout;
   private panes: Panes;
   private openedAt = 0;
+  /** Why the settings file can't be read, while it can't (the last good settings stay in use). */
+  private settingsError: string | null = null;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
   constructor(private t: Transport, env: Record<string, string>, private pickFolder?: Boot['pickFolder'], private showAbout?: Boot['showAbout']) {
@@ -181,6 +185,7 @@ class App {
         }
       }
       else if (ev.t === 'repos') this.onRepos(ev.repos as RepoInfo[]);
+      else if (ev.t === 'settings') this.onSettings(ev.settings as Settings | undefined, ev.error);
       else if (ev.t === 'indexReady') {
         this.indexInfo = `${ev.symbols.toLocaleString()} symbols indexed`;
         this.log('indexReady', { files: ev.files, symbols: ev.symbols, ms: ev.ms });
@@ -251,12 +256,15 @@ class App {
     return r.rel || basename(this.opened?.base ?? r.root);
   }
 
-  async open(base?: string): Promise<void> {
+  /** Opens a folder. `again`: the folder open now, opened again for new settings, keeping what's
+   * showing. */
+  async open(base?: string, again = false): Promise<void> {
     try {
       this.openedAt = performance.now();
       this.scanned = new Promise((resolve) => { this.onScanned = resolve; });
       const opened = await this.git.open(base);
       this.opened = opened;
+      this.settingsError = null;
       try { localStorage.setItem(LAST_BASE, opened.base); } catch { /* storage unavailable */ }
       document.title = `${basename(opened.base)} — Gako`;
       this.sidebar.baseName = basename(opened.base);
@@ -270,19 +278,52 @@ class App {
       this.sidebar.repos = this.repos;
       this.sidebar.render();
       this.renderStatusbar();
-      this.showWelcome();
-      this.sidebar.focus();
+      if (!again) {
+        this.showWelcome();
+        this.sidebar.focus();
+      }
       this.editors.load().catch((e) => this.toast(String(e.message ?? e)));
       this.log('workspaceOpened', { repos: this.repos.length });
-      const agents = await this.t.request<{ shell: string; agents: { name: string; command: string[]; path: string | null }[] }>('agents');
-      await this.terminals.configure(opened.settings, agents.shell, agents.agents);
+      await this.loadAgents(opened.settings);
       // Only into an empty window: opening another folder keeps what's open.
-      if (this.terminals.snapshot().terms.length === 0 && this.docs.snapshot().docs.length === 0) await this.restoreSession();
+      if (!again && this.terminals.snapshot().terms.length === 0 && this.docs.snapshot().docs.length === 0) await this.restoreSession();
     } catch (e) {
       const message = String((e as Error).message ?? e);
+      if (again) {
+        this.toast(message);
+        return;
+      }
       // Nothing to open yet (no folder given, none in the settings) is a first run, not an error.
       this.showOpenForm(base, base || this.opened || !message.startsWith('no base folder') ? message : undefined);
     }
+  }
+
+  /** The agents offered for new terminals: the settings' list, and which of them are installed. */
+  private async loadAgents(settings: Settings): Promise<void> {
+    const agents = await this.t.request<{ shell: string; agents: { name: string; command: string[]; path: string | null }[] }>('agents');
+    await this.terminals.configure(settings, agents.shell, agents.agents);
+  }
+
+  /** The settings file changed (or can't be read). What can change at once does; a repository
+   * setting opens the folder again; the rest applies to terminals opened from now on. */
+  private onSettings(settings: Settings | undefined, error: string | undefined): void {
+    this.settingsError = error ?? null;
+    this.renderStatusbar();
+    const opened = this.opened;
+    // With no folder open, opening one reads the file.
+    if (!settings || !opened) return;
+    const before = opened.settings;
+    const changed = (keys: (keyof Settings)[]) => keys.some((k) => JSON.stringify(before[k]) !== JSON.stringify(settings[k]));
+    if (changed(REPO_SETTINGS)) {
+      this.open(opened.base, true);
+      return;
+    }
+    opened.settings = settings;
+    this.viewer.configure(settings);
+    this.diff.configure(settings);
+    this.terminals.applySettings(settings);
+    if (changed(['agents'])) this.loadAgents(settings).catch((e) => this.toast(String(e.message ?? e)));
+    if (changed(['editor'])) this.editors.load().catch((e) => this.toast(String(e.message ?? e)));
   }
 
   private onRepos(infos: RepoInfo[]): void {
@@ -637,6 +678,8 @@ class App {
       this.scanInfo ? h('span', { class: `status-item dim ${scanning ? 'spinning' : ''}` }, icon(scanning ? 'busy' : 'repos'), h('span', { class: 'status-text' }, this.scanInfo)) : null,
       this.indexInfo ? h('span', { class: 'status-item dim' }, icon('symbols'), h('span', { class: 'status-text' }, this.indexInfo)) : null,
       h('span', { class: 'spacer' }),
+      this.settingsError ? h('button', { class: 'status-button warning', 'data-tip': this.settingsError, onclick: () => this.settingsError && this.toast(this.settingsError) },
+        icon('warning'), 'Settings file has an error') : null,
       h('button', { class: 'status-button', onclick: () => this.chooseFolder() }, icon('folder-open'), 'Open folder…'),
       this.showAbout ? h('button', { class: 'status-button icon-only', 'data-tip': 'About Gako', 'aria-label': 'About Gako', onclick: () => this.showAbout?.() }, icon('info')) : null,
     );

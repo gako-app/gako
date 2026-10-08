@@ -144,6 +144,9 @@ export interface Settings {
   terminalFontFamily: string;
   terminalFontLigatures: boolean;
   terminalMaxCombining: number;
+  /** A known editor's id, or a command line (see editors.ts). */
+  editor: unknown;
+  agentHooks: boolean;
   fileFontSize: number;
   fileFontFamily: string;
   fileFontLigatures: boolean;

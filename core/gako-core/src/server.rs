@@ -20,7 +20,8 @@
 //! - `{"t":"ack","term":7,"n":4096}`: bytes of terminal 7 that xterm.js has processed
 //! - `{"t":"resize","term":7,"cols":200,"rows":50}`, `{"t":"close","term":7}`
 //! - `{"t":"log","rec":{...}}`: appends one record to the timing log
-//! - from the core: `{"t":"exit","term":7,"code":0,"stats":{...}}`
+//! - from the core: `{"t":"exit","term":7,"code":0,"stats":{...}}`; `{"t":"settings","settings":{...}}`
+//!   when the settings file changes, or `{"t":"settings","error":"..."}` when it can't be read
 //!
 //! Binary frames carry terminal bytes in both directions: a 4-byte big-endian terminal id followed
 //! by the payload.
@@ -44,8 +45,50 @@ use tokio_tungstenite::tungstenite::http::StatusCode;
 
 use crate::git;
 use crate::pty::{Event, FlowConfig, OpenRequest, Terminal};
-use crate::settings;
+use crate::settings::{self, Settings};
 use crate::workspace::Workspace;
+
+/// The settings as last read from the user's file, kept up to date by watching it. Agents, the
+/// editor and the agent hook come from here; the open workspace keeps the copy it was opened with
+/// (the frontend opens it again when a repository setting changes).
+struct Current {
+    settings: Settings,
+    /// Why the file can't be read, while it can't; the last good settings stay in use.
+    error: Option<String>,
+}
+
+impl Current {
+    fn read() -> Current {
+        let mut c = Current {
+            settings: Settings::default(),
+            error: None,
+        };
+        c.update(settings::load(settings::user_file().as_deref()));
+        c
+    }
+
+    /// Takes a new reading of the file; returns the event for the frontend if anything changed.
+    fn update(&mut self, read: Result<Settings>) -> Option<Value> {
+        match read {
+            Ok(s) => {
+                if s == self.settings && self.error.is_none() {
+                    return None;
+                }
+                self.settings = s;
+                self.error = None;
+                Some(json!({"t": "settings", "settings": self.settings}))
+            }
+            Err(e) => {
+                let e = format!("{e:#}");
+                if self.error.as_ref() == Some(&e) {
+                    return None;
+                }
+                self.error = Some(e.clone());
+                Some(json!({"t": "settings", "error": e}))
+            }
+        }
+    }
+}
 
 pub struct State {
     root: PathBuf,
@@ -214,6 +257,18 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
 
     let mut mine: HashMap<u32, Arc<Terminal>> = HashMap::new();
     let mut workspace: Option<Arc<Workspace>> = None;
+    let current = Arc::new(Mutex::new(Current::read()));
+    let settings_watch = settings::user_file().and_then(|path| {
+        let current = current.clone();
+        let tx = tx.clone();
+        settings::watch(path, move |read| {
+            if let Some(ev) = current.lock().unwrap().update(read) {
+                let _ = tx.send(Event::Text(ev.to_string()));
+            }
+        })
+        .map_err(|e| eprintln!("gako-core: can't watch the settings file: {e:#}"))
+        .ok()
+    });
 
     while let Some(msg) = source.next().await {
         match msg? {
@@ -263,6 +318,7 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                     {
                         let ws = workspace.clone();
                         let tx = tx.clone();
+                        let current = current.clone();
                         tokio::spawn(async move {
                             let result = match ws {
                                 Some(ws) if m.starts_with("git") => git_request(&ws, &m, p).await,
@@ -273,7 +329,7 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                                 {
                                     search_request(&ws, &m, p).await
                                 }
-                                Some(ws) => file_request(&ws, &m, p).await,
+                                Some(ws) => file_request(&ws, &current, &m, p).await,
                                 None => Err(anyhow::anyhow!("no workspace is open")),
                             };
                             let reply = match result {
@@ -284,7 +340,8 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                         });
                     }
                     ClientMessage::Req { id, m, p } => {
-                        let result = request(&state, &mut mine, &mut workspace, &tx, &m, p).await;
+                        let result =
+                            request(&state, &mut mine, &mut workspace, &current, &tx, &m, p).await;
                         let reply = match result {
                             Ok(r) => json!({"t": "res", "id": id, "r": r}),
                             Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
@@ -310,6 +367,8 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
         state.terminals.lock().unwrap().remove(&id);
         t.close();
     }
+    // The watcher holds a sender too: the writer ends only once every sender is gone.
+    drop(settings_watch);
     drop(tx);
     let _ = writer.await;
     Ok(())
@@ -319,6 +378,7 @@ async fn request(
     state: &Arc<State>,
     mine: &mut HashMap<u32, Arc<Terminal>>,
     workspace: &mut Option<Arc<Workspace>>,
+    current: &Mutex<Current>,
     tx: &mpsc::UnboundedSender<Event>,
     method: &str,
     params: Value,
@@ -337,7 +397,7 @@ async fn request(
         }
         "termOpen" => {
             let mut req: OpenRequest = serde_json::from_value(params)?;
-            if workspace.as_ref().is_none_or(|w| w.settings.agent_hooks) {
+            if current.lock().unwrap().settings.agent_hooks {
                 req.cmd = req.cmd.map(crate::agents::adjust);
             }
             let id = state.next_term.fetch_add(1, Ordering::Relaxed);
@@ -357,13 +417,8 @@ async fn request(
         }
         "agents" => {
             // The configured agents, and whether each is on the PATH.
-            let user = settings::user_file();
-            let s = match workspace {
-                Some(ws) => ws.settings.clone(),
-                None => settings::load(user.as_deref())?,
-            };
-            let agents: Vec<Value> = s
-                .agents
+            let agents = current.lock().unwrap().settings.agents.clone();
+            let agents: Vec<Value> = agents
                 .iter()
                 .map(|a| {
                     let found = a.command.first().and_then(|p| crate::shellenv::which(p));
@@ -374,10 +429,7 @@ async fn request(
         }
         "editors" => {
             // The editors "open in editor" can use, and the one to use unless the user picks.
-            let setting = match workspace {
-                Some(ws) => ws.settings.editor.clone(),
-                None => settings::load(settings::user_file().as_deref())?.editor,
-            };
+            let setting = current.lock().unwrap().settings.editor.clone();
             let (found, default) =
                 tokio::task::spawn_blocking(move || crate::editors::offered(setting.as_ref()))
                     .await?;
@@ -390,6 +442,8 @@ async fn request(
                 .or_else(|| settings.base.clone())
                 .ok_or_else(|| anyhow::anyhow!("no base folder given, and none in the settings"))?;
             // The previous workspace, if any, stops watching when it's dropped here.
+            // Read just now, so the watcher's copy is no newer; an error it was reporting is over.
+            current.lock().unwrap().update(Ok(settings.clone()));
             let ws = Workspace::open(base, settings, tx.clone())?;
             *workspace = Some(ws.clone());
             Ok(json!({
@@ -478,7 +532,12 @@ async fn search_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Res
 }
 
 /// The file explorer's requests, limited to the workspace's folders.
-async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result<Value> {
+async fn file_request(
+    ws: &Arc<Workspace>,
+    current: &Mutex<Current>,
+    method: &str,
+    params: Value,
+) -> Result<Value> {
     let path: PathBuf = param(&params, "path")?;
     let path = crate::files::inside(&ws.roots(), &path)?;
     match method {
@@ -493,7 +552,7 @@ async fn file_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Resul
             let line = params["line"].as_u64().unwrap_or(1) as u32;
             let column = params["column"].as_u64().unwrap_or(1) as u32;
             let choice = params["editor"].as_str().map(str::to_string);
-            let setting = ws.settings.editor.clone();
+            let setting = current.lock().unwrap().settings.editor.clone();
             let cmd = tokio::task::spawn_blocking(move || -> Result<Vec<String>> {
                 let cmd = crate::editors::command(
                     setting.as_ref(),

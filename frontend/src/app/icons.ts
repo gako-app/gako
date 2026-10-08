@@ -19,7 +19,7 @@ import {
   ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, Code, Columns2, Copy, createElement,
   ExternalLink, FileDiff, FilePen, FileText, Folder, FolderOpen, GitBranch, Globe, History, type IconNode, Info,
   LoaderCircle, Proportions, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, RefreshCw,
-  RotateCcw, Rows2, Search, SquareSplitHorizontal, Undo2,
+  RotateCcw, Rows2, Search, SquareSplitHorizontal, TriangleAlert, Undo2,
 } from 'lucide';
 import { h } from './dom';
 
@@ -52,6 +52,7 @@ const ICONS = {
   busy: LoaderCircle,
   // The About window.
   info: Info,
+  warning: TriangleAlert,
   copy: Copy,
   done: Check,
   external: ExternalLink,

@@ -268,6 +268,9 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .status-button { display: inline-flex; align-items: center; gap: 5px; flex: none; height: 18px; padding: 0 8px; border: none; border-radius: 9px; background: rgb(255 255 255 / 0.16); color: #fff; font-size: 12px; line-height: 1; }
 .status-button:hover:not(:disabled) { background: rgb(255 255 255 / 0.28); }
 .status-button.icon-only { padding: 0 4px; margin-left: -16px; background: none; }
+/* VS Code's error colour for status bar items. */
+.status-button.warning { background: #c72e0f; }
+.status-button.warning:hover { background: #d9411f; }
 .toasts { position: fixed; right: 12px; bottom: 34px; display: flex; flex-direction: column; gap: 6px; z-index: 10; }
 .toast { background: #5a1d1d; border: 1px solid #be1100; color: #fff; padding: 8px 12px; border-radius: 4px; max-width: 520px; white-space: pre-wrap; cursor: pointer; }
 
