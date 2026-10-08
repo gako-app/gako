@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-10-08
+
+Settings on a screen of their own and applied as they change, font settings, views that switch
+without flashing, and tabs and agents that can be put in any order.
+
 ### Added
 
 - Settings for the file viewer's and the diff view's font, apart from the terminals':
@@ -84,5 +89,6 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/gako-app/gako/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/gako-app/gako/releases/tag/v0.9.0
