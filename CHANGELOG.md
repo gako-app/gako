@@ -4,6 +4,14 @@ All notable changes to Gako are listed here, newest first. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Settings for the file viewer's and the diff view's font, apart from the terminals':
+  `fileFontFamily`, `fileFontSize` and `fileFontLigatures`.
+- Font ligatures in terminals, off by default: `terminalFontLigatures`.
+
 ## [0.9.0] — 2026-10-08
 
 The first public release. Gako is used every day on macOS; Windows and Linux have had less use.
@@ -59,4 +67,5 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.9.0...HEAD
 [0.9.0]: https://github.com/gako-app/gako/releases/tag/v0.9.0

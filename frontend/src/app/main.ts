@@ -262,6 +262,8 @@ class App {
       this.sidebar.baseName = basename(opened.base);
       this.explorer.setBase(opened.base);
       this.search.base = opened.base;
+      this.viewer.configure(opened.settings);
+      this.diff.configure(opened.settings);
       this.scanInfo = 'Scanning…';
       this.repos = opened.repos.map((r) => ({ ...r }));
       for (const s of opened.statuses) this.onStatus(s.repo, 'status' in s ? s.status : undefined, 'error' in s ? s.error : undefined);

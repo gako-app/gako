@@ -21,6 +21,7 @@ import 'monaco-editor/languages/definitions/register.all.js';
 // The icon font (diff gutter markers, folded-region icons); editor.api.js alone doesn't load it.
 import 'monaco-editor/features/codicon/register.js';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
+import type { Settings } from './app/model';
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 
@@ -38,6 +39,11 @@ export function languageFor(path: string): string {
     if (ext && lang.extensions?.includes(ext)) return lang.id;
   }
   return 'plaintext';
+}
+
+/** The editor options the settings' `fileFont…` keys set. */
+export function fontOptions(s: Settings): monaco.editor.IEditorOptions {
+  return { fontFamily: s.fileFontFamily, fontSize: s.fileFontSize, fontLigatures: s.fileFontLigatures };
 }
 
 export { monaco };

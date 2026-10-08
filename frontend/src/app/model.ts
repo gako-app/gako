@@ -142,5 +142,9 @@ export interface Settings {
   terminalRenderer: string;
   terminalFontSize: number;
   terminalFontFamily: string;
+  terminalFontLigatures: boolean;
   terminalMaxCombining: number;
+  fileFontSize: number;
+  fileFontFamily: string;
+  fileFontLigatures: boolean;
 }

@@ -49,9 +49,16 @@ pub struct Settings {
     pub terminal_renderer: String,
     pub terminal_font_size: f64,
     pub terminal_font_family: String,
+    /// Draw the font's ligatures in terminals (see docs/terminals.md).
+    pub terminal_font_ligatures: bool,
     /// Combining marks allowed per character; a longer run is dropped whole (0: no limit). See
     /// docs/terminals.md.
     pub terminal_max_combining: usize,
+    /// The file viewer's and the diff view's font, apart from the terminal's.
+    pub file_font_size: f64,
+    pub file_font_family: String,
+    /// Draw the font's ligatures (`=>`, `!=`…) in the file viewer and the diff view.
+    pub file_font_ligatures: bool,
     /// The editor files open in: a known editor's id (`"vscode"`, `"zed"`…), or a command with
     /// `{file}`, `{line}` and `{column}` placeholders. Unset: the first known editor installed. See
     /// docs/settings.md and editors.rs.
@@ -103,7 +110,11 @@ impl Default for Settings {
                 14.0
             },
             terminal_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
+            terminal_font_ligatures: false,
             terminal_max_combining: 4,
+            file_font_size: 12.0,
+            file_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
+            file_font_ligatures: false,
             editor: None,
             agent_hooks: true,
         }

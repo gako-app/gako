@@ -17,11 +17,14 @@
 // - Backpressure: bytes are acknowledged to the core once xterm.js's write callback fires.
 // - WebGL: the renderer's context is released while the tab is hidden and recreated when shown,
 //   so hidden tabs don't count against the browser's limit on live WebGL contexts.
+// - Ligatures, when on, come from the ligatures addon, which reads the font's file through the
+//   browser's local font access; it has to load after open() and before the WebGL renderer.
 // - Every received byte goes into a running hash, compared with the core's at exit.
 // - Runs of combining marks are capped before xterm.js stores them (see combining.ts).
 
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { LigaturesAddon } from '@xterm/addon-ligatures';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -44,6 +47,8 @@ export interface TermOptions {
   renderer: Renderer;
   fontSize?: number;
   fontFamily?: string;
+  /** Draw the font's ligatures. */
+  fontLigatures?: boolean;
   /** Combining marks kept per character; 0 keeps them all. */
   maxCombining?: number;
   cmd?: string[];
@@ -204,6 +209,7 @@ export class TerminalTab {
     if (!this.opened) {
       this.term.open(this.el);
       this.opened = true;
+      if (this.opts.fontLigatures) this.term.loadAddon(new LigaturesAddon());
     }
     if (this.opts.renderer === 'webgl' && !this.webgl) this.attachWebgl();
     this.refit();

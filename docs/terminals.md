@@ -126,3 +126,20 @@ it sat on is kept. `terminalMaxCombining` changes the limit; 0 turns it off.
 
 Emoji sequences (families joined with zero-width joiners, flags, skin tones) don't need the limit:
 they cost little, and they're kept as they are.
+
+### Ligatures
+
+Off by default; `terminalFontLigatures` turns them on. A terminal draws each character in its own
+cell, so the browser can't join `=>` or `!=` into one sign on its own: xterm.js's ligatures addon
+reads the font's file, finds its ligatures, and tells the renderer which characters to draw
+together. Both renderers support it.
+
+- **The font's file** comes from the browser's local font access, the first family in
+  `terminalFontFamily` that's installed. Electron allows it because Gako has no permission handler;
+  if one is added, it has to allow `local-fonts`. In a plain browser (development), the browser asks.
+  When the font can't be read, a fixed set of common ligatures is used instead.
+- **Fonts without ligatures** (Menlo, Consolas, DejaVu Sans Mono) draw the same with the setting on.
+- **Memory:** each terminal parses the font itself and keeps a cache of up to about 650 KB.
+- **Cost:** every row drawn is searched for ligatures. It hasn't been measured; the harness can
+  turn ligatures on with `GAKO_FONT_LIGATURES=1` and `GAKO_FONT_FAMILY` (see
+  [bench/README.md](../bench/README.md#5-terminals-and-the-viewer)).

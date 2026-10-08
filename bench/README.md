@@ -81,6 +81,13 @@ agents' reports. `report.py` turns a day's runs into `bench/results/<platform>-<
 one file for Gako, with every budget and its verdict, and one for the VS Code baseline. Commit
 them.
 
+Terminal ligatures are off, as in the app. To measure their cost, run the `load` and `dump`
+scenarios again with them on, in a font that has them, under a label of their own:
+
+```bash
+GAKO_FONT_LIGATURES=1 GAKO_FONT_FAMILY="'Fira Code'" uv run measure/run.py electron load --phase ligatures
+```
+
 ## 6. The Git view
 
 The `panel` scenario runs the real app on a fresh copy of a generated layout. It measures the first

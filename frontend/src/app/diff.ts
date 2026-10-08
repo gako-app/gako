@@ -15,9 +15,9 @@
 // The diff panel: Monaco's diff editor, read-only, with a header for what's shown and what can be
 // done with it. When the file changes on disk while it's open, the diff updates in place.
 
-import { languageFor, monaco } from '../monaco';
+import { fontOptions, languageFor, monaco } from '../monaco';
 import { basename, dirname, fill, h } from './dom';
-import type { DiffTarget, FileContent, Side } from './model';
+import type { DiffTarget, FileContent, Settings, Side } from './model';
 import type { Git } from './git';
 import type { Navigator } from './navigate';
 import { type Editors, type Spot, spotIn } from './editors';
@@ -100,6 +100,11 @@ export class DiffPanel {
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
     });
+  }
+
+  /** Applies the settings' file font, to both sides. */
+  configure(settings: Settings): void {
+    this.editor.updateOptions(fontOptions(settings));
   }
 
   private async side(repo: string, side: Side | null, raw: boolean): Promise<FileContent | null> {

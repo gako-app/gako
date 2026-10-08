@@ -43,6 +43,8 @@ export interface Config {
   scrollback: number;
   renderer: Renderer;
   maxCombining: number;
+  fontFamily?: string;
+  fontLigatures: boolean;
   env: Record<string, string>;
 }
 
@@ -71,6 +73,9 @@ export function config(hello: Hello, shell: string): Config {
     renderer: env.GAKO_RENDERER === 'dom' ? 'dom' : 'webgl',
     // The app's default (settings.terminalMaxCombining); GAKO_MAX_COMBINING=0 measures without it.
     maxCombining: num('GAKO_MAX_COMBINING', 4),
+    // Off by default, as in the app; GAKO_FONT_LIGATURES=1 with a ligature font measures their cost.
+    fontFamily: env.GAKO_FONT_FAMILY || undefined,
+    fontLigatures: env.GAKO_FONT_LIGATURES === '1',
     env,
   };
 }
@@ -163,6 +168,8 @@ export class App {
       scrollback: this.cfg.scrollback,
       renderer: this.cfg.renderer,
       maxCombining: this.cfg.maxCombining,
+      fontFamily: this.cfg.fontFamily,
+      fontLigatures: this.cfg.fontLigatures,
       cwd: this.fixture('workspace', 'platform'),
       ...opts,
     });

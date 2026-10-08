@@ -15,9 +15,9 @@
 // The read-only file viewer: one Monaco editor that never edits, with "open in editor" at the
 // cursor's line (or the top of the view), and the file's diff when it has changes.
 
-import { languageFor, monaco } from '../monaco';
+import { fontOptions, languageFor, monaco } from '../monaco';
 import { basename, fill, h } from './dom';
-import type { FileContent } from './model';
+import type { FileContent, Settings } from './model';
 import type { Reveal } from './search';
 import type { Navigator } from './navigate';
 import { type Editors, spotIn } from './editors';
@@ -62,6 +62,11 @@ export class Viewer {
       lineDecorationsWidth: 12,
     });
     this.markers = new ChangeMarkers(this.editor);
+  }
+
+  /** Applies the settings' file font. */
+  configure(settings: Settings): void {
+    this.editor.updateOptions(fontOptions(settings));
   }
 
   /** Marks the open file's changes again (its repo's status changed). */

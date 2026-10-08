@@ -59,9 +59,21 @@ The defaults suit 10–30 repositories, one or two levels deep. For a larger lay
 | `agentHooks` | `true` | Start Claude Code with Gako's hook, so the agent bar can tell when it's waiting for approval. See [terminals.md](terminals.md#how-gako-knows). |
 | `terminalScrollback` | `1000` | Rows kept per terminal. Each row costs memory at the terminal's full width. |
 | `terminalRenderer` | `"webgl"` | `"webgl"`, or `"dom"` for slower drawing that uses less memory. |
-| `terminalFontSize` | `12` on macOS, `14` elsewhere | In points. |
+| `terminalFontSize` | `12` on macOS, `14` elsewhere | In pixels. |
 | `terminalFontFamily` | `"Menlo, Consolas, 'DejaVu Sans Mono', monospace"` | A CSS font list. |
+| `terminalFontLigatures` | `false` | Draw the font's ligatures, such as `=>` and `!=` as one sign. See [terminals.md](terminals.md#ligatures). |
 | `terminalMaxCombining` | `4` | Combining marks allowed on one character; a longer run is dropped whole. `0` turns the limit off. See [terminals.md](terminals.md#long-runs-of-combining-marks). |
+
+## Files and diffs
+
+The font of the file viewer and the diff view, set apart from the terminals'. Changes apply the
+next time you open a folder.
+
+| Key | Default | What it does |
+|---|---|---|
+| `fileFontSize` | `12` | In pixels. |
+| `fileFontFamily` | `"Menlo, Consolas, 'DejaVu Sans Mono', monospace"` | A CSS font list. |
+| `fileFontLigatures` | `false` | Draw the font's ligatures, such as `=>` and `!=` as one sign. Only fonts made with them have any: Fira Code, JetBrains Mono, Cascadia Code. |
 
 ## Editor
 
