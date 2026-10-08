@@ -32,8 +32,10 @@ export interface DocSpec {
   /** Shown dimmed after the title. */
   detail: string;
   tooltip: string;
-  /** Draws it in the main area, with the scroll position saved when it was last left, if any. */
-  show(saved: unknown): void;
+  /** Draws it in the main area, with the scroll position saved when it was last left, if any.
+   * `front`: brings the documents in front of a terminal (once it's drawn); without it, it's drawn
+   * behind the terminal in front. */
+  show(saved: unknown, front: boolean): void;
   /** What reopens it after a restart (plain data, kept with the session). */
   persist: unknown;
 }
@@ -55,7 +57,7 @@ const GLYPH: Record<DocKind, string> = { diff: '±', file: '', history: '⏱', s
 export interface DocHooks {
   /** The scroll position of what's shown for `kind`. */
   save(kind: DocKind): unknown;
-  /** Brings the documents to the front (in place of a terminal). */
+  /** Brings the documents to the front (in place of a terminal), showing what they showed. */
   front(): void;
   /** Nothing is open any more. */
   empty(): void;
@@ -77,12 +79,18 @@ export class DocTabs {
     return { docs: this.docs.map((d) => ({ persist: d.persist, pinned: d.pinned })), active: this.active ? this.docs.indexOf(this.active) : -1 };
   }
 
-  /** Puts back tabs from a snapshot (only the active one is drawn). */
-  restore(docs: { spec: DocSpec; pinned: boolean }[], active: number): void {
+  /** Puts back tabs from a snapshot (only the active one is drawn). Without `front`, it's drawn
+   * behind the terminal in front, to be there when the documents are next brought forward. */
+  restore(docs: { spec: DocSpec; pinned: boolean }[], active: number, front = true): void {
     this.docs = docs.map(({ spec, pinned }) => ({ ...spec, pinned, saved: undefined }));
     const doc = this.docs[active] ?? this.docs[0];
-    if (doc) this.activate(doc, true);
-    else this.render();
+    if (doc && front) this.activate(doc, true);
+    else if (doc) {
+      this.active = doc;
+      this.inFront = false;
+      this.render();
+      doc.show(undefined, false);
+    } else this.render();
   }
 
   /** Opens `spec` in its tab, in the preview tab, or in a new tab with `pin`. */
@@ -145,10 +153,11 @@ export class DocTabs {
     const same = doc === this.active;
     this.active = doc;
     this.inFront = true;
-    this.hooks.front();
     this.render();
-    // Back from a terminal, the panel still shows this tab as it was left.
-    if (!back) doc.show(fresh && same ? undefined : doc.saved);
+    // Back from a terminal, the panel still shows this tab as it was left; anything else is drawn
+    // first, and brought in front of a terminal once it is.
+    if (back) this.hooks.front();
+    else doc.show(fresh && same ? undefined : doc.saved, true);
   }
 
   private close(doc: Doc): void {

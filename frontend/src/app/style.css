@@ -195,9 +195,18 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .agent-initials { font-size: 11px; color: var(--dim); }
 .agent.unseen .agent-initials { color: #fff; font-weight: 700; }
 .main-body { flex: 1; position: relative; min-height: 0; }
-.review { position: absolute; inset: 0; display: flex; }
-.review[hidden] { display: none; }
-.review > * { flex: 1; min-width: 0; }
+/* Its own stacking context: nothing in it (Monaco's rulers and sashes have a z-index) draws over a
+   terminal in front. */
+.review { position: absolute; inset: 0; display: flex; isolation: isolate; }
+/* Behind a terminal, the documents stay laid out (only out of sight), so a view can be put together
+   there and brought forward at once, without Monaco laying itself out again. Opacity as well as
+   visibility: Monaco's diff editor sets its two sides visible, which visibility alone can't stop. */
+.review[hidden] { visibility: hidden; opacity: 0; pointer-events: none; }
+/* The views, stacked: only the one in front is seen (see showView in main.ts). Opacity as well as
+   visibility, since Monaco's diff editor sets its two sides visible. */
+.review > * { position: absolute; inset: 0; min-width: 0; }
+.review > :not(.shown) { visibility: hidden; opacity: 0; pointer-events: none; }
+.centered { display: flex; overflow: auto; }
 .view { position: absolute; inset: 0; }
 .view.terminal { padding: 6px 0 0 12px; background: #1e1e1e; }
 .term-banner { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: var(--panel-2); border-top: 1px solid var(--border); z-index: 5; }
@@ -231,6 +240,9 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .diff-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .diff-notice { padding: 8px 16px; background: #4d3b1f; color: var(--modified); }
 .diff-editor { flex: 1; min-height: 0; }
+/* Another file's content, kept out of sight while the next one loads (still laid out, so it's
+   ready to draw). */
+.diff-editor.stale, .media-host.stale { visibility: hidden; opacity: 0; pointer-events: none; }
 
 .history-body { flex: 1; display: grid; grid-template-columns: minmax(300px, 45%) 1fr; min-height: 0; }
 .commits { overflow: auto; border-right: 1px solid var(--border); }
@@ -377,7 +389,7 @@ mark { background: #613214; color: inherit; outline: 1px solid #9e6a03; }
 .setting-key { font: 11px ui-monospace, Menlo, Consolas, monospace; color: var(--dim); }
 .setting-applies { font-size: 11px; color: var(--dim); border: 1px solid var(--border); border-radius: 8px; padding: 0 6px; }
 .setting-reset { visibility: hidden; font-size: 12px; }
-.setting.modified .setting-reset { visibility: visible; }
+.setting.modified .setting-reset { visibility: inherit; }
 .setting-help { color: var(--dim); }
 .setting-input { box-sizing: border-box; width: 100%; max-width: 520px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font: inherit; padding: 4px 8px; }
 .setting-input.short { width: auto; min-width: 120px; }

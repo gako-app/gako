@@ -33,9 +33,9 @@ each part is allowed to do.
   app logic.
 
 The frontend never calls Electron directly. Apart from `boot.ts`, which asks the shell for the
-core's address, a folder picker and the About window, everything goes through the `Transport`
-interface to the core. That keeps the shell replaceable: the frontend runs unchanged in a plain
-browser for development, given the core's address in the URL.
+core's address, a folder picker, the About window and the menu's call for the settings, everything
+goes through the `Transport` interface to the core. That keeps the shell replaceable: the frontend
+runs unchanged in a plain browser for development, given the core's address in the URL.
 
 ## Starting and stopping
 

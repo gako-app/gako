@@ -17,7 +17,7 @@ import './style.css';
 import { type Boot, boot } from '../boot';
 import { connect, type Transport } from '../transport';
 import { DiffPanel } from './diff';
-import { basename, fill, h } from './dom';
+import { basename, delay, fill, freeze, h } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
 import type { DiffTarget, Repo, RepoInfo, Settings, Status } from './model';
@@ -181,7 +181,8 @@ class App {
     // Asked by the shell before the window closes (it warns when agents would be stopped). Only
     // information goes out this way; the frontend still calls no shell APIs.
     (window as unknown as { gakoRunning: () => string[] }).gakoRunning = () => this.terminals.running();
-    this.showWelcome();
+    // The main area stays empty until a folder is open (or the form to choose one is up): a welcome
+    // for no folder in particular would only flash.
     t.onEvent((ev) => {
       if (ev.t === 'repoStatus') this.onStatus(ev.repo, ev.status as Status | undefined, ev.error);
       else if (ev.t === 'repoTouched') this.refreshOpenDiff([ev.repo]);
@@ -271,6 +272,7 @@ class App {
   /** Opens a folder. `again`: the folder open now, opened again for new settings, keeping what's
    * showing. */
   async open(base?: string, again = false): Promise<void> {
+    let cover: (() => void) | null = null;
     try {
       this.openedAt = performance.now();
       this.scanned = new Promise((resolve) => { this.onScanned = resolve; });
@@ -290,16 +292,27 @@ class App {
       this.sidebar.repos = this.repos;
       this.sidebar.render();
       this.renderStatusbar();
+      // Only into an empty window: opening another folder keeps what's open.
+      const session = !again && this.terminals.snapshot().terms.length === 0 && this.docs.snapshot().docs.length === 0
+        ? this.savedSession() : null;
+      // A terminal coming back in front: the main area stays as it was (covered) until it's there,
+      // rather than show the welcome on the way.
+      const activeTerm = session?.activeTerm ?? -1;
+      if (session && activeTerm >= 0 && activeTerm < (session.terms ?? []).length) cover = freeze(this.body);
+      // What a session brings back takes the welcome's place: it's shown only if nothing comes back
+      // (see restoreSession), rather than for the moment it takes.
+      const restoring = !!session && ((session.docs ?? []).length > 0 || (session.terms ?? []).length > 0);
       if (!again) {
-        this.showWelcome();
+        if (!restoring) this.showWelcome();
         this.sidebar.focus();
       }
       this.editors.load().catch((e) => this.toast(String(e.message ?? e)));
       this.log('workspaceOpened', { repos: this.repos.length });
       await this.loadAgents(opened.settings);
-      // Only into an empty window: opening another folder keeps what's open.
-      if (!again && this.terminals.snapshot().terms.length === 0 && this.docs.snapshot().docs.length === 0) await this.restoreSession();
+      if (session) await this.restoreSession(session, cover);
+      else cover?.();
     } catch (e) {
+      cover?.();
       const message = String((e as Error).message ?? e);
       if (again) {
         this.toast(message);
@@ -400,31 +413,34 @@ class App {
       title: basename(item.entry.path),
       detail: '',
       tooltip: `${this.name(item.repo)}/${item.entry.path}${kind === 'staged' ? ' (staged)' : kind === 'conflict' ? ' (conflict)' : ''}`,
-      show: (saved) => this.showItem(item.key, saved),
+      show: (saved, front) => this.showItem(item.key, saved, false, front),
       persist: { diff: item.key } satisfies Persist,
     };
   }
 
-  /** Draws the diff for a sidebar key, as the file stands now. */
-  private showItem(key: string, saved?: unknown, keepView = false): void {
-    this.setMode('diff');
+  /** Draws the diff for a sidebar key, as the file stands now: in place with `keepView` (the file
+   * changed), else as a view of its own. */
+  private showItem(key: string, saved?: unknown, keepView = false, front = true): void {
     const item = this.sidebar.resolve(key);
     if (!item) {
       this.sidebar.mark(null);
-      this.diff.clear(`${key.split('\x1f')[2] ?? 'This file'} has no more changes here.`);
+      const message = `${key.split('\x1f')[2] ?? 'This file'} has no more changes here.`;
+      this.present('diff', async () => this.diff.clear(message), front);
       return;
     }
     this.sidebar.mark(key);
     const { prev, next } = this.sidebar.neighbours();
     const r = item.repo;
     const worktree = item.target.right?.rev === 'worktree' ? item.target.right.path : null;
-    this.diff.show(item.target, {
+    const show = () => this.diff.show(item.target, {
       repoName: this.name(r),
       file: worktree ? this.join(r.root, worktree) : undefined,
       revert: item.target.kind === 'conflict' ? undefined : () => this.revertItem(item),
       prev: prev ? () => this.sidebar.step(-1) : undefined,
       next: next ? () => this.sidebar.step(1) : undefined,
-    }, keepView, saved).catch((e) => this.toast(String(e.message ?? e)));
+    }, keepView, saved);
+    if (keepView) show().catch((e) => this.toast(String(e.message ?? e)));
+    else this.present('diff', show, front);
   }
 
   /** Throws away the changes an item shows, as VS Code's "Discard Changes" does, once confirmed. */
@@ -477,11 +493,8 @@ class App {
       title: basename(target.path),
       detail: '',
       tooltip: `${this.name(repo)}/${target.path} in commit ${target.hash?.slice(0, 7)}`,
-      show: (saved) => {
-        this.setMode('diff');
-        this.diff.show(target, { repoName: this.name(repo), back: () => this.showHistory(repo) }, false, saved)
-          .catch((e) => this.toast(String(e.message ?? e)));
-      },
+      show: (saved, front) => this.present('diff',
+        () => this.diff.show(target, { repoName: this.name(repo), back: () => this.showHistory(repo) }, false, saved), front),
       persist: { commit: { root: repo.root, target } } satisfies Persist,
     };
   }
@@ -497,10 +510,9 @@ class App {
       title: 'History',
       detail: this.name(r),
       tooltip: `The commits of ${this.name(r)}`,
-      show: () => {
+      show: (_saved, front) => {
         this.historyRepo = r;
-        this.setMode('history');
-        this.history.show(r).catch((e) => this.toast(String(e.message ?? e)));
+        this.present('history', () => this.history.show(r), front);
       },
       persist: { history: r.root } satisfies Persist,
     };
@@ -518,21 +530,64 @@ class App {
       title: 'Settings',
       detail: '',
       tooltip: 'Your settings, for every folder',
-      show: () => {
-        this.setMode('settings');
-        this.settingsView.show().catch((e) => this.toast(String(e.message ?? e)));
-      },
+      show: (_saved, front) => this.present('settings', () => this.settingsView.show(), front),
       persist: { settings: true } satisfies Persist,
     };
   }
 
+  /** Shows a view in the main area once it's ready, so none of its in-between states are seen: what
+   * was on screen stays, as a still copy, while `load` puts the view together underneath (behind a
+   * terminal that's in front, the view is put together out of sight). A load that takes long shows the
+   * view as it is by then (its header, and an empty editor) rather than keep the old one up.
+   * `front`: bring the documents in front of a terminal once it's ready. */
+  private present(mode: App['mode'], load?: () => Promise<unknown>, front = true): void {
+    const ticket = ++this.presenting;
+    if (!this.cover && !this.review.hidden) this.cover = freeze(this.shownView() ?? this.review);
+    this.setMode(mode);
+    let shown = false;
+    const show = () => {
+      if (shown || ticket !== this.presenting) return;
+      shown = true;
+      if (front && !this.terminals.reviewActive) this.terminals.select(null);
+      this.cover?.();
+      this.cover = null;
+    };
+    const ready = load ? load().catch((e) => this.toast(String((e as Error).message ?? e))) : Promise.resolve();
+    Promise.race([ready, delay(250)]).then(show);
+  }
+
+  private presenting = 0;
+  /** Removes the still copy over the main area, while there is one. */
+  private cover: (() => void) | null = null;
+
   private setMode(mode: App['mode']): void {
-    if (this.terminals && !this.terminals.reviewActive) this.terminals.select(null);
     if (this.mode === mode) return;
     this.mode = mode;
     const view = mode === 'diff' ? this.diff.el : mode === 'history' ? this.history.el : mode === 'file' ? this.viewer.el
       : mode === 'settings' ? this.settingsView.el : this.welcome();
-    this.review.replaceChildren(view);
+    this.showView(view);
+  }
+
+  /** Brings `view` to the front of the main area. The panels stay in place once added, stacked, with
+   * only the one in front visible (and the rest inert): taken out and put back, a Monaco editor would
+   * lay itself out again, a frame late, and show its scrollbars. The welcome and the open-folder
+   * form are made afresh each time, and go when something else comes to the front. */
+  private showView(view: HTMLElement): void {
+    if (view.parentElement !== this.review) this.review.append(view);
+    for (const v of [...this.review.children] as HTMLElement[]) {
+      const shown = v === view;
+      if (!shown && v.classList.contains('transient')) {
+        v.remove();
+        continue;
+      }
+      v.classList.toggle('shown', shown);
+      v.inert = !shown;
+    }
+  }
+
+  /** The view in front of the main area. */
+  private shownView(): HTMLElement | null {
+    return this.review.querySelector(':scope > .shown');
   }
 
   /** Opens a file in the preview tab (or its own with `pin`), at `reveal` if given. */
@@ -548,12 +603,9 @@ class App {
       title: basename(path),
       detail: '',
       tooltip: rel,
-      show: (saved) => {
-        this.setMode('file');
-        // A reveal applies when the file is opened, not when its tab is shown again.
-        this.viewer.show(path, false, saved === undefined ? reveal : undefined, saved ?? undefined)
-          .catch((e) => this.toast(String(e.message ?? e)));
-      },
+      // A reveal applies when the file is opened, not when its tab is shown again.
+      show: (saved, front) => this.present('file',
+        () => this.viewer.show(path, false, saved === undefined ? reveal : undefined, saved ?? undefined), front),
       persist: { file: path } satisfies Persist,
     };
   }
@@ -598,24 +650,40 @@ class App {
 
   /** Reopens the tabs and terminals this base folder had last time: terminals start the same
    * program in the same folder, as a new session. */
-  private async restoreSession(): Promise<void> {
-    let session: Session | null = null;
-    try { session = JSON.parse(localStorage.getItem(SESSION + this.opened!.base) ?? 'null'); } catch { /* storage unavailable */ }
-    if (!session) return;
+  private savedSession(): Session | null {
+    try { return JSON.parse(localStorage.getItem(SESSION + this.opened!.base) ?? 'null'); } catch { return null; }
+  }
+
+  /** `cover`: what already covers the main area, if anything; removed once the terminals are back. */
+  private async restoreSession(session: Session, cover: (() => void) | null): Promise<void> {
     this.restoring = true;
     try {
       // Terminals start at once; tabs wait for the first scan, since a diff tab comes back only if
-      // its file still has changes. A scan that takes long doesn't hold them back for ever.
-      const terms = this.terminals.restore(session.terms ?? [], session.activeTerm ?? -1);
-      await Promise.race([this.scanned, new Promise((r) => setTimeout(r, 10_000))]);
+      // its file still has changes. A scan that takes long doesn't hold them back for ever. Each
+      // terminal comes to the front while it starts (so it starts at the window's size): the main
+      // area is covered meanwhile with what it showed, so they don't flash past.
+      const activeTerm = session.activeTerm ?? -1;
+      const terminalInFront = activeTerm >= 0 && activeTerm < (session.terms ?? []).length;
+      const thaw = cover ?? freeze(this.body);
+      const terms = this.terminals.restore(session.terms ?? [], activeTerm);
+      Promise.race([terms, delay(1500)]).finally(thaw);
+      // The main area is empty until the tabs are back; a scan that takes long shows the welcome
+      // meanwhile, rather than nothing.
+      let docsBack = false;
+      const slow = setTimeout(() => { if (!docsBack && !terminalInFront) this.showWelcome(); }, 1000);
+      await Promise.race([this.scanned, delay(10_000)]);
+      docsBack = true;
+      clearTimeout(slow);
       const docs = (session.docs ?? []).flatMap(({ persist, pinned }) => {
         const spec = this.specFor(persist);
         return spec ? [{ spec, pinned }] : [];
       });
-      if (docs.length) this.docs.restore(docs, Math.max(0, session.active));
+      // Behind the terminal that was in front, if one was.
+      if (docs.length) this.docs.restore(docs, Math.max(0, session.active), !terminalInFront);
+      // Nothing to show where the documents go (no tab came back): the welcome, behind the terminal
+      // in front if there is one.
+      else this.showWelcome(!terminalInFront);
       await terms;
-      // Restoring the tabs brought them to the front; the terminal that was in front goes back.
-      if ((session.activeTerm ?? -1) >= 0) this.terminals.restoreFront(session.activeTerm);
     } finally {
       this.restoring = false;
     }
@@ -683,17 +751,18 @@ class App {
     return all;
   }
 
-  private showWelcome(): void {
+  /** `front`: bring the documents in front of a terminal to show it. */
+  private showWelcome(front = true): void {
     this.mode = 'diff'; // force setMode to redraw
-    this.setMode('welcome');
+    this.present('welcome', undefined, front);
   }
 
   private welcome(): HTMLElement {
     const n = this.repos.length;
-    return h('div', { class: 'welcome' },
+    return h('div', { class: 'centered transient' }, h('div', { class: 'welcome' },
       h('h1', {}, this.opened ? basename(this.opened.base) : 'Gako'),
       this.opened ? h('p', { class: 'dim' }, `${n} repositor${n === 1 ? 'y' : 'ies'} in ${this.opened.base}`) : null,
-      h('p', { class: 'dim' }, 'Select a file to see its diff; ↑ and ↓ move between files. A double click keeps a file open in its own tab.'));
+      h('p', { class: 'dim' }, 'Select a file to see its diff; ↑ and ↓ move between files. A double click keeps a file open in its own tab.')));
   }
 
   private async act(fn: () => Promise<unknown>): Promise<boolean> {
@@ -751,8 +820,8 @@ class App {
     if (!this.terminals.reviewActive) this.terminals.select(null);
     // What Cancel goes back to: what was showing before the form (a form shown again after a
     // failed open keeps the first one's).
-    const current = this.review.firstElementChild;
-    if (!current?.classList.contains('open-form')) this.formReturn = { mode: this.mode, view: current };
+    const current = this.shownView();
+    if (!current?.querySelector(':scope > .open-form')) this.formReturn = { mode: this.mode, view: current };
     const before = this.formReturn ?? { mode: 'welcome' as const, view: null };
     this.mode = 'welcome';
     const picker = !!this.pickFolder;
@@ -762,11 +831,11 @@ class App {
       if (input.value.trim()) this.open(input.value.trim());
     };
     const cancel = () => {
-      if (!this.review.contains(form)) return;
+      if (this.shownView() !== host) return;
       if (before.mode === 'welcome' || !before.view) this.showWelcome();
       else {
         this.mode = before.mode;
-        this.review.replaceChildren(before.view);
+        this.showView(before.view as HTMLElement);
       }
     };
     const browse = async () => {
@@ -794,7 +863,8 @@ class App {
       } }, 'or type its path') : null) : null,
     typed,
     !picker && this.opened ? h('div', { class: 'form-buttons' }, h('button', { type: 'button', onclick: cancel }, 'Cancel')) : null);
-    this.review.replaceChildren(form);
+    const host = h('div', { class: 'centered transient' }, form);
+    this.showView(host);
     if (!typed.hidden) input.focus();
     else (form.querySelector('button.primary') as HTMLElement | null)?.focus();
   }

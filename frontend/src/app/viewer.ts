@@ -15,8 +15,8 @@
 // The read-only file viewer: one Monaco editor that never edits, with "open in editor" at the
 // cursor's line (or the top of the view), and the file's diff when it has changes.
 
-import { fontOptions, languageFor, monaco } from '../monaco';
-import { basename, fill, h } from './dom';
+import { fontOptions, languageFor, monaco, restoreView, setText } from '../monaco';
+import { basename, delay, fill, freeze, h, settled } from './dom';
 import type { FileContent, Settings } from './model';
 import type { Reveal } from './search';
 import type { Navigator } from './navigate';
@@ -78,21 +78,60 @@ export class Viewer {
     this.baseline(path).then((before) => { if (this.path === path) this.markers.show(before); }).catch(() => this.markers.clear());
   }
 
-  /** Shows a file: at `reveal` if given, else where `saved` left it (a tab shown again). */
+  /** Shows a file: at `reveal` if given, else where `saved` left it (a tab shown again). Resolves
+   * once it's drawn as it will stay, change markers included. Another file isn't shown while this one
+   * loads; the file it shows already (a refresh, `keepView`, or its tab shown again) is updated in
+   * place. */
   async show(path: string, keepView = false, reveal?: Reveal, saved?: unknown): Promise<void> {
     const ticket = ++this.ticket;
-    const same = keepView && this.path === path;
+    // The viewer shows this file already, and there's no place in it to go to.
+    const shown = this.path === path && this.editor.getModel() !== null && !reveal;
+    const same = keepView && shown;
     this.path = path;
-    const rel = this.relative(path);
-    const name = basename(rel);
-    this.header.replaceChildren(
-      h('div', { class: 'diff-title', 'data-tip': path }, h('span', { class: 'dim' }, rel.slice(0, rel.length - name.length)), h('span', { class: 'diff-name' }, name)),
-      this.actions,
-    );
-    this.renderActions();
+    if (!shown) {
+      const rel = this.relative(path);
+      const name = basename(rel);
+      this.header.replaceChildren(
+        h('div', { class: 'diff-title', 'data-tip': path }, h('span', { class: 'dim' }, rel.slice(0, rel.length - name.length)), h('span', { class: 'diff-name' }, name)),
+        this.actions,
+      );
+      this.renderActions();
+      this.setStale(true);
+    }
     const type = mediaType(path);
-    const content = await this.read(path, !!type);
+    const [content, before] = await Promise.all([
+      this.read(path, !!type),
+      type ? null : this.baseline(path).catch(() => null),
+    ]);
     if (ticket !== this.ticket) return;
+    // The same file again (something changed in its folder, often another file, or its tab shown
+    // again): updated in place, if at all, so nothing is redrawn but what changed; its change markers
+    // are worked out again.
+    const model = this.editor.getModel();
+    if (shown && model && !type && !content.binary && !content.truncated && !this.host.hidden) {
+      setText(model, content.text);
+      this.notice.hidden = true;
+      await Promise.race([this.markers.show(before), delay(150)]);
+      if (!keepView) restoreView(this.editor, saved);
+      this.setStale(false);
+      return;
+    }
+    const thaw = same ? freeze(this.el) : null;
+    try {
+      await this.draw(ticket, path, content, before, type, same, reveal, saved);
+    } finally {
+      thaw?.();
+    }
+  }
+
+  /** Hides what the editor and the media show (another file) while the next one loads. */
+  private setStale(stale: boolean): void {
+    this.host.classList.toggle('stale', stale);
+    this.mediaHost.classList.toggle('stale', stale);
+  }
+
+  private async draw(ticket: number, path: string, content: FileContent, before: string | null,
+    type: ReturnType<typeof mediaType>, same: boolean, reveal?: Reveal, saved?: unknown): Promise<void> {
     this.media?.dispose();
     this.media = null;
     this.host.hidden = !!type;
@@ -107,6 +146,7 @@ export class Viewer {
       previous?.dispose();
       this.decorations?.clear();
       this.markers.clear();
+      this.setStale(false);
       return;
     }
     this.mediaHost.replaceChildren();
@@ -121,7 +161,10 @@ export class Viewer {
     this.editor.setModel(monaco.editor.createModel(content.binary ? '' : content.text, languageFor(path)));
     previous?.dispose();
     if (view) this.editor.restoreViewState(view);
-    if (!content.binary) this.refreshMarkers();
+    // The change markers come with the file rather than a moment after it (unless working them out
+    // takes long).
+    if (!content.binary) await Promise.race([this.markers.show(before), delay(150)]);
+    if (ticket !== this.ticket) return;
     this.decorations?.clear();
     if (reveal) {
       // Columns count UTF-16 units from the line's start, as Monaco does; if the file changed since
@@ -134,6 +177,10 @@ export class Viewer {
       this.editor.setPosition({ lineNumber: reveal.line, column: fixed[0]?.startColumn ?? reveal.column ?? 1 });
       this.editor.focus();
     }
+    // Drawn now rather than at the next frame, so it's whole when shown however busy the window is.
+    this.editor.render(true);
+    this.setStale(false);
+    await settled(this.el);
   }
 
   /** Show diff (when the file has changes) and open in the editor. */

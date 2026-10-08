@@ -169,21 +169,14 @@ export class Terminals {
   /** Starts the same programs again in the same folders, as new sessions; then shows the one that
    * was in front, or gives the main area back to the documents. */
   async restore(terms: { program: Program; folder: Folder }[], active: number): Promise<void> {
-    this.restored = [];
+    const restored: (Tab | undefined)[] = [];
     for (const { program, folder } of terms) {
       await this.open(program, folder);
-      this.restored.push(this.tabs.at(-1));
+      restored.push(this.tabs.at(-1));
     }
-    this.select(this.restored[active] ?? null);
+    this.select(restored[active] ?? null);
   }
 
-  /** Brings back to the front the restored terminal that was in front. */
-  restoreFront(active: number): void {
-    const tab = this.restored[active];
-    if (tab && this.tabs.includes(tab)) this.select(tab);
-  }
-
-  private restored: (Tab | undefined)[] = [];
 
   /** The programs still running, as "Claude Code in gako", for the shell's question on quitting. */
   running(): string[] {

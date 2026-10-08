@@ -17,6 +17,15 @@ All notable changes to Gako are listed here, newest first. The format follows
 - Changes to the settings file apply as soon as it's saved, without opening the folder again. A
   file that can't be read is reported in the status bar, and the last good settings stay in use.
 
+### Changed
+
+- Switching between files, diffs, histories, settings and terminals no longer shows in-between
+  states: a view appears once it's ready (diff computed and folded, scroll position and change
+  markers back), with what was on screen kept until then. Restoring a session no longer flashes
+  through its terminals and tabs.
+- An open file or diff no longer flashes while an agent works: it's left alone when other files
+  change, and updated in place, keeping its scroll position and folds, when its own file does.
+
 ## [0.9.0] — 2026-10-08
 
 The first public release. Gako is used every day on macOS; Windows and Linux have had less use.

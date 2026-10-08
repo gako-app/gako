@@ -95,6 +95,30 @@ lists, tabs and two large components (Monaco and xterm.js) that manage their own
 
 **Cost:** more code by hand for updating the DOM.
 
+## Views are shown once they're ready
+
+**Decision:** a file, diff, history or settings tab is put together before it's shown: the text
+read, the diff computed and folded, the scroll position and the change markers back, and Monaco
+done drawing. Meanwhile what was on screen stays, as a still copy of itself; behind a terminal, the
+documents are laid out out of sight, and come forward only when ready. A load that takes longer
+than a quarter of a second shows the view as it is by then, never the previous file's content.
+The views stay in the page once made, stacked, with only the one in front visible: a Monaco editor
+taken out and put back lays itself out again a frame late and shows its scrollbars. Restoring a
+session covers the main area until its terminals are back, and shows the welcome only if nothing
+comes back. A file or diff that's
+already open is updated in place when its file changes: only the part that differs is replaced in
+the editor's text, and nothing at all when nothing differs (the usual case, since any change in the
+repository, or in the file's folder, makes it check).
+
+**Why:** shown at once, a diff went through four states in about 80 ms (the new name over the old
+file, a blank editor, the file unfolded and uncoloured, then the diff), and every change of view
+cost Monaco a blank frame. An open diff went through the same states whenever an agent changed any
+file in its repository. Each was brief, but together they made the app feel clumsy.
+
+**Cost:** a view appears a frame or two later than its first, unfinished, drawing did; the still
+copy is a clone of the view's elements, made at each change of view; and the views that aren't in
+front, and the documents behind terminals, stay laid out instead of being taken out of the layout.
+
 ## Agents run in terminals, not a chat interface
 
 **Decision:** each agent runs in a terminal with its own interface. Gako doesn't drive agents

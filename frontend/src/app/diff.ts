@@ -15,8 +15,8 @@
 // The diff panel: Monaco's diff editor, read-only, with a header for what's shown and what can be
 // done with it. When the file changes on disk while it's open, the diff updates in place.
 
-import { fontOptions, languageFor, monaco } from '../monaco';
-import { basename, dirname, fill, h } from './dom';
+import { fontOptions, languageFor, monaco, restoreView, setText } from '../monaco';
+import { basename, delay, dirname, fill, freeze, h, settled } from './dom';
 import type { DiffTarget, FileContent, Settings, Side } from './model';
 import type { Git } from './git';
 import type { Navigator } from './navigate';
@@ -118,17 +118,50 @@ export class DiffPanel {
     this.mediaHost.replaceChildren();
   }
 
-  /** Shows a diff. With `keepView`, the scroll position survives (a refresh of the same file); `view`
-   * restores one saved earlier (a tab shown again). */
+  /** Shows a diff, resolving once it's drawn as it will stay: the diff computed, unchanged regions
+   * folded, the scroll position back. With `keepView`, the scroll position survives (a refresh of the
+   * same file); otherwise `saved` restores a position saved earlier (a tab shown again). Another
+   * file's diff isn't shown while this one loads. */
   async show(target: DiffTarget, actions: DiffActions, keepView = false, saved?: unknown): Promise<void> {
     const ticket = ++this.loading;
-    const same = keepView && this.target && this.target.repo === target.repo && this.target.path === target.path &&
-      this.target.kind === target.kind;
+    // The panel shows this diff already (a refresh, or its tab shown again after another view).
+    const shown = !!this.target && JSON.stringify(this.target) === JSON.stringify(target) && this.editor.getModel() !== null;
+    const same = keepView && shown;
     this.target = target;
     this.renderHeader(target, actions);
+    if (!shown) this.setStale(true);
     const type = diffMedia(target);
     const [left, right] = await Promise.all([this.side(target.repo, target.left, !!type), this.side(target.repo, target.right, !!type)]);
     if (ticket !== this.loading) return; // a newer request won
+    // The same diff again (a file changed in its repo, often another one, or its tab shown again):
+    // its models are updated in place, if at all, and the diff editor works out the new diff itself.
+    // Nothing is redrawn but what changed, so an agent's edits don't make it flash, and coming back
+    // to it costs nothing.
+    const current = this.editor.getModel();
+    if (shown && current && !type && !left?.binary && !right?.binary && !left?.truncated && !right?.truncated && this.host.hidden === false) {
+      setText(current.original, left?.text ?? '');
+      setText(current.modified, right?.text ?? '');
+      this.notice.hidden = true;
+      if (!keepView) restoreView(this.editor.getModifiedEditor(), saved);
+      this.setStale(false);
+      return;
+    }
+    const thaw = same ? freeze(this.el) : null;
+    try {
+      await this.draw(ticket, target, left, right, type, same, saved);
+    } finally {
+      thaw?.();
+    }
+  }
+
+  /** Hides what the editor and the media show (another file's diff) while the next one loads. */
+  private setStale(stale: boolean): void {
+    this.host.classList.toggle('stale', stale);
+    this.mediaHost.classList.toggle('stale', stale);
+  }
+
+  private async draw(ticket: number, target: DiffTarget, left: FileContent | null, right: FileContent | null,
+    type: ReturnType<typeof diffMedia>, same: boolean | null, saved?: unknown): Promise<void> {
     this.disposeMedia();
     this.host.hidden = !!type;
     this.mediaHost.hidden = !type;
@@ -147,6 +180,7 @@ export class DiffPanel {
       this.editor.setModel({ original: monaco.editor.createModel(''), modified: monaco.editor.createModel('') });
       previous?.original.dispose();
       previous?.modified.dispose();
+      this.setStale(false);
       return;
     }
     const notes: string[] = [];
@@ -164,10 +198,29 @@ export class DiffPanel {
       original: monaco.editor.createModel(left?.text ?? '', languageFor(target.left?.path ?? target.path)),
       modified: monaco.editor.createModel(right?.text ?? '', lang),
     };
+    // The diff is computed in a worker; when it's in, the sides are coloured, lined up and folded,
+    // which moves what's shown. The scroll position goes back after that, and only then is the
+    // diff shown.
+    // The event also comes when a diff is dropped (another model set): it counts once this model's
+    // diff is in.
+    let listener: monaco.IDisposable | undefined;
+    const computed = new Promise<void>((resolve) => {
+      listener = this.editor.onDidUpdateDiff(() => {
+        if (this.editor.getModel()?.modified === model.modified && this.editor.getLineChanges() !== null) resolve();
+      });
+    });
     this.editor.setModel(model);
     previous?.original.dispose();
     previous?.modified.dispose();
+    await Promise.race([computed, delay(1000)]);
+    listener?.dispose();
+    if (ticket !== this.loading) return;
     if (view) this.editor.getModifiedEditor().restoreViewState(view);
+    // Drawn now rather than at the next frame, so it's whole when shown however busy the window is.
+    this.editor.getOriginalEditor().render(true);
+    this.editor.getModifiedEditor().render(true);
+    this.setStale(false);
+    await settled(this.el);
   }
 
   private renderHeader(t: DiffTarget, a: DiffActions): void {
@@ -235,6 +288,7 @@ export class DiffPanel {
     this.loading++;
     this.target = null;
     this.disposeMedia();
+    this.setStale(false);
     this.mediaHost.hidden = true;
     this.host.hidden = false;
     const previous = this.editor.getModel();

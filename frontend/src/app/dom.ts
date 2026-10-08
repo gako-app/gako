@@ -44,6 +44,72 @@ function append(el: HTMLElement, children: Child[]): void {
   }
 }
 
+/** Covers `el` with a still copy of how it looks now, until the returned function is called: what
+ * a view shows can then be replaced underneath without its in-between states being seen. The copy
+ * is a clone of its elements, with the pictures in its 2D canvases (Monaco's rulers and minimap),
+ * the state of its form fields (a clone keeps a select's first option) and its scroll positions
+ * copied over. */
+export function freeze(el: HTMLElement): () => void {
+  const rect = el.getBoundingClientRect();
+  if (!el.isConnected || !rect.width || !rect.height || getComputedStyle(el).visibility === 'hidden') return () => {};
+  const copy = el.cloneNode(true) as HTMLElement;
+  copy.inert = true;
+  copy.setAttribute('aria-hidden', 'true');
+  copy.classList.add('frozen');
+  Object.assign(copy.style, {
+    position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`,
+    margin: '0', zIndex: '50', pointerEvents: 'none',
+  });
+  document.body.append(copy);
+  const from = el.querySelectorAll('*');
+  const to = copy.querySelectorAll('*');
+  from.forEach((src, i) => {
+    const dst = to[i];
+    if (src.scrollTop || src.scrollLeft) {
+      dst.scrollTop = src.scrollTop;
+      dst.scrollLeft = src.scrollLeft;
+    }
+    if (src instanceof HTMLSelectElement && dst instanceof HTMLSelectElement) dst.selectedIndex = src.selectedIndex;
+    else if (src instanceof HTMLInputElement && dst instanceof HTMLInputElement) {
+      dst.value = src.value;
+      dst.checked = src.checked;
+    } else if (src instanceof HTMLTextAreaElement && dst instanceof HTMLTextAreaElement) dst.value = src.value;
+    if (src instanceof HTMLCanvasElement && dst instanceof HTMLCanvasElement && src.width && src.height) {
+      try { dst.getContext('2d')?.drawImage(src, 0, 0); } catch { /* a WebGL canvas: left blank */ }
+    }
+  });
+  return () => copy.remove();
+}
+
+/** Resolves once `el` has gone a whole animation frame without changing (Monaco often draws in more
+ * than one frame), or after `maxMs` in any case. */
+export function settled(el: HTMLElement, maxMs = 120): Promise<void> {
+  return new Promise((resolve) => {
+    // Changes are noted as they happen; each frame's check runs after the frame's other callbacks
+    // (Monaco's drawing, scheduled earlier), so a frame that drew something is seen as changed.
+    let changed = false;
+    const observer = new MutationObserver(() => { changed = true; });
+    observer.observe(el, { subtree: true, childList: true, attributes: true, characterData: true });
+    const done = () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, maxMs);
+    const frame = () => {
+      if (!changed) return done();
+      changed = false;
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+/** Resolves after `ms`. */
+export function delay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export function basename(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path;
 }

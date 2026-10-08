@@ -41,6 +41,36 @@ export function languageFor(path: string): string {
   return 'plaintext';
 }
 
+/** Makes `model` hold `text` by replacing only the part that differs (between what the two have in
+ * common at the start and at the end), so the rest of what's shown, the scroll position and the
+ * decorations stay put: a file that changed on disk is updated the way an edit would update it.
+ * False if there was nothing to change. */
+export function setText(model: monaco.editor.ITextModel, text: string): boolean {
+  const old = model.getValue();
+  if (old === text) return false;
+  const max = Math.min(old.length, text.length);
+  let start = 0;
+  while (start < max && old.charCodeAt(start) === text.charCodeAt(start)) start++;
+  let end = 0;
+  while (end < max - start && old.charCodeAt(old.length - 1 - end) === text.charCodeAt(text.length - 1 - end)) end++;
+  // Never between the two halves of a line break or of a surrogate pair.
+  const low = (s: string, i: number) => i >= 0 && i < s.length && s.charCodeAt(i) >= 0xdc00 && s.charCodeAt(i) <= 0xdfff;
+  if (start > 0 && (old[start - 1] === '\r' || low(old, start))) start--;
+  if (end > 0 && (old[old.length - end] === '\n' || low(old, old.length - end))) end--;
+  const range = monaco.Range.fromPositions(model.getPositionAt(start), model.getPositionAt(old.length - end));
+  model.applyEdits([{ range, text: text.slice(start, text.length - end) }]);
+  return true;
+}
+
+/** Puts an editor back where `state` says, unless it's there already: any scroll, even to where it
+ * is, makes Monaco show its scrollbars for a moment, which a tab shown again shouldn't do. */
+export function restoreView(editor: monaco.editor.ICodeEditor, state: unknown): void {
+  const saved = state as monaco.editor.ICodeEditorViewState | null | undefined;
+  if (!saved) return;
+  if (JSON.stringify(editor.saveViewState()?.viewState) === JSON.stringify(saved.viewState)) return;
+  editor.restoreViewState(saved);
+}
+
 /** The editor options the settings' `fileFont…` keys set. */
 export function fontOptions(s: Settings): monaco.editor.IEditorOptions {
   return { fontFamily: s.fileFontFamily, fontSize: s.fileFontSize, fontLigatures: s.fileFontLigatures };

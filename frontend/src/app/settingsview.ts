@@ -79,15 +79,17 @@ export class SettingsView {
     this.el.append(this.header, h('div', { class: 'settings-scroll' }, this.banner, this.form));
   }
 
-  /** Draws the screen afresh (when its tab is shown). */
+  /** Brings the screen up to date when its tab is shown: drawn the first time, its values refreshed
+   * after that (keeping where it was scrolled to). */
   async show(): Promise<void> {
+    if (this.rows.size) return this.refresh(true);
     await this.load();
     this.render();
   }
 
   /** The settings changed, here or in the file: shows them, leaving alone the field being edited. */
-  async refresh(): Promise<void> {
-    if (!this.el.isConnected || !this.info) return;
+  async refresh(evenHidden = false): Promise<void> {
+    if ((!evenHidden && !this.el.isConnected) || !this.info) return;
     await this.load();
     this.renderHeader();
     for (const [key, row] of this.rows) {
