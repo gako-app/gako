@@ -6,6 +6,14 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Copy and paste in terminals on Windows and Linux: Ctrl+Shift+C and Ctrl+Shift+V, Ctrl+Insert and
+  Shift+Insert, and on Windows Ctrl+C while text is selected. A right click on a terminal opens a
+  menu with Copy, Paste and Select all, on every platform.
+- Copy on select in terminals, off by default: `terminalCopyOnSelect`.
+- Option-drag on macOS, as Shift-drag elsewhere, selects text in a program that takes the mouse.
+
 ## [0.10.0] — 2026-10-08
 
 Settings on a screen of their own and applied as they change, font settings, views that switch

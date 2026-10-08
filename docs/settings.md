@@ -23,7 +23,7 @@ Every key is optional; a key you leave out keeps its default.
 
 Gako watches the file, so a change applies as soon as you save it:
 
-- **At once:** the fonts, in the files, diffs and terminals already open; the agents offered for
+- **At once:** the fonts, in the files, diffs and terminals already open; `terminalCopyOnSelect`; the agents offered for
   new terminals; the editor; `agentHooks`, for agents started from then on.
 - **By opening the folder again**, which Gako does for you, keeping what's open: the repository
   settings (`scanDepth`, `scanIgnore`, `extraFolders`, `maxGitProcesses`, `debounceMs`,
@@ -84,6 +84,7 @@ The defaults suit 10–30 repositories, one or two levels deep. For a larger lay
 | `terminalFontSize` | `12` on macOS, `14` elsewhere | In pixels. |
 | `terminalFontFamily` | `"Menlo, Consolas, 'DejaVu Sans Mono', monospace"` | A CSS font list. |
 | `terminalFontLigatures` | `false` | Draw the font's ligatures, such as `=>` and `!=` as one sign. See [terminals.md](terminals.md#ligatures). |
+| `terminalCopyOnSelect` | `false` | Copy a terminal's text to the clipboard as soon as it's selected with the mouse. See [terminals.md](terminals.md#copy-and-paste). |
 | `terminalMaxCombining` | `4` | Combining marks allowed on one character; a longer run is dropped whole. `0` turns the limit off. See [terminals.md](terminals.md#long-runs-of-combining-marks). |
 
 ## Files and diffs

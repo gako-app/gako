@@ -58,6 +58,8 @@ pub struct Settings {
     /// Combining marks allowed per character; a longer run is dropped whole (0: no limit). See
     /// docs/terminals.md.
     pub terminal_max_combining: usize,
+    /// Copy a terminal's text to the clipboard as soon as it's selected with the mouse.
+    pub terminal_copy_on_select: bool,
     /// The file viewer's and the diff view's font, apart from the terminal's.
     pub file_font_size: f64,
     pub file_font_family: String,
@@ -116,6 +118,7 @@ impl Default for Settings {
             terminal_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
             terminal_font_ligatures: false,
             terminal_max_combining: 4,
+            terminal_copy_on_select: false,
             file_font_size: 12.0,
             file_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
             file_font_ligatures: false,

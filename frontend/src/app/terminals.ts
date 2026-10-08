@@ -156,11 +156,14 @@ export class Terminals {
     this.programs = [{ name: `Shell (${shellName})` }, ...agents.filter((a) => a.path).map((a) => ({ name: a.name, cmd: a.command }))];
   }
 
-  /** New settings: open terminals take the font now; scrollback, the renderer and the combining
+  /** New settings: open terminals take the font and copy on select now; scrollback, the renderer and the combining
    * limit apply to terminals opened from now on. */
   applySettings(settings: Settings): void {
     this.settings = settings;
-    for (const tab of this.tabs) tab.term.setFont(settings.terminalFontFamily, settings.terminalFontSize, settings.terminalFontLigatures);
+    for (const tab of this.tabs) {
+      tab.term.setFont(settings.terminalFontFamily, settings.terminalFontSize, settings.terminalFontLigatures);
+      tab.term.copyOnSelect = settings.terminalCopyOnSelect;
+    }
   }
 
   /** The terminals open (exited ones aren't kept), and which one is in front (-1: none). */
@@ -239,6 +242,7 @@ export class Terminals {
       fontFamily: s?.terminalFontFamily,
       fontLigatures: s?.terminalFontLigatures ?? false,
       maxCombining: s?.terminalMaxCombining ?? 4,
+      copyOnSelect: s?.terminalCopyOnSelect ?? false,
       cmd: program.cmd,
       cwd: folder.path,
     });

@@ -99,8 +99,32 @@ titles, notifications, bells and bursts of output in a recording.
   terminal releases its WebGL context and gets it back when shown, so many terminals don't run into
   the browser's limit on live WebGL contexts.
 - **Links** in output open in your browser.
+- **Copying and pasting** is described [below](#copy-and-paste).
 - **Nothing is lost or reordered** between the program and the screen, however fast it writes: the
   pipeline uses backpressure, described in [architecture.md](architecture.md#terminal-flow-control).
+
+### Copy and paste
+
+Dragging selects text, double-clicking a word and triple-clicking a line. Then:
+
+| | macOS | Windows | Linux |
+|---|---|---|---|
+| Copy | ⌘C | Ctrl+Shift+C, Ctrl+Insert, or Ctrl+C while text is selected | Ctrl+Shift+C, Ctrl+Insert |
+| Paste | ⌘V | Ctrl+Shift+V, Shift+Insert | Ctrl+Shift+V, Shift+Insert |
+
+Ctrl+V stays with the program off macOS: shells and agents use it themselves, Claude Code to paste
+images among them. On Windows, Ctrl+C copies only while text is selected, and clears the selection,
+so pressing it again interrupts, as in Windows Terminal. A right click opens a menu with Copy, Paste
+and Select all, and `terminalCopyOnSelect` copies text as soon as the mouse button is up.
+
+A program that takes the mouse, as fullscreen agents do, gets drags and right clicks itself: what it
+does with them is up to the program. Holding Shift (Option on macOS) selects text and opens the menu
+anyway. Pi's
+fullscreen mode on Windows doesn't get the mouse ([its issue
+#9656](https://github.com/earendil-works/pi/issues/9656)): its drags select in the terminal, so copy
+them with the keys above.
+
+Programs can't use the clipboard through the terminal: OSC 52 isn't supported yet.
 
 ### Long runs of combining marks
 

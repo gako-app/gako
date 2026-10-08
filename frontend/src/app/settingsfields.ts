@@ -86,6 +86,8 @@ export const SECTIONS: Section[] = [
         help: "Draw the font's ligatures, such as => and != as one sign, if it has any." },
       { key: 'terminalMaxCombining', title: 'Combining marks per character', type: 'number', min: 0, applies: 'new terminals',
         help: 'A longer run is dropped whole. 0 turns the limit off.' },
+      { key: 'terminalCopyOnSelect', title: 'Copy on select', type: 'bool',
+        help: "Copy text to the clipboard as soon as it's selected with the mouse." },
     ],
   },
   {

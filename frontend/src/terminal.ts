@@ -21,6 +21,7 @@
 //   browser's local font access; it has to load after open() and before the WebGL renderer.
 // - Every received byte goes into a running hash, compared with the core's at exit.
 // - Runs of combining marks are capped before xterm.js stores them (see combining.ts).
+// - Copy and paste: keys off macOS (clipboardkeys.ts), a context menu, and copy on select.
 
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -33,6 +34,8 @@ import '@xterm/xterm/css/xterm.css';
 import { FNV_OFFSET, fnv1a } from './check';
 import { CombiningCap } from './combining';
 import { Notifications } from './app/agentstate';
+import { showMenu } from './app/menu';
+import { clipboardKey, platformOf } from './clipboardkeys';
 import type { CoreEvent, TermStats, Transport } from './transport';
 
 export type Renderer = 'webgl' | 'dom';
@@ -51,6 +54,8 @@ export interface TermOptions {
   fontLigatures?: boolean;
   /** Combining marks kept per character; 0 keeps them all. */
   maxCombining?: number;
+  /** Copy text to the clipboard as soon as it's selected with the mouse. */
+  copyOnSelect?: boolean;
   cmd?: string[];
   cwd?: string;
   env?: Record<string, string>;
@@ -68,6 +73,7 @@ interface PendingEcho {
 }
 
 const encoder = new TextEncoder();
+const platform = platformOf(navigator.platform);
 
 /** What xterm.js sends on its own rather than from the keyboard: focus reports, mouse reports, and
  * replies to the program's queries (device attributes, cursor position, OSC colours). */
@@ -101,6 +107,7 @@ export class TerminalTab {
   private cap: CombiningCap | null;
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  copyOnSelect: boolean;
 
   constructor(
     private t: Transport,
@@ -121,6 +128,8 @@ export class TerminalTab {
       fontFamily: opts.fontFamily ?? 'Menlo, Consolas, "DejaVu Sans Mono", monospace',
       fontSize: opts.fontSize ?? 12,
       theme: { background: '#1e1e1e', foreground: '#cccccc' },
+      // Option on macOS, as Shift elsewhere, selects text in a program that takes the mouse.
+      macOptionClickForcesSelection: true,
     });
     this.term.onTitleChange((title) => { this.title = title; });
     for (const code of [9, 99, 777]) {
@@ -131,6 +140,26 @@ export class TerminalTab {
         return true;
       });
     }
+    this.copyOnSelect = !!opts.copyOnSelect;
+    this.term.attachCustomKeyEventHandler((e) => {
+      const action = clipboardKey(e, platform, this.term.hasSelection());
+      if (!action) return true;
+      e.preventDefault();
+      if (action === 'copy') {
+        this.copy();
+        // Ctrl+C again, with nothing selected, interrupts.
+        this.term.clearSelection();
+      } else this.paste();
+      return false;
+    });
+    this.el.addEventListener('contextmenu', (e) => this.contextMenu(e));
+    // Copied once the button is up, so a drag doesn't copy every step of the selection.
+    this.el.addEventListener('mousedown', (e) => {
+      if (!this.copyOnSelect || e.button !== 0) return;
+      document.addEventListener('mouseup', () => {
+        if (this.copyOnSelect && this.term.hasSelection()) this.copy();
+      }, { once: true });
+    });
     this.term.loadAddon(new Unicode11Addon());
     this.term.unicode.activeVersion = '11';
     // Links open in the browser (the shell routes window.open outside the app).
@@ -241,6 +270,35 @@ export class TerminalTab {
       }
     }
     this.refit();
+  }
+
+  /** Copies the selection, if there is one. */
+  copy(): void {
+    const text = this.term.getSelection();
+    if (text) navigator.clipboard.writeText(text).catch((e) => this.log('clipboardError', { error: String(e) }));
+  }
+
+  /** Pastes the clipboard's text as typed input (bracketed, if the program asked for that). */
+  paste(): void {
+    navigator.clipboard.readText()
+      .then((text) => { if (text) this.term.paste(text); })
+      .catch((e) => this.log('clipboardError', { error: String(e) }));
+  }
+
+  /** Copy and paste on a right click, unless the program takes the mouse (Shift, or Option on
+   * macOS, gets the menu anyway). */
+  private contextMenu(e: MouseEvent): void {
+    const forced = platform === 'mac' ? e.altKey : e.shiftKey;
+    if (this.term.modes.mouseTrackingMode !== 'none' && !forced) return;
+    e.preventDefault();
+    const back = () => this.term.focus();
+    showMenu({ x: e.clientX, y: e.clientY }, [
+      // A right click on blank space on macOS selects the blanks: nothing worth copying.
+      ...(this.term.getSelection().trim() ? [{ label: 'Copy', run: () => { this.copy(); back(); } }] : []),
+      { label: 'Paste', run: () => { this.paste(); back(); } },
+      'separator',
+      { label: 'Select all', run: () => { this.term.selectAll(); back(); } },
+    ]);
   }
 
   hide(): void {
