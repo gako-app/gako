@@ -160,7 +160,7 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .term-pane-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; }
 .term-pane-empty[hidden] { display: none; }
 .doc-tabs { display: flex; gap: 1px; flex: 1; min-width: 0; overflow-x: auto; height: 35px; scrollbar-width: none; }
-.doc-tab { display: flex; align-items: center; gap: 6px; background: var(--panel-2); color: var(--dim); padding: 0 8px 0 12px; height: 35px; white-space: nowrap; cursor: pointer; flex: none; }
+.doc-tab { position: relative; display: flex; align-items: center; gap: 6px; background: var(--panel-2); color: var(--dim); padding: 0 8px 0 12px; height: 35px; white-space: nowrap; cursor: pointer; flex: none; }
 .doc-tab:hover { color: var(--text); }
 .doc-tab.active { background: var(--bg); color: var(--text); box-shadow: inset 0 1px 0 var(--accent); }
 .doc-tab.preview .doc-title { font-style: italic; }
@@ -169,6 +169,11 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .doc-tab .close, .agent .close { color: var(--dim); padding: 1px 5px; border-radius: 4px; visibility: hidden; }
 .doc-tab.active .close, .doc-tab:hover .close, .agent:hover .close { visibility: visible; }
 .doc-tab .close:hover, .agent .close:hover { background: #45494e; color: var(--text); }
+/* Dragging tabs and agents into a new order (reorder.ts): the others slide to make room. */
+.doc-tab, .agent { user-select: none; }
+.reordering > * { transition: transform 0.15s ease; }
+.reordering > .dragging { transition: none; z-index: 1; }
+.agent.dragging:not(.active) { background: #2a2d2e; }
 
 .agents { grid-column: 3; grid-row: 1; width: var(--right-w, 220px); background: var(--panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
 .agents.collapsed { width: 48px; }

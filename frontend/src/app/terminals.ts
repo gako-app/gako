@@ -16,7 +16,8 @@
 // terminal itself shown when its entry is picked: in the main area, in place of the documents
 // (single pane), or in a pane of its own beside them (dual pane, see panes.ts). In the dual layout
 // the pane keeps showing the terminal last picked, and the pane last clicked or typed in decides
-// what ⌘W and Ctrl+Tab act on.
+// what ⌘W and Ctrl+Tab act on. Entries can be dragged into a new order (reorder.ts), and a middle
+// click closes one as its × does.
 //
 // A terminal runs a program (the shell, or a configured agent such as `claude`) in the base folder
 // or one of its repos. Hidden terminals release their WebGL context (TerminalTab does that). An
@@ -34,6 +35,7 @@ import { fill, h } from './dom';
 import type { Settings } from './model';
 import { readTitle, titleHasState, titleTopic } from './agentstate';
 import { iconButton } from './icons';
+import { Reorder } from './reorder';
 
 export interface Program {
   name: string;
@@ -76,6 +78,7 @@ const COLLAPSED = 'gako.agentsCollapsed';
 export class Terminals {
   readonly el = h('aside', { class: 'agents' });
   private list = h('div', { class: 'agent-list' });
+  private reorder = new Reorder(this.list, 'y', () => this.render());
   private tabs: Tab[] = [];
   /** The terminal shown: in front of the documents (single pane; null while they're in front), or
    * in the terminal pane (dual pane). */
@@ -431,10 +434,16 @@ export class Terminals {
         'No agents running. ', h('button', { class: 'link', onclick: (e: Event) => this.menu(e.currentTarget as HTMLElement) }, 'Start one…')));
       return;
     }
-    this.list.replaceChildren(...this.tabs.map((tab) => h('div', {
+    if (!this.reorder.canDraw()) return;
+    this.list.replaceChildren(...this.tabs.map((tab) => this.entry(tab)));
+  }
+
+  private entry(tab: Tab): HTMLElement {
+    const el = h('div', {
       class: `agent ${tab === this.active ? 'active' : ''} ${tab.unseen ? 'unseen' : ''}`,
       'data-tip': `${tab.program.name} in ${tab.folder.path}: ${this.stateText(tab)}${tab.term.title ? `\n${tab.term.title}` : ''}`,
       onclick: () => this.select(tab),
+      onauxclick: (e: MouseEvent) => { if (e.button === 1) this.close(tab); },
     },
     h('span', { class: `dot ${tab.state}` }),
     this.collapsed
@@ -444,7 +453,19 @@ export class Terminals {
         h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || tab.folder.name} · ${this.stateText(tab)}`)),
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
     !this.collapsed && tab.term.exit ? iconButton('restart', `Restart ${tab.program.name}`, () => this.restart(tab), { class: 'restart' }) : null,
-    this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'))));
+    this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'));
+    this.reorder.attach(el, (to) => this.move(tab, to));
+    return el;
+  }
+
+  /** Moves an entry to `to` in the bar (it was dragged there). */
+  private move(tab: Tab, to: number): void {
+    const i = this.tabs.indexOf(tab);
+    if (i < 0) return;
+    this.tabs.splice(i, 1);
+    this.tabs.splice(to, 0, tab);
+    this.render();
+    this.onChange?.();
   }
 
   private menu(anchor: HTMLElement): void {

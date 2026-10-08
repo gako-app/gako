@@ -14,13 +14,14 @@
 
 // The tab bar above the main area: the diffs, files and histories open for review. As in VS Code, a
 // single click opens a preview tab (in italics) that the next single click replaces; a double click,
-// on the tab or on what opened it, keeps it open. Agents live in their own bar (terminals.ts); while
-// one is in front, no tab here is active.
+// on the tab or on what opened it, keeps it open. Tabs can be dragged into a new order (reorder.ts).
+// Agents live in their own bar (terminals.ts); while one is in front, no tab here is active.
 //
 // There is one diff panel and one viewer: a tab holds what to show and its saved scroll position,
 // not an editor of its own, so open tabs cost next to nothing.
 
 import { h } from './dom';
+import { Reorder } from './reorder';
 
 export type DocKind = 'diff' | 'file' | 'history' | 'settings';
 
@@ -65,6 +66,7 @@ export interface DocHooks {
 
 export class DocTabs {
   readonly bar = h('nav', { class: 'doc-tabs' });
+  private reorder = new Reorder(this.bar, 'x', () => this.render());
   private docs: Doc[] = [];
   active: Doc | null = null;
   /** False while a terminal is in front. */
@@ -172,9 +174,26 @@ export class DocTabs {
     this.render();
   }
 
+  /** Moves a tab to `to` in the bar (it was dragged there). A preview tab moved is kept, as in VS
+   * Code. */
+  private move(doc: Doc, to: number): void {
+    const i = this.docs.indexOf(doc);
+    if (i < 0) return;
+    this.docs.splice(i, 1);
+    this.docs.splice(to, 0, doc);
+    doc.pinned = true;
+    this.render();
+  }
+
   private render(): void {
     this.onChange?.();
-    this.bar.replaceChildren(...this.docs.map((d) => h('div', {
+    if (!this.reorder.canDraw()) return;
+    this.bar.replaceChildren(...this.docs.map((d) => this.tab(d)));
+    this.bar.querySelector('.doc-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+
+  private tab(d: Doc): HTMLElement {
+    const el = h('div', {
       class: `doc-tab ${d === this.active && this.inFront ? 'active' : ''} ${d.pinned ? '' : 'preview'}`,
       title: `${d.tooltip}${d.pinned ? '' : '\nPreview: double-click to keep it open'}`,
       onclick: () => this.activate(d),
@@ -184,7 +203,8 @@ export class DocTabs {
     GLYPH[d.kind] ? h('span', { class: 'doc-glyph' }, GLYPH[d.kind]) : null,
     h('span', { class: 'doc-title' }, d.title),
     d.detail ? h('span', { class: 'doc-detail' }, d.detail) : null,
-    h('span', { class: 'close', title: 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(d); } }, '×'))));
-    this.bar.querySelector('.doc-tab.active')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    h('span', { class: 'close', title: 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(d); } }, '×'));
+    this.reorder.attach(el, (to) => this.move(d, to));
+    return el;
   }
 }

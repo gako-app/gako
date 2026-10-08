@@ -35,9 +35,10 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
 - **Open in editor** opens the file at the cursor's line, or at the top of the view.
 
 Tabs work as VS Code's editor tabs do: a single click opens a preview tab (in italics) that the
-next one replaces, and a double click keeps it. ⌘W (Ctrl+W) closes the tab in front, and Ctrl+Tab
-and Ctrl+Shift+Tab step through the tabs. The tabs open for a base folder come back when it's
-opened again.
+next one replaces, and a double click keeps it. Dragging a tab moves it along the bar (a preview tab
+moved is kept), and Escape during the drag puts it back. A middle click or the × closes a tab, ⌘W
+(Ctrl+W) closes the tab in front, and Ctrl+Tab and Ctrl+Shift+Tab step through the tabs. The tabs
+open for a base folder come back when it's opened again.
 
 ## Opening files in your editor
 

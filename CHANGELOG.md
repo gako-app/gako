@@ -16,9 +16,12 @@ All notable changes to Gako are listed here, newest first. The format follows
   doesn't know.
 - Changes to the settings file apply as soon as it's saved, without opening the folder again. A
   file that can't be read is reported in the status bar, and the last good settings stay in use.
+- Tabs and agents can be dragged into a new order, which is kept with the session.
+- A middle click closes an agent, as it already closed a tab.
 
 ### Changed
 
+- Pressing and dragging on a tab or an agent no longer selects their text.
 - Switching between files, diffs, histories, settings and terminals no longer shows in-between
   states: a view appears once it's ready (diff computed and folded, scroll position and change
   markers back), with what was on screen kept until then. Restoring a session no longer flashes
