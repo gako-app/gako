@@ -30,8 +30,11 @@ it's working on. Picking one shows its terminal:
 The switch at the right of the tab bar picks between them, and Gako remembers the choice and the
 size. Dragging an entry moves it up or down the bar, and Escape during the drag puts it back. A
 middle click or the × closes an entry, asking first if its program is still running. ⌘W (Ctrl+W
-off macOS, except inside a terminal, where it stays with the shell) closes the tab in front, and
-Ctrl+Tab steps through terminals when one is in front.
+elsewhere) closes the tab in front, and Ctrl+Tab steps through terminals when one is in front. On
+Linux, Ctrl+W stays with the shell when a terminal is in front (it deletes a word in bash and zsh),
+so Ctrl+Shift+W closes the terminal there, as in GNOME Terminal; Windows takes Ctrl+Shift+W too. On
+Windows, Ctrl+W closes the terminal: cmd and PowerShell don't use it, though agents that delete a
+word with it, Claude Code among them, lose that key.
 
 ### States
 

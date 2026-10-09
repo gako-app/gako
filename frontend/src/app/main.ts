@@ -39,6 +39,8 @@ import { installTooltips } from './tooltip';
 import { icon } from './icons';
 import { confirmAction } from './confirm';
 import { showMenu } from './menu';
+import { platformOf } from '../clipboardkeys';
+import { isCloseTab } from '../tabkeys';
 
 const LAST_BASE = 'gako.lastBase';
 /** Settings the open folder was opened with: a change opens it again. */
@@ -211,14 +213,14 @@ class App {
     // Measurements depend on drawing; the log records when the window is hidden (and stops drawing).
     document.addEventListener('visibilitychange', () => this.log('visibility', { state: document.visibilityState }));
     const mac = navigator.platform.startsWith('Mac');
+    const platform = platformOf(navigator.platform);
     // Tab shortcuts, caught before Monaco and xterm.js see them. ⌘W (Ctrl+W elsewhere) closes the
-    // tab in front, a terminal included; off macOS, Ctrl+W in a terminal stays with its shell
-    // (delete a word). Ctrl+Tab and Ctrl+Shift+Tab step through the file tabs, or through the
-    // terminals when one is in front.
+    // tab in front, a terminal included; on Linux a terminal takes Ctrl+Shift+W, and Ctrl+W stays
+    // with its shell (tabkeys.ts). Ctrl+Tab and Ctrl+Shift+Tab step through the file tabs, or
+    // through the terminals when one is in front.
     document.addEventListener('keydown', (e) => {
       const inTerminal = !this.terminals.reviewActive;
-      if (e.key.toLowerCase() === 'w' && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey) {
-        if (inTerminal && !mac) return;
+      if (isCloseTab(e, platform, inTerminal)) {
         e.preventDefault();
         e.stopPropagation();
         if (inTerminal) this.terminals.closeActive();
