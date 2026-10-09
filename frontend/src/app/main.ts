@@ -39,6 +39,7 @@ import { installTooltips } from './tooltip';
 import { icon } from './icons';
 import { confirmAction } from './confirm';
 import { showMenu } from './menu';
+import { tabKey } from './tabkeys';
 
 const LAST_BASE = 'gako.lastBase';
 /** Settings the open folder was opened with: a change opens it again. */
@@ -211,24 +212,19 @@ class App {
     // Measurements depend on drawing; the log records when the window is hidden (and stops drawing).
     document.addEventListener('visibilitychange', () => this.log('visibility', { state: document.visibilityState }));
     const mac = navigator.platform.startsWith('Mac');
-    // Tab shortcuts, caught before Monaco and xterm.js see them. ⌘W (Ctrl+W elsewhere) closes the
-    // tab in front, a terminal included; off macOS, Ctrl+W in a terminal stays with its shell
-    // (delete a word). Ctrl+Tab and Ctrl+Shift+Tab step through the file tabs, or through the
-    // terminals when one is in front.
+    // Tab shortcuts (tabkeys.ts), caught before Monaco and xterm.js see them. They act on the file
+    // tabs, or on the terminals when one is in front.
     document.addEventListener('keydown', (e) => {
       const inTerminal = !this.terminals.reviewActive;
-      if (e.key.toLowerCase() === 'w' && (mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey) && !e.altKey && !e.shiftKey) {
-        if (inTerminal && !mac) return;
-        e.preventDefault();
-        e.stopPropagation();
+      const action = tabKey(e, mac, inTerminal);
+      if (!action) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (action === 'close') {
         if (inTerminal) this.terminals.closeActive();
         else this.docs.closeActive();
-      } else if (e.key === 'Tab' && e.ctrlKey && !e.metaKey && !e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (inTerminal) this.terminals.cycle(e.shiftKey ? -1 : 1);
-        else this.docs.cycle(e.shiftKey ? -1 : 1);
-      }
+      } else if (inTerminal) this.terminals.cycle(action === 'prev' ? -1 : 1);
+      else this.docs.cycle(action === 'prev' ? -1 : 1);
     }, true);
     document.addEventListener('keydown', (e) => {
       const typing = e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement;

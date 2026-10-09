@@ -32,8 +32,10 @@ shows its terminal:
 
 The switch at the right of the tab bar picks between them, and Gako remembers the choice and the
 size. Dragging an entry moves it up or down the bar, and Escape during the drag puts it back. A
-middle click or the × closes an entry, asking first if its program is still running. ⌘W (Ctrl+W
-off macOS, except inside a terminal, where it stays with the shell) closes the tab in front, and
+middle click or the × closes an entry, asking first if its program is still running. ⌘W closes the
+tab in front. Off macOS, Ctrl+W does too, except inside a terminal, where it stays with the shell
+(delete a word); there Ctrl+Shift+W or Ctrl+F4 closes it, as in Windows Terminal and GNOME
+Terminal. A terminal can't tell Ctrl+Shift+W from Ctrl+W, so no program loses a key to it.
 Ctrl+Tab steps through terminals when one is in front.
 
 ### States

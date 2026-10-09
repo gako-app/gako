@@ -13,6 +13,8 @@ All notable changes to Gako are listed here, newest first. The format follows
   menu with Copy, Paste and Select all, on every platform.
 - Copy on select in terminals, off by default: `terminalCopyOnSelect`.
 - Option-drag on macOS, as Shift-drag elsewhere, selects text in a program that takes the mouse.
+- Ctrl+Shift+W and Ctrl+F4 close the tab in front on Windows and Linux, a terminal included, where
+  Ctrl+W stays with the shell.
 
 ### Changed
 

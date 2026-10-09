@@ -77,7 +77,7 @@ or the last one it had open, or asks. **Open folder…** in the status bar picks
 | ⌘⇧F / Ctrl+Shift+F | Search in files |
 | F12, or ⌘-click / Ctrl-click | Go to definition |
 | Shift+F12 | Find references (by name) |
-| ⌘W / Ctrl+W | Close the tab in front |
+| ⌘W / Ctrl+W, Ctrl+Shift+W, Ctrl+F4 | Close the tab in front (in a terminal, Ctrl+W stays with the shell) |
 | ⌘, / Ctrl+, | Settings |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next and previous tab |
 | ↑ ↓ in the sidebar | Next and previous changed file |
