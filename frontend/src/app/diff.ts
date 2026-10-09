@@ -15,7 +15,7 @@
 // The diff panel: Monaco's diff editor, read-only, with a header for what's shown and what can be
 // done with it. When the file changes on disk while it's open, the diff updates in place.
 
-import { fontOptions, languageFor, monaco, restoreView, setText } from '../monaco';
+import { fontOptions, languageFor, monaco, openFind, restoreView, setText } from '../monaco';
 import { basename, delay, dirname, fill, freeze, h, settled } from './dom';
 import type { DiffTarget, FileContent, Settings, Side } from './model';
 import type { Git } from './git';
@@ -260,6 +260,13 @@ export class DiffPanel {
       'data-layout': l.layout, 'data-tip': l.tip, 'aria-label': l.tip,
       onclick: () => this.setLayout(l.layout),
     }, icon(l.icon))));
+  }
+
+  /** Opens find on the side after the change, or before it for a deleted file; false if there's no
+   * text diff shown. */
+  find(): boolean {
+    if (!this.target || this.host.hidden) return false;
+    return openFind(this.target.right ? this.editor.getModifiedEditor() : this.editor.getOriginalEditor());
   }
 
   /** Navigation on both sides; `abs` turns a repo-relative path into a full one. */

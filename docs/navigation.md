@@ -33,6 +33,11 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
 - Other binary files show their size instead of their contents, and files over 50 MB are cut off
   there (images and PDFs over 50 MB aren't shown).
 - **Open in editor** opens the file at the cursor's line, or at the top of the view.
+- **Find** (⌘F, Ctrl+F) searches the file in front, or either side of a diff, with Monaco's find
+  widget. Pressed outside the editor (in the sidebar, say), it opens on the file in front, or on a
+  diff's side after the change (before it, for a deleted file). The widget has match case, whole
+  word and regular expressions, with Enter and Shift+Enter (or F3 and Shift+F3) stepping through
+  the matches. There's no replace, since the viewer is read-only.
 
 Tabs work as VS Code's editor tabs do: a single click opens a preview tab (in italics) that the
 next one replaces, and a double click keeps it. Dragging a tab moves it along the bar (a preview tab

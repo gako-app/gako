@@ -15,6 +15,7 @@ All notable changes to Gako are listed here, newest first. The format follows
 - Option-drag on macOS, as Shift-drag elsewhere, selects text in a program that takes the mouse.
 - Ctrl+Shift+W and Ctrl+F4 close the tab in front on Windows and Linux, a terminal included, where
   Ctrl+W stays with the shell.
+- Find in the file or diff in front (⌘F, Ctrl+F), with Monaco's find widget.
 
 ### Changed
 

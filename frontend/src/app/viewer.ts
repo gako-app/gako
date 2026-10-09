@@ -15,7 +15,7 @@
 // The read-only file viewer: one Monaco editor that never edits, with "open in editor" at the
 // cursor's line (or the top of the view), and the file's diff when it has changes.
 
-import { fontOptions, languageFor, monaco, restoreView, setText } from '../monaco';
+import { fontOptions, languageFor, monaco, openFind, restoreView, setText } from '../monaco';
 import { basename, delay, fill, freeze, h, settled } from './dom';
 import type { FileContent, Settings } from './model';
 import type { Reveal } from './search';
@@ -193,6 +193,11 @@ export class Viewer {
 
   saveView(): unknown {
     return this.path ? this.editor.saveViewState() : null;
+  }
+
+  /** Opens find on the file shown; false if there's no text (an image, a PDF, nothing). */
+  find(): boolean {
+    return !!this.path && !this.host.hidden && openFind(this.editor);
   }
 
   attachNavigation(nav: Navigator): void {

@@ -20,6 +20,8 @@ import * as monaco from 'monaco-editor/editor/editor.api.js';
 import 'monaco-editor/languages/definitions/register.all.js';
 // The icon font (diff gutter markers, folded-region icons); editor.api.js alone doesn't load it.
 import 'monaco-editor/features/codicon/register.js';
+// Find in the file (⌘F, Ctrl+F) and its widget; read-only editors leave replace out by themselves.
+import 'monaco-editor/features/find/register.js';
 import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
 import type { Settings } from './app/model';
 
@@ -69,6 +71,15 @@ export function restoreView(editor: monaco.editor.ICodeEditor, state: unknown): 
   if (!saved) return;
   if (JSON.stringify(editor.saveViewState()?.viewState) === JSON.stringify(saved.viewState)) return;
   editor.restoreViewState(saved);
+}
+
+/** Opens Monaco's find widget on `editor`, as ⌘F (Ctrl+F) does with the focus in it. False if the
+ * editor holds nothing to search. */
+export function openFind(editor: monaco.editor.ICodeEditor): boolean {
+  if (!editor.getModel()) return false;
+  editor.focus();
+  editor.getAction('actions.find')?.run();
+  return true;
 }
 
 /** The editor options the settings' `fileFont…` keys set. */

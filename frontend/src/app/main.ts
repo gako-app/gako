@@ -254,6 +254,14 @@ class App {
           this.search.focus();
           return;
         }
+        // Find in the file or diff in front from anywhere else (the sidebar, say); in an editor,
+        // Monaco takes it first.
+        if (e.key.toLowerCase() === 'f' && !e.shiftKey && !inTerminal && this.terminals.reviewActive
+          && !(e.target as HTMLElement).closest?.('.monaco-editor')) {
+          const found = this.mode === 'file' ? this.viewer.find() : this.mode === 'diff' ? this.diff.find() : false;
+          if (found) e.preventDefault();
+          return;
+        }
       }
       if (!typing && this.terminals.reviewActive && !(e.target as HTMLElement).closest('.monaco-editor, .sidebar-list')) {
         if (this.sidebar.key(e)) e.preventDefault();
