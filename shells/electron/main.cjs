@@ -363,8 +363,11 @@ app.whenReady().then(async () => {
             type: 'warning',
             message: `${n === 1 ? 'An agent is' : `${n} agents are`} still running`,
             detail: `${running.join(', ')}. Quitting Gako stops ${n === 1 ? 'it' : 'them'}.`,
+            // Return quits and Esc cancels, as closing a running terminal's tab does. (Cancel as
+            // the default too left Return doing nothing on macOS: Electron gives the cancel
+            // button Esc in place of Return.)
             buttons: ['Quit', 'Cancel'],
-            defaultId: 1,
+            defaultId: 0,
             cancelId: 1,
           });
           if (answer !== 0) {

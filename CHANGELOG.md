@@ -24,6 +24,11 @@ All notable changes to Gako are listed here, newest first. The format follows
   when closing or quitting asks first, so one named like the base folder can't be mistaken for it.
 - Terminals keep 10,000 rows of scrollback by default, up from 1,000 (`terminalScrollback`).
 
+### Fixed
+
+- Return now quits when quitting asks first about running agents, as Esc cancels. On macOS it
+  did nothing, so quitting took a click.
+
 ## [0.10.0] — 2026-10-08
 
 Settings on a screen of their own and applied as they change, font settings, views that switch

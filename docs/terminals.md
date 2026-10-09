@@ -91,7 +91,8 @@ titles, notifications, bells and bursts of output in a recording.
   ignore it, Claude Code among them, or leave children behind, so on macOS and Linux the program's
   whole process group then gets SIGTERM and, if that doesn't end it, SIGKILL. On Windows the program
   is ended, but programs it started may outlive it.
-- **Quitting Gako** with agents running asks first, and names them.
+- **Quitting Gako** with agents running asks first, and names them. Return quits and Esc cancels,
+  as when closing a terminal.
 - **Reopening:** Gako remembers, per base folder, the terminals that were open and reopens them:
   the same program in the same folder, as a new session. Agents' conversations aren't resumed.
 
