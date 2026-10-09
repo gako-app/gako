@@ -79,7 +79,7 @@ The defaults suit 10–30 repositories, one or two levels deep. For a larger lay
 |---|---|---|
 | `agents` | Claude Code, Codex, OpenCode, Pi | The programs offered when you start a terminal, besides your shell: a list of `{ "name": …, "command": [program, arguments…] }`. Each is offered only if its program is found. The list replaces the default one, so include the defaults you want to keep. |
 | `agentHooks` | `true` | Start Claude Code with Gako's hook, so the agent bar can tell when it's waiting for approval. See [terminals.md](terminals.md#how-gako-knows). |
-| `terminalScrollback` | `1000` | Rows kept per terminal. Each row costs memory at the terminal's full width. |
+| `terminalScrollback` | `10000` | Rows kept per terminal. Each row costs memory at the terminal's full width. |
 | `terminalRenderer` | `"webgl"` | `"webgl"`, or `"dom"` for slower drawing that uses less memory. |
 | `terminalFontSize` | `12` on macOS, `14` elsewhere | In pixels. |
 | `terminalFontFamily` | `"Menlo, Consolas, 'DejaVu Sans Mono', monospace"` | A CSS font list. |

@@ -20,6 +20,7 @@ All notable changes to Gako are listed here, newest first. The format follows
   looking at, and shows the repositories indented beneath it.
 - Terminals in a repository are named under the base folder (`projectX/A`) in the agent bar and
   when closing or quitting asks first, so one named like the base folder can't be mistaken for it.
+- Terminals keep 10,000 rows of scrollback by default, up from 1,000 (`terminalScrollback`).
 
 ## [0.10.0] — 2026-10-08
 

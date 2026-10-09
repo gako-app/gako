@@ -166,8 +166,8 @@ being buffered without limit or dropped.
 
 **Why:** a fast program can write far more than a window can draw. Buffering grows memory without
 bound; dropping loses output. Backpressure is what a real terminal does, and what VS Code does.
-With scrollback capped at 1,000 rows (VS Code's default), a terminal's memory stays flat however
-much is written.
+With scrollback capped (10,000 rows by default), a terminal's memory stays flat however much is
+written.
 
 **Cost:** a program writing faster than Gako can draw is slowed to Gako's pace. In practice Gako
 draws large dumps faster than VS Code: four to eight times faster on macOS.

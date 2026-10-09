@@ -244,7 +244,7 @@ export class Terminals {
     const s = this.settings;
     const term = new TerminalTab(this.t, this.log, this.host, {
       title: program.name,
-      scrollback: s?.terminalScrollback ?? 1000,
+      scrollback: s?.terminalScrollback ?? 10_000,
       renderer: (s?.terminalRenderer === 'dom' ? 'dom' : 'webgl') as Renderer,
       fontSize: s?.terminalFontSize,
       fontFamily: s?.terminalFontFamily,

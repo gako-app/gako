@@ -108,7 +108,7 @@ impl Default for Settings {
                     command: vec!["pi".into()],
                 },
             ],
-            terminal_scrollback: 1000,
+            terminal_scrollback: 10_000,
             terminal_renderer: "webgl".into(),
             terminal_font_size: if cfg!(target_os = "macos") {
                 12.0

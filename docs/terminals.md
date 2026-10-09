@@ -95,7 +95,7 @@ titles, notifications, bells and bursts of output in a recording.
 
 ## Output
 
-- **Scrollback** is 1,000 rows per terminal by default, as in VS Code (`terminalScrollback`).
+- **Scrollback** is 10,000 rows per terminal by default (`terminalScrollback`).
   Scrollback is a terminal's main memory cost, roughly rows × columns × bytes per cell, so the
   default is a memory decision as much as a convenience.
 - **Rendering** uses xterm.js's WebGL renderer, or the DOM renderer (`terminalRenderer`). A hidden
