@@ -74,10 +74,12 @@ or the last one it had open, or asks. **Open folder…** in the status bar picks
 |---|---|
 | ⌘P / Ctrl+P | Go to file |
 | ⌘T / Ctrl+T | Go to symbol |
+| ⌘F / Ctrl+F | Find in the file or diff in front |
 | ⌘⇧F / Ctrl+Shift+F | Search in files |
 | F12, or ⌘-click / Ctrl-click | Go to definition |
 | Shift+F12 | Find references (by name) |
 | ⌘W / Ctrl+W, Ctrl+Shift+W, Ctrl+F4 | Close the tab in front (in a terminal, Ctrl+W stays with the shell) |
+| ⌘C ⌘V / Ctrl+Shift+C Ctrl+Shift+V | Copy and paste in a terminal (more in [docs/terminals.md](docs/terminals.md#copy-and-paste)) |
 | ⌘, / Ctrl+, | Settings |
 | Ctrl+Tab, Ctrl+Shift+Tab | Next and previous tab |
 | ↑ ↓ in the sidebar | Next and previous changed file |
