@@ -14,6 +14,13 @@ All notable changes to Gako are listed here, newest first. The format follows
 - Copy on select in terminals, off by default: `terminalCopyOnSelect`.
 - Option-drag on macOS, as Shift-drag elsewhere, selects text in a program that takes the mouse.
 
+### Changed
+
+- The **+** menu picks the base folder by default, rather than the repository of the file you're
+  looking at, and shows the repositories indented beneath it.
+- Terminals in a repository are named under the base folder (`projectX/A`) in the agent bar and
+  when closing or quitting asks first, so one named like the base folder can't be mistaken for it.
+
 ## [0.10.0] — 2026-10-08
 
 Settings on a screen of their own and applied as they change, font settings, views that switch

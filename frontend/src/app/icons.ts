@@ -16,7 +16,7 @@
 // are bundled.
 
 import {
-  ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, Code, Columns2, Copy, createElement,
+  ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, Code, Columns2, Copy, CornerDownRight, createElement,
   ExternalLink, FileDiff, FilePen, FileText, Folder, FolderOpen, GitBranch, Globe, History, type IconNode, Info,
   LoaderCircle, Proportions, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plus, RefreshCw,
   RotateCcw, Rows2, Search, Settings, SquareSplitHorizontal, TriangleAlert, Undo2, X,
@@ -46,6 +46,7 @@ const ICONS = {
   'layout-auto': Proportions,
   folder: Folder,
   'folder-open': FolderOpen,
+  nested: CornerDownRight,
   repos: GitBranch,
   branch: GitBranch,
   symbols: Braces,

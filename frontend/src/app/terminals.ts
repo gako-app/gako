@@ -34,7 +34,7 @@ import type { CoreEvent, Transport } from '../transport';
 import { fill, h } from './dom';
 import type { Settings } from './model';
 import { readTitle, titleHasState, titleTopic } from './agentstate';
-import { iconButton } from './icons';
+import { icon, iconButton } from './icons';
 import { Reorder } from './reorder';
 
 export interface Program {
@@ -46,6 +46,14 @@ export interface Program {
 export interface Folder {
   path: string;
   name: string;
+  /** For a repository under the base folder, the base folder's name: the + menu shows the
+   * repository indented beneath it, and everywhere else it's named in full ("projectX/A"). */
+  base?: string;
+}
+
+/** A folder's name in full: "projectX/A" for a repository under the base folder "projectX". */
+function folderName(f: Folder): string {
+  return f.base ? `${f.base}/${f.name}` : f.name;
 }
 
 type State = 'working' | 'waiting' | 'quiet' | 'exited' | 'failed';
@@ -184,9 +192,9 @@ export class Terminals {
   }
 
 
-  /** The programs still running, as "Claude Code in gako", for the shell's question on quitting. */
+  /** The programs still running, as "Claude Code in projectX/gako", for the shell's question on quitting. */
   running(): string[] {
-    return this.tabs.filter((t) => !t.term.exit).map((t) => `${t.program.name} in ${t.folder.name}`);
+    return this.tabs.filter((t) => !t.term.exit).map((t) => `${t.program.name} in ${folderName(t.folder)}`);
   }
 
   /** True when the documents have the keyboard: in front (single pane), or the pane last used
@@ -307,7 +315,7 @@ export class Terminals {
   }
 
   private close(tab: Tab, force = false): void {
-    if (!force && !tab.term.exit && !confirm(`${tab.program.name} is still running in ${tab.folder.name}. Close it?`)) return;
+    if (!force && !tab.term.exit && !confirm(`${tab.program.name} is still running in ${folderName(tab.folder)}. Close it?`)) return;
     const i = this.tabs.indexOf(tab);
     this.tabs.splice(i, 1);
     tab.term.close();
@@ -426,7 +434,7 @@ export class Terminals {
     this.pane.classList.toggle('focused', this.termFocused);
     fill(this.paneHeader, tab
       ? [h('span', { class: `dot ${tab.state}` }), h('span', { class: 'term-pane-name' }, tab.program.name),
-        h('span', { class: 'dim' }, `${titleTopic(tab.term.title) || tab.folder.name} · ${this.stateText(tab)}`)]
+        h('span', { class: 'dim' }, `${titleTopic(tab.term.title) || folderName(tab.folder)} · ${this.stateText(tab)}`)]
       : h('span', { class: 'dim' }, 'No agent shown'));
     this.paneEmpty.hidden = tab !== null;
   }
@@ -454,7 +462,7 @@ export class Terminals {
       ? h('span', { class: 'agent-initials' }, initials(tab.program.name))
       : h('span', { class: 'agent-text' },
         h('span', { class: 'agent-name' }, tab.program.name),
-        h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || tab.folder.name} · ${this.stateText(tab)}`)),
+        h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || folderName(tab.folder)} · ${this.stateText(tab)}`)),
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
     !this.collapsed && tab.term.exit ? iconButton('restart', `Restart ${tab.program.name}`, () => this.restart(tab), { class: 'restart' }) : null,
     this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'));
@@ -481,7 +489,8 @@ export class Terminals {
     let folder = folders[0];
     const folderList = h('div', { class: 'menu-list' });
     const drawFolders = () => folderList.replaceChildren(...folders.map((f) =>
-      h('button', { class: `menu-item ${f === folder ? 'selected' : ''}`, title: f.path, onclick: () => { folder = f; drawFolders(); } }, f.name)));
+      h('button', { class: `menu-item ${f === folder ? 'selected' : ''}`, title: f.path, onclick: () => { folder = f; drawFolders(); } },
+        f.base ? icon('nested') : null, f.name)));
     drawFolders();
     this.menuEl = h('div', { class: 'menu' },
       h('div', { class: 'menu-title' }, 'Run'),
