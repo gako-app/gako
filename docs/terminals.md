@@ -11,8 +11,9 @@ The **+** button in the agent bar picks a program and a folder:
   Claude Code (`claude`), Codex (`codex`), OpenCode (`opencode`) and Pi (`pi`), each offered only if
   it's found on the `PATH`. Any program with a command line can be added; see
   [settings.md](settings.md).
-- **The folder:** the base folder or one of its repositories. The repository of the file you're
-  looking at comes first.
+- **The folder:** the base folder or one of its repositories. The base folder comes first and is
+  chosen by default; the repositories follow, each shown under the base folder's name
+  (`projectX/A`), so one named like the base folder (`projectX/projectX`) can't be mistaken for it.
 
 A terminal runs its program in a pseudo-terminal (ConPTY on Windows), with your login shell's
 environment on macOS and Linux (see [architecture.md](architecture.md#platform-specifics)). The

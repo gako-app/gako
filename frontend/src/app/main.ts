@@ -742,13 +742,14 @@ class App {
 
   /** Where a new terminal can run: the repo of the selected file first, then the base folder and the rest. */
   private folders(): Folder[] {
+    // The base folder first (and chosen by default), then its repositories, labelled under the base
+    // folder's name so that one named like the base ("projectX/projectX") can't be taken for it.
     const base = this.opened?.base;
-    const selected = this.diff.target?.repo;
-    const repos = this.repos.filter((r) => r.root !== base).map((r) => ({ path: r.root, name: this.name(r) }));
-    const all: Folder[] = [...(base ? [{ path: base, name: basename(base) }] : []), ...repos];
-    const i = all.findIndex((f) => f.path === selected);
-    if (i > 0) all.unshift(...all.splice(i, 1));
-    return all;
+    if (!base) return [];
+    const baseName = basename(base);
+    const repos = this.repos.filter((r) => r.root !== base)
+      .map((r) => ({ path: r.root, name: this.name(r), label: `${baseName}/${this.name(r)}` }));
+    return [{ path: base, name: baseName }, ...repos];
   }
 
   /** `front`: bring the documents in front of a terminal to show it. */

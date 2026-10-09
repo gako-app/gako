@@ -46,6 +46,8 @@ export interface Program {
 export interface Folder {
   path: string;
   name: string;
+  /** How the + menu shows it, when not `name`. */
+  label?: string;
 }
 
 type State = 'working' | 'waiting' | 'quiet' | 'exited' | 'failed';
@@ -481,7 +483,7 @@ export class Terminals {
     let folder = folders[0];
     const folderList = h('div', { class: 'menu-list' });
     const drawFolders = () => folderList.replaceChildren(...folders.map((f) =>
-      h('button', { class: `menu-item ${f === folder ? 'selected' : ''}`, title: f.path, onclick: () => { folder = f; drawFolders(); } }, f.name)));
+      h('button', { class: `menu-item ${f === folder ? 'selected' : ''}`, title: f.path, onclick: () => { folder = f; drawFolders(); } }, f.label ?? f.name)));
     drawFolders();
     this.menuEl = h('div', { class: 'menu' },
       h('div', { class: 'menu-title' }, 'Run'),
