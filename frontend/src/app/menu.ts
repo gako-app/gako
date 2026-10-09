@@ -12,8 +12,8 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// A popup menu, for "open in editor" choices and the file tree's context menu. One menu is open at
-// a time; a click elsewhere or Escape closes it.
+// A popup menu, for "open in editor" choices, the file tree's context menu and the search's repo
+// picker. One menu is open at a time; a click elsewhere or Escape closes it.
 
 import { h } from './dom';
 
@@ -21,8 +21,12 @@ export interface MenuItem {
   label: string;
   title?: string;
   checked?: boolean;
+  /** Clicking it leaves the menu open, drawn again (a list of checkboxes, say). */
+  keep?: boolean;
   run: () => void;
 }
+
+type Items = (MenuItem | 'separator')[];
 
 let open: HTMLElement | null = null;
 
@@ -38,16 +42,23 @@ document.addEventListener('keydown', (e) => {
   if (open && e.key === 'Escape') closeMenu();
 });
 
-/** Shows a menu below `at` (an element) or at a point (a context menu). */
-export function showMenu(at: HTMLElement | { x: number; y: number }, items: (MenuItem | 'separator')[]): void {
+/** Shows a menu below `at` (an element) or at a point (a context menu). Given a function, the items
+ * are asked for again after an item that keeps the menu open is clicked. */
+export function showMenu(at: HTMLElement | { x: number; y: number }, items: Items | (() => Items)): void {
   closeMenu();
-  const el = h('div', { class: 'menu' },
-    h('div', { class: 'menu-list' }, items.map((item) => item === 'separator'
-      ? h('div', { class: 'menu-separator' })
-      : h('button', {
-        class: `menu-item ${item.checked ? 'selected' : ''}`, title: item.title,
-        onclick: () => { closeMenu(); item.run(); },
-      }, item.label))));
+  const list = h('div', { class: 'menu-list' });
+  const draw = () => list.replaceChildren(...(typeof items === 'function' ? items() : items).map((item) => item === 'separator'
+    ? h('div', { class: 'menu-separator' })
+    : h('button', {
+      class: `menu-item ${item.checked ? 'selected' : ''} ${item.keep ? 'check' : ''}`, title: item.title,
+      onclick: () => {
+        if (!item.keep) closeMenu();
+        item.run();
+        if (item.keep) draw();
+      },
+    }, item.label)));
+  draw();
+  const el = h('div', { class: 'menu' }, list);
   const p = at instanceof HTMLElement ? (() => { const r = at.getBoundingClientRect(); return { x: r.left, y: r.bottom + 4 }; })() : at;
   el.style.left = `${p.x}px`;
   el.style.top = `${p.y}px`;

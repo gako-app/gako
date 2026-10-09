@@ -27,6 +27,33 @@ import type { Settings } from './app/model';
 
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 
+/** Gako's editor theme: Monaco's dark one on the app's own surfaces (style.css), as VS Code's Dark
+ * Modern does. */
+export const THEME = 'gako-dark';
+monaco.editor.defineTheme(THEME, {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [],
+  colors: {
+    'editor.background': '#1f1f1f',
+    'editorGutter.background': '#1f1f1f',
+    'editor.lineHighlightBorder': '#282828',
+    'editorLineNumber.foreground': '#6e7681',
+    'editorLineNumber.activeForeground': '#cccccc',
+    'editorIndentGuide.background1': '#404040',
+    'editorWidget.background': '#202020',
+    'editorWidget.border': '#3a3a3a',
+    'editorStickyScroll.background': '#1f1f1f',
+    'editorOverviewRuler.border': '#1f1f1f00',
+    'diffEditor.border': '#2b2b2b',
+    'diffEditor.unchangedRegionBackground': '#181818',
+    'scrollbar.shadow': '#00000000',
+    'scrollbarSlider.background': '#79797933',
+    'scrollbarSlider.hoverBackground': '#64646466',
+    'focusBorder': '#0078d4',
+  },
+});
+
 // JSON only ships as a full language service; its JavaScript tokenizer is enough to read it.
 const aliases: Record<string, string> = { json: 'javascript', jsonc: 'javascript', json5: 'javascript' };
 

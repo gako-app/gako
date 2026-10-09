@@ -31,8 +31,11 @@ parsed in the core:
 - Untracked files are listed one by one, up to `untrackedLimit` per repository (2,000 by default);
   beyond that, they're counted.
 
-Repositories with changes are listed first, each with its groups. Clean repositories collapse into
-a "Clean repositories" group at the bottom, one line each, so their history stays a click away.
+Repositories with changes are listed first, each with its groups, together with any whose branch
+is behind or ahead of its upstream (with no changes, just their header), so commits to pull or push
+stay in sight. The rest, clean and level with their upstream, collapse into a "Clean repositories"
+group at the bottom, one line each, so their history stays a click away. A line over the list counts
+the repositories behind, ahead and diverged.
 
 ### Running git
 
@@ -104,6 +107,9 @@ file.
   is behind or ahead of its upstream, with the count. Pulls only fast-forward: anything that would
   need a merge or a rebase is left to you and your terminal. **Pull all** pulls every repository
   that's behind, four at a time, greying out the ones still waiting.
+- A branch both behind and ahead has **diverged**: neither a fast-forward pull nor a push can go
+  through, so it shows the two counts and no buttons, and Pull all leaves it out. There's no
+  "Push all": pushing publishes work, often an agent's, so it's one repository at a time.
 - **Switching branch:** a repository's branch name opens a menu of its branches, local and remote.
   Picking a remote branch creates a local branch tracking it.
 

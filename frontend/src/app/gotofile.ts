@@ -16,6 +16,7 @@
 
 import type { Transport } from '../transport';
 import { basename, h } from './dom';
+import { fileIcon } from './icons';
 
 interface Hit {
   path: string;
@@ -95,7 +96,7 @@ export class GoToFile {
       }
       marked.append(rel.slice(at));
       return h('div', { class: `goto-item ${i === this.index ? 'selected' : ''}`, onmousedown: () => this.choose(hit) },
-        h('span', { class: 'fname' }, basename(rel)), h('span', { class: 'fdir dim' }, marked));
+        fileIcon(basename(rel)), h('span', { class: 'fname' }, basename(rel)), h('span', { class: 'fdir dim' }, marked));
     }));
     if (this.input.value.trim() && !this.hits.length) this.list.append(h('div', { class: 'goto-item dim' }, 'No matching files'));
   }

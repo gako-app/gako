@@ -17,6 +17,8 @@
 
 import type { Transport } from '../transport';
 import { basename, dirname, fill, h } from './dom';
+import { chevron, fileIcon, icon } from './icons';
+import { showMenu } from './menu';
 import type { Repo } from './model';
 
 interface LineMatch {
@@ -48,20 +50,23 @@ export interface Reveal {
   column?: number;
 }
 
-type ScopeKind = 'all' | 'base' | 'repos';
 
 export class SearchView {
   readonly el = h('div', { class: 'search' });
   private input = h('input', { class: 'search-input', type: 'text', placeholder: 'Search', spellcheck: false });
-  private include = h('input', { class: 'search-glob', type: 'text', placeholder: 'files to include, e.g. *.ts, src/**', spellcheck: false });
-  private exclude = h('input', { class: 'search-glob', type: 'text', placeholder: 'files to exclude', spellcheck: false });
+  private include = h('input', { class: 'search-glob', type: 'text', placeholder: 'Files to include, e.g. *.ts, src/**', spellcheck: false });
+  private exclude = h('input', { class: 'search-glob', type: 'text', placeholder: 'Files to exclude', spellcheck: false });
+  private ignored = h('input', { type: 'checkbox' });
   private toggles = { caseSensitive: false, wholeWord: false, regex: false, includeIgnored: false };
   private toggleButtons = new Map<string, HTMLButtonElement>();
-  private scope: ScopeKind = 'all';
+  /** The repos to search, by root; none chosen means all of them. */
   private chosen = new Set<string>();
+  private filtersOpen = false;
+  private filtersToggle = h('button', { class: 'search-more', onclick: () => { this.filtersOpen = !this.filtersOpen; this.renderFilters(); } });
+  private filters = h('div', { class: 'search-filters' });
+  private scopeButton = h('button', { class: 'search-scope-button', onclick: () => this.pickRepos() });
   private results = h('div', { class: 'search-results' });
   private summary = h('div', { class: 'search-summary dim' });
-  private scopeEl = h('div', { class: 'search-scope' });
   private files: FileMatches[] = [];
   private collapsed = new Set<string>();
   private searchId = 0;
@@ -75,22 +80,31 @@ export class SearchView {
     /** Opens a match; `pin` keeps its tab open (a double click). */
     private open: (path: string, reveal: Reveal, pin?: boolean) => void,
   ) {
-    const toggle = (key: keyof SearchView['toggles'], label: string | HTMLElement, title: string) => {
-      const b = h('button', { class: 'toggle', title, onclick: () => { this.toggles[key] = !this.toggles[key]; b.classList.toggle('on'); this.schedule(0); } }, label);
+    const toggle = (key: 'caseSensitive' | 'wholeWord' | 'regex', label: string | HTMLElement, tip: string) => {
+      const b = h('button', {
+        class: 'toggle', 'data-tip': tip, 'aria-label': tip, 'aria-pressed': 'false',
+        onclick: () => { this.toggles[key] = !this.toggles[key]; this.renderToggles(); this.schedule(0); },
+      }, label);
       this.toggleButtons.set(key, b);
       return b;
     };
+    this.ignored.addEventListener('change', () => { this.toggles.includeIgnored = this.ignored.checked; this.renderFilters(); this.schedule(0); });
+    // The field and its three toggles, inside one box as in VS Code; then the filters, folded away
+    // until wanted; then where to search.
+    this.filters.append(this.include, this.exclude,
+      h('label', { class: 'search-check' }, this.ignored, 'Include files Git ignores'));
     this.el.append(
       h('div', { class: 'search-form' },
-        h('div', { class: 'search-row' }, this.input,
-          toggle('caseSensitive', 'Aa', 'Match case'), toggle('wholeWord', h('span', { class: 'whole-word' }, 'ab'), 'Match whole word'), toggle('regex', '.*', 'Regular expression')),
-        this.include, this.exclude,
-        h('label', { class: 'dim small' }, (() => {
-          const c = h('input', { type: 'checkbox', onchange: () => { this.toggles.includeIgnored = c.checked; this.schedule(0); } });
-          return c;
-        })(), ' Search ignored files too'),
-        this.scopeEl),
+        h('div', { class: 'search-box' }, this.input,
+          toggle('caseSensitive', 'Aa', 'Match case'),
+          toggle('wholeWord', h('span', { class: 'whole-word' }, 'ab'), 'Match whole word'),
+          toggle('regex', '.*', 'Use regular expression')),
+        h('div', { class: 'search-options' }, this.filtersToggle, h('span', { class: 'spacer' }), h('span', { class: 'dim' }, 'In'), this.scopeButton),
+        this.filters),
       this.summary, this.results);
+    for (const el of [this.include, this.exclude]) el.addEventListener('input', () => this.renderFilters());
+    this.renderFilters();
+    this.renderScope();
     for (const el of [this.input, this.include, this.exclude]) {
       el.addEventListener('input', () => this.schedule(250));
       el.addEventListener('keydown', (e) => { if (e.key === 'Enter') this.schedule(0); });
@@ -110,8 +124,8 @@ export class SearchView {
   /** References by name: the word, whole and case-sensitive, in every repo. */
   references(name: string): void {
     this.toggles = { ...this.toggles, caseSensitive: true, wholeWord: true, regex: false };
-    for (const [k, b] of this.toggleButtons) b.classList.toggle('on', this.toggles[k as keyof SearchView['toggles']]);
-    this.scope = 'all';
+    this.renderToggles();
+    this.chosen.clear();
     this.renderScope();
     this.input.value = name;
     this.schedule(0);
@@ -146,7 +160,7 @@ export class SearchView {
       const stats = await this.t.request<Stats>('search', {
         search: id,
         query: { pattern, ...this.toggles, include: globs(this.include.value), exclude: globs(this.exclude.value) },
-        scope: { kind: this.scope, repos: [...this.chosen] },
+        scope: this.picked().length ? { kind: 'repos', repos: this.picked() } : { kind: 'all', repos: [] },
       });
       if (id !== this.searchId) return;
       this.summary.textContent = stats.cancelled
@@ -181,21 +195,49 @@ export class SearchView {
     return r ? r.rel || basename(this.base) : basename(this.base);
   }
 
+  private renderToggles(): void {
+    for (const [k, b] of this.toggleButtons) {
+      const on = this.toggles[k as keyof SearchView['toggles']];
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+  }
+
+  /** The filters' toggle, with how many are set (so filters folded away still show they're in
+   * force), and the filters themselves when open. */
+  private renderFilters(): void {
+    const set = [this.include.value.trim(), this.exclude.value.trim(), this.toggles.includeIgnored].filter(Boolean).length;
+    fill(this.filtersToggle, chevron(this.filtersOpen), 'Filters', set ? h('span', { class: 'count on' }, String(set)) : null);
+    this.filtersToggle.dataset.tip = this.filtersOpen ? 'Hide the filters' : 'Files to include or exclude, and files Git ignores';
+    this.filters.hidden = !this.filtersOpen;
+  }
+
+  /** The chosen repos that are still in the workspace. */
+  private picked(): string[] {
+    return this.repos.filter((r) => this.chosen.has(r.root)).map((r) => r.root);
+  }
+
+  /** The scope button's label: every repo, the one chosen, or how many. */
   renderScope(): void {
-    const kinds: [ScopeKind, string][] = [['all', 'All repos'], ['base', 'Base repo only'], ['repos', 'Chosen repos']];
-    fill(this.scopeEl,
-      h('div', { class: 'scope-kinds' }, kinds.map(([k, label]) =>
-        h('button', { class: `toggle wide ${this.scope === k ? 'on' : ''}`, onclick: () => { this.scope = k; this.renderScope(); this.schedule(0); } }, label))),
-      this.scope === 'repos'
-        ? h('div', { class: 'scope-repos' }, this.repos.map((r) => {
-            const c = h('input', { type: 'checkbox', checked: this.chosen.has(r.root), onchange: () => {
-              if (c.checked) this.chosen.add(r.root); else this.chosen.delete(r.root);
-              this.schedule(0);
-            } });
-            return h('label', { class: 'small' }, c, ' ', this.name(r));
-          }))
-        : null,
-    );
+    const picked = this.picked();
+    const one = picked.length === 1 ? this.repos.find((r) => r.root === picked[0]) : undefined;
+    fill(this.scopeButton,
+      h('span', { class: 'search-scope-label' }, one ? this.name(one) : picked.length ? `${picked.length} repositories` : 'All repositories'),
+      icon('next'));
+    this.scopeButton.dataset.tip = picked.length ? picked.map((root) => this.name(this.repos.find((r) => r.root === root))).join('\n') : 'Every repository';
+  }
+
+  /** The repos, ticked on and off in a menu that stays open. */
+  private pickRepos(): void {
+    const changed = () => { this.renderScope(); this.schedule(0); };
+    showMenu(this.scopeButton, () => [
+      { label: 'All repositories', checked: !this.picked().length, keep: true, run: () => { this.chosen.clear(); changed(); } },
+      'separator',
+      ...this.repos.map((r) => ({
+        label: this.name(r), checked: this.chosen.has(r.root), keep: true,
+        run: () => { if (this.chosen.has(r.root)) this.chosen.delete(r.root); else this.chosen.add(r.root); changed(); },
+      })),
+    ]);
   }
 
   private renderResults(): void {
@@ -215,7 +257,7 @@ export class SearchView {
         out.push(h('div', { class: 'search-file', title: f.path, onclick: () => {
           if (open) this.collapsed.add(f.path); else this.collapsed.delete(f.path);
           this.renderResults();
-        } }, h('span', { class: 'twist' }, open ? '▾' : '▸'), h('span', { class: 'fname' }, basename(rel)),
+        } }, h('span', { class: 'twist' }, chevron(open)), fileIcon(basename(rel)), h('span', { class: 'fname' }, basename(rel)),
         h('span', { class: 'fdir dim' }, dirname(rel)), h('span', { class: 'count' }, String(f.matches.length))));
         if (!open) continue;
         for (const m of f.matches) {

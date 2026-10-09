@@ -120,7 +120,9 @@ class App {
         return error;
       },
       toast: (m) => this.toast(m),
-      collapse: () => this.layout.setLeftCollapsed(true),
+      // Asked before the layout exists (it comes later), the sidebar counts as shown.
+      shown: () => !this.layout?.leftCollapsed,
+      show: (shown) => this.layout.setLeftCollapsed(!shown),
     });
     this.editors = new Editors(t, (m) => this.toast(m));
     this.diff = new DiffPanel(this.git, this.editors, (spot) => this.openFile(spot.path, { line: spot.line ?? 1, columns: [], column: spot.column }));
@@ -173,11 +175,12 @@ class App {
     const app = document.getElementById('app')!;
     this.layout = new Layout(app, this.sidebar.el, this.terminals);
     this.terminals.onCollapse = () => this.layout.apply();
+    this.layout.onLeft = () => this.sidebar.renderRail();
     this.docs.onChange = () => this.saveSession();
     this.terminals.onChange = () => this.saveSession();
     // The last change before the window goes is saved at once.
     window.addEventListener('pagehide', () => this.saveSession(true));
-    app.prepend(this.sidebar.el, this.layout.leftRail, this.main, this.terminals.el, this.statusbar, this.toasts);
+    app.prepend(this.sidebar.rail, this.sidebar.el, this.main, this.terminals.el, this.statusbar, this.toasts);
     installTooltips();
     // Asked by the shell before the window closes (it warns when agents would be stopped). Only
     // information goes out this way; the frontend still calls no shell APIs.

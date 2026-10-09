@@ -24,7 +24,7 @@ import type { Explorer } from './explorer';
 import type { SearchView } from './search';
 import type { DiffTarget, Entry, Repo } from './model';
 import { changeCount, diffTarget, LETTER } from './model';
-import { icon, iconButton } from './icons';
+import { chevron, fileIcon, icon, iconButton, type IconName } from './icons';
 
 export type View = 'repos' | 'files' | 'search';
 
@@ -58,8 +58,10 @@ export interface SidebarHooks {
   remote(repo: Repo, action: RemoteAction, quiet?: boolean): Promise<string | null>;
   /** Shows a message. */
   toast(message: string): void;
-  /** Hides the sidebar. */
-  collapse(): void;
+  /** Whether the sidebar is shown (not collapsed). */
+  shown(): boolean;
+  /** Shows or hides the sidebar. */
+  show(shown: boolean): void;
 }
 
 interface Section {
@@ -72,10 +74,36 @@ const GROUP_LABEL = { conflicts: 'Merge conflicts', staged: 'Staged changes', ch
 const REMOTE_BUSY = { fetch: 'Fetching…', pull: 'Pulling…', push: 'Pushing…' };
 /** How many fetches or pulls "Fetch all" and "Pull all" run at once. */
 const ALL_AT_ONCE = 4;
+/** Where a repo's branch stands against its upstream: level with it (or none to compare with),
+ * behind it, ahead of it, or both. */
+function sync(r: Repo): 'even' | 'behind' | 'ahead' | 'diverged' {
+  const s = r.status;
+  if (!s?.upstream || s.upstreamGone) return 'even';
+  if (s.behind && s.ahead) return 'diverged';
+  return s.behind ? 'behind' : s.ahead ? 'ahead' : 'even';
+}
+
+/** The views, as the activity bar lists them. */
+const VIEWS: { view: View; label: string; icon: IconName }[] = [
+  { view: 'repos', label: 'Repositories', icon: 'repos' },
+  { view: 'files', label: 'Files', icon: 'files' },
+  { view: 'search', label: 'Search', icon: 'search' },
+];
 
 export class Sidebar {
   readonly el = h('aside', { class: 'sidebar' });
-  private tabs = h('div', { class: 'sidebar-tabs' });
+  /** The activity bar, at the window's left edge: a button per view, and the one shown again hides
+   * the sidebar, as in VS Code. Always shown, the sidebar or not. */
+  readonly rail = h('nav', { class: 'activity-bar', 'aria-label': 'Views' });
+  /** The header, built once and updated in place, so "Fetch all"'s icon spins on undisturbed while
+   * the fetches run. */
+  private title = h('span', { class: 'sidebar-title' });
+  private fetchAll = iconButton('refresh', '', () => this.runAll('fetch'));
+  private header = h('div', { class: 'sidebar-header' },
+    this.title,
+    h('span', { class: 'spacer' }),
+    this.fetchAll,
+    iconButton('sidebar-hide', 'Hide the sidebar', () => { this.hooks.show(false); this.renderRail(); }, { class: 'bar-toggle' }));
   private list = h('div', { class: 'sidebar-list', tabIndex: 0 });
   private sections = new Map<string, Section>();
   private collapsed = new Set<string>();
@@ -95,7 +123,7 @@ export class Sidebar {
   search: SearchView | null = null;
 
   constructor(private hooks: SidebarHooks) {
-    this.el.append(this.tabs, this.list);
+    this.el.append(this.header, this.list);
     this.list.addEventListener('keydown', (e) => {
       if (this.key(e)) e.preventDefault();
     });
@@ -112,9 +140,39 @@ export class Sidebar {
     return false;
   }
 
+  /** Shows `view`, and the sidebar if it was hidden. */
   setView(view: View): void {
     this.view = view;
+    if (!this.hooks.shown()) this.hooks.show(true);
     this.render();
+  }
+
+  /** The activity bar's button for `view` was clicked: shows it, or hides the sidebar if it was the
+   * one shown. */
+  private choose(view: View): void {
+    if (this.view === view && this.hooks.shown()) {
+      this.hooks.show(false);
+      this.renderRail();
+      return;
+    }
+    this.setView(view);
+    if (view === 'search') this.search?.focus();
+  }
+
+  /** Draws the activity bar: the view shown (if the sidebar is), and a count of the changed files on
+   * Repositories. */
+  renderRail(): void {
+    const shown = this.hooks.shown();
+    const changed = this.repos.reduce((n, r) => n + (r.status ? changeCount(r.status) : 0), 0);
+    this.rail.replaceChildren(...VIEWS.map(({ view, label, icon: name }) => {
+      const active = shown && this.view === view;
+      const badge = view === 'repos' && changed ? h('span', { class: 'activity-badge' }, changed > 999 ? '999+' : String(changed)) : null;
+      return h('button', {
+        class: `activity ${active ? 'active' : ''}`, 'aria-label': label, 'aria-pressed': String(active),
+        'data-tip': active ? `${label}\nClick again to hide the sidebar` : label,
+        onclick: () => this.choose(view),
+      }, icon(name), badge);
+    }));
   }
 
   /** The item `delta` places from the selected one, opened. */
@@ -161,17 +219,19 @@ export class Sidebar {
   }
 
   render(): void {
-    const changed = this.repos.filter((r) => r.error || (r.status && changeCount(r.status) > 0));
-    const clean = this.repos.filter((r) => r.status && !r.error && changeCount(r.status) === 0);
-    const tab = (view: View, label: string, extra?: () => void) =>
-      h('button', { class: this.view === view ? 'active' : '', onclick: () => { this.setView(view); extra?.(); } }, label);
-    this.tabs.replaceChildren(
-      tab('repos', 'Repositories'),
-      tab('files', 'Files'),
-      tab('search', 'Search', () => this.search?.focus()),
-      h('span', { class: 'spacer' }),
-      iconButton('sidebar-hide', 'Hide the sidebar', () => this.hooks.collapse(), { class: 'bar-toggle' }),
-    );
+    // Out of sync with its upstream counts as changed: commits to pull or push stay in sight.
+    const listed = (r: Repo) => !!r.error || (!!r.status && (changeCount(r.status) > 0 || sync(r) !== 'even'));
+    const changed = this.repos.filter(listed);
+    const clean = this.repos.filter((r) => r.status && !listed(r));
+    this.renderRail();
+    const fetching = this.batch?.action === 'fetch';
+    const tip = fetching ? 'Fetching every repository…' : 'Fetch all: every repository that tracks a remote branch, to see which are behind';
+    this.fetchAll.dataset.tip = tip;
+    this.fetchAll.setAttribute('aria-label', tip);
+    this.fetchAll.classList.toggle('spinning', fetching);
+    this.fetchAll.disabled = !!this.batch;
+    this.title.textContent = VIEWS.find((v) => v.view === this.view)!.label;
+    this.fetchAll.hidden = !(this.view === 'repos' && this.tracking().length);
     this.items = [];
     if (this.view === 'repos') this.renderRepos(changed, clean);
     else {
@@ -216,9 +276,10 @@ export class Sidebar {
     });
   }
 
-  /** Repos whose branch is behind an upstream that still exists. */
+  /** Repos whose branch is only behind its upstream: the ones a fast-forward pull can bring up to
+   * date (a diverged one needs a merge or a rebase, left to a terminal). */
   private behind(): Repo[] {
-    return this.repos.filter((r) => r.status?.upstream && !r.status.upstreamGone && r.status.behind > 0);
+    return this.repos.filter((r) => sync(r) === 'behind');
   }
 
   /** Repos whose branch tracks an upstream that still exists: the ones a fetch can say are behind. */
@@ -254,17 +315,29 @@ export class Sidebar {
   }
 
   /** Atop the repos: Fetch all, and Pull all while any repo is behind, with how it's going. */
+  /** A line over the repos while there's something to say: "Fetch all" or "Pull all" under way, or
+   * how many repos are behind, ahead or diverged, with "Pull all" for the ones behind. ("Fetch all"
+   * itself is in the header.) */
   private reposBar(): HTMLElement | null {
-    if (!this.repos.length) return null;
-    const n = this.behind().length;
+    const counts = { behind: 0, ahead: 0, diverged: 0 };
+    for (const r of this.repos) {
+      const state = sync(r);
+      if (state !== 'even') counts[state]++;
+    }
+    const n = counts.behind;
     const b = this.batch;
+    if (!b && !counts.behind && !counts.ahead && !counts.diverged) return null;
     const text = b
       ? `${b.action === 'fetch' ? 'Fetching' : 'Pulling'}… ${b.done} of ${b.total} done`
-      : n ? `${n} repositor${n === 1 ? 'y is' : 'ies are'} behind` : '';
+      : (['behind', 'ahead', 'diverged'] as const).filter((k) => counts[k]).map((k) => `${counts[k]} ${k}`).join(' · ');
+    const tip = b ? '' : [
+      counts.behind ? `${counts.behind} with commits to pull` : '',
+      counts.ahead ? `${counts.ahead} with commits to push` : '',
+      counts.diverged ? `${counts.diverged} diverged: commits both to pull and to push, which need a merge or a rebase in a terminal` : '',
+    ].filter(Boolean).join('\n');
     return h('div', { class: 'repos-bar' },
-      h('span', { class: 'dim' }, text),
+      h('span', { class: 'dim', 'data-tip': tip || undefined }, text),
       h('span', { class: 'spacer' }),
-      iconButton('refresh', 'Fetch every repository that tracks a remote branch, to see which are behind', () => this.runAll('fetch'), { label: 'Fetch all', disabled: !!b }),
       n && !b ? iconButton('pull', `Pull every repository that's behind (fast-forward only)`, () => this.runAll('pull'), { label: 'Pull all', class: 'sync' }) : null);
   }
 
@@ -282,8 +355,14 @@ export class Sidebar {
       busy || queued ? null : iconButton('refresh', upstream ? `Fetch from ${upstream.split('/')[0]} and refresh` : 'Fetch from the remote and refresh', () => this.run(r, 'fetch'), { class: 'hover' }),
       iconButton('history', 'Show the history', () => this.hooks.history(r), { class: 'hover' }),
       busy ? h('span', { class: 'busy dim' }, REMOTE_BUSY[busy]) : null,
-      !busy && upstream && s!.behind ? iconButton('pull', waiting || `Pull ${plural(s!.behind)} from ${upstream} (fast-forward only)`, () => this.run(r, 'pull'), { label: String(s!.behind), class: 'sync', disabled: queued }) : null,
-      !busy && upstream && s!.ahead ? iconButton('push', waiting || `Push ${plural(s!.ahead)} to ${upstream}`, () => this.run(r, 'push'), { label: String(s!.ahead), class: 'sync', disabled: queued }) : null);
+      // Diverged: neither a fast-forward pull nor a push can go through, so no buttons, only the
+      // counts.
+      !busy && sync(r) === 'diverged' ? h('span', {
+        class: 'badge diverged',
+        'data-tip': `Diverged from ${upstream}: ${plural(s!.behind)} to pull and ${plural(s!.ahead)} to push. Merge or rebase in a terminal.`,
+      }, icon('pull'), String(s!.behind), icon('push'), String(s!.ahead)) : null,
+      !busy && sync(r) === 'behind' ? iconButton('pull', waiting || `Pull ${plural(s!.behind)} from ${upstream} (fast-forward only)`, () => this.run(r, 'pull'), { label: String(s!.behind), class: 'sync', disabled: queued }) : null,
+      !busy && sync(r) === 'ahead' ? iconButton('push', waiting || `Push ${plural(s!.ahead)} to ${upstream}`, () => this.run(r, 'push'), { label: String(s!.ahead), class: 'sync', disabled: queued }) : null);
   }
 
   private renderRepos(changed: Repo[], clean: Repo[]): void {
@@ -296,7 +375,7 @@ export class Sidebar {
     if (clean.length) {
       wanted.push(h('div', { class: 'clean' },
         h('button', { class: 'group-toggle', onclick: () => { this.cleanOpen = !this.cleanOpen; this.render(); } },
-          `${this.cleanOpen ? '▾' : '▸'} Clean repositories (${clean.length})`),
+          chevron(this.cleanOpen), 'Clean repositories', h('span', { class: 'count' }, String(clean.length))),
         this.cleanOpen ? clean.map((r) => h('div', { class: 'clean-repo', 'data-tip': r.root },
           h('span', { class: 'repo-name' }, this.name(r)), ' ', this.branch(r),
           h('span', { class: 'spacer' }),
@@ -331,14 +410,17 @@ export class Sidebar {
     const open = !this.collapsed.has(r.root);
     const n = s ? changeCount(s) : 0;
     fill(sec.header,
-      h('button', { class: 'twisty', 'data-tip': open ? 'Collapse' : 'Expand', onclick: () => { open ? this.collapsed.add(r.root) : this.collapsed.delete(r.root); this.render(); } },
-        open ? '▾' : '▸'),
+      // A repo listed only for its commits to pull or push has no files to fold away.
+      n || r.error
+        ? h('button', { class: 'twisty', 'data-tip': open ? 'Collapse' : 'Expand', onclick: () => { open ? this.collapsed.add(r.root) : this.collapsed.delete(r.root); this.render(); } },
+          chevron(open))
+        : h('span', { class: 'twisty' }),
       h('span', { class: 'repo-name', 'data-tip': r.root }, this.name(r)),
       r.kind !== 'normal' ? h('span', { class: 'badge' }, r.kind) : null,
       ' ', this.branch(r),
       h('span', { class: 'spacer' }),
       this.repoActions(r),
-      s ? h('span', { class: 'count', 'data-tip': `${n} changed file${n === 1 ? '' : 's'}` }, String(n)) : null,
+      s && n ? h('span', { class: 'count', 'data-tip': `${n} changed file${n === 1 ? '' : 's'}` }, String(n)) : null,
     );
     sec.files.hidden = !open;
     if (r.error) {
@@ -381,6 +463,7 @@ export class Sidebar {
       class: `file st-${letter}`, 'data-key': item.key, 'data-tip': e.path,
       onclick: () => this.select(item), ondblclick: () => this.select(item, true),
     },
+    fileIcon(basename(e.path)),
     h('span', { class: 'fname' }, basename(e.path)),
     h('span', { class: 'fdir dim' }, dirname(e.path)),
     h('span', { class: 'row-end' },

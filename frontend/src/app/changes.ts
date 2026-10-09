@@ -22,7 +22,7 @@
 
 import { monaco } from '../monaco';
 import { h } from './dom';
-import { iconButton } from './icons';
+import { icon, iconButton } from './icons';
 
 type Kind = 'added' | 'modified' | 'deleted';
 
@@ -166,7 +166,7 @@ export class ChangeMarkers {
         h('span', { class: 'dim' }, `${i + 1} of ${this.hunks.length}`),
         iconButton('prev', 'Previous change', () => go(i - 1), { disabled: i === 0 }),
         iconButton('next', 'Next change', () => go(i + 1), { disabled: i === this.hunks.length - 1 }),
-        h('button', { class: 'close', 'data-tip': 'Close', onclick: () => this.closeZone() }, '×')),
+        h('button', { class: 'close', 'data-tip': 'Close', onclick: () => this.closeZone() }, icon('close'))),
       hunk.before.length ? old : h('div', { class: 'change-none dim' }, 'Nothing was here before.'));
 
     if (hunk.before.length) {

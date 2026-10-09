@@ -6,6 +6,47 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- An activity bar at the window's left edge, as in VS Code, with Repositories, Files and Search.
+  Repositories carries a count of changed files; clicking the view that's open hides the sidebar,
+  and any of them shows it again.
+- File icons by kind (code, data, text, images, shell scripts and more) in the Repositories view,
+  the Files tree, search results, Go to file and the tabs. Repositories have a folder icon of their
+  own in the Files tree.
+- The line over the repositories counts those behind, ahead and diverged ("2 behind · 1 ahead ·
+  1 diverged"), and shows only while there's something to say.
+
+### Changed
+
+- A new look, closer to VS Code's current one: darker bars beside the documents, quieter borders,
+  rounded rows inset from the edges, rounded menus, dialogs and tooltips, and a status bar in the
+  bars' colour rather than blue, a little taller. Monaco and the terminals share the documents'
+  background.
+- Tabs as in VS Code: no borders between them, and the one in front runs on into the document
+  below it.
+- Chevrons and close buttons are icons rather than text characters.
+- **Fetch all** is an icon in the Repositories header.
+- A repository with commits to pull or push stays in the list even without changed files, instead
+  of folding into "Clean repositories" with its buttons out of sight.
+- A diverged repository (commits both to pull and to push) shows the two counts and no buttons, and
+  **Pull all** leaves it out, since a fast-forward can't bring it up to date.
+- In the Files tree, a folder holding changes is marked up to the base folder, so a change shows on
+  a collapsed folder above a repository, and the mark is a larger dot. The "repo" badge is gone.
+- The search form: match case, whole word and regular expression sit inside the field, with
+  tooltips; the include and exclude globs and "Include files Git ignores" fold under **Filters**,
+  with a count while any are set; and **In** picks all repositories or any of them from a menu.
+- The agent bar, with no agents running, says what goes there and has a **Start an agent** button.
+
+### Removed
+
+- The "Base repo only" search scope: the base folder's repository can be picked in the **In** menu
+  like any other.
+
+### Fixed
+
+- **Pull all** no longer fails on a diverged repository.
+
 ## [0.11.0] — 2026-10-09
 
 Copy and paste in terminals on Windows and Linux, keys to close a terminal's tab there, find in

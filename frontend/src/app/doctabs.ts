@@ -21,6 +21,7 @@
 // not an editor of its own, so open tabs cost next to nothing.
 
 import { h } from './dom';
+import { fileIcon, icon, type IconName } from './icons';
 import { Reorder } from './reorder';
 
 export type DocKind = 'diff' | 'file' | 'history' | 'settings';
@@ -53,7 +54,7 @@ interface Doc extends DocSpec {
   saved: unknown;
 }
 
-const GLYPH: Record<DocKind, string> = { diff: '±', file: '', history: '⏱', settings: '⚙' };
+const GLYPH: Record<DocKind, IconName | null> = { diff: 'diff', file: null, history: 'history', settings: 'settings' };
 
 export interface DocHooks {
   /** The scroll position of what's shown for `kind`. */
@@ -193,6 +194,7 @@ export class DocTabs {
   }
 
   private tab(d: Doc): HTMLElement {
+    const glyph = GLYPH[d.kind];
     const el = h('div', {
       class: `doc-tab ${d === this.active && this.inFront ? 'active' : ''} ${d.pinned ? '' : 'preview'}`,
       title: `${d.tooltip}${d.pinned ? '' : '\nPreview: double-click to keep it open'}`,
@@ -200,10 +202,10 @@ export class DocTabs {
       ondblclick: () => { d.pinned = true; this.render(); },
       onauxclick: (e: MouseEvent) => { if (e.button === 1) this.close(d); },
     },
-    GLYPH[d.kind] ? h('span', { class: 'doc-glyph' }, GLYPH[d.kind]) : null,
+    h('span', { class: 'doc-glyph' }, glyph ? icon(glyph) : fileIcon(d.title)),
     h('span', { class: 'doc-title' }, d.title),
     d.detail ? h('span', { class: 'doc-detail' }, d.detail) : null,
-    h('span', { class: 'close', title: 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(d); } }, '×'));
+    h('span', { class: 'close', title: 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(d); } }, icon('close')));
     this.reorder.attach(el, (to) => this.move(d, to));
     return el;
   }

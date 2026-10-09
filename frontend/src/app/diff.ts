@@ -15,7 +15,7 @@
 // The diff panel: Monaco's diff editor, read-only, with a header for what's shown and what can be
 // done with it. When the file changes on disk while it's open, the diff updates in place.
 
-import { fontOptions, languageFor, monaco, openFind, restoreView, setText } from '../monaco';
+import { fontOptions, languageFor, monaco, openFind, restoreView, setText, THEME } from '../monaco';
 import { basename, delay, dirname, fill, freeze, h, settled } from './dom';
 import type { DiffTarget, FileContent, Settings, Side } from './model';
 import type { Git } from './git';
@@ -95,7 +95,7 @@ export class DiffPanel {
       automaticLayout: true,
       ...layoutOptions(this.layout),
       hideUnchangedRegions: { enabled: true },
-      theme: 'vs-dark',
+      theme: THEME,
       fontSize: 12,
       minimap: { enabled: false },
       scrollBeyondLastLine: false,

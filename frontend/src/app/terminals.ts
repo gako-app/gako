@@ -442,8 +442,12 @@ export class Terminals {
   private render(): void {
     this.renderPane();
     if (!this.tabs.length) {
-      this.list.replaceChildren(this.collapsed ? '' : h('div', { class: 'agents-empty dim' },
-        'No agents running. ', h('button', { class: 'link', onclick: (e: Event) => this.menu(e.currentTarget as HTMLElement) }, 'Start one…')));
+      // A stack, centred, that reads the same however narrow the bar is.
+      this.list.replaceChildren(this.collapsed ? '' : h('div', { class: 'agents-empty' },
+        icon('agent'),
+        h('div', { class: 'agents-empty-title' }, 'No agents running'),
+        h('div', { class: 'agents-empty-text' }, 'Start a coding agent or a shell in one of your repositories.'),
+        h('button', { onclick: (e: Event) => this.menu(e.currentTarget as HTMLElement) }, icon('plus'), 'Start an agent')));
       return;
     }
     if (!this.reorder.canDraw()) return;
@@ -465,7 +469,7 @@ export class Terminals {
         h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || folderName(tab.folder)} · ${this.stateText(tab)}`)),
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
     !this.collapsed && tab.term.exit ? iconButton('restart', `Restart ${tab.program.name}`, () => this.restart(tab), { class: 'restart' }) : null,
-    this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, '×'));
+    this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, icon('close')));
     this.reorder.attach(el, (to) => this.move(tab, to));
     return el;
   }

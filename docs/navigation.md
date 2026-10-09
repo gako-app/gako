@@ -7,9 +7,11 @@ All of it is read-only; "Open in editor" hands a file to your editor when you wa
 
 The Files view shows the base folder as a tree, loaded folder by folder as you expand it:
 
-- Repositories nested in it are marked as repositories. Files show their Git state in the same
-  colours as the Repositories view, files that `.gitignore` excludes are dimmed rather than hidden
-  (build output and logs are often what you want to look at), and `.git` folders aren't shown.
+- Repositories nested in it have a folder icon of their own. Files show their Git state in the same
+  colours as the Repositories view, and every folder holding changed files has a dot, up to the base
+  folder, so a change shows on a collapsed folder whatever repository it's in. Files that
+  `.gitignore` excludes are dimmed rather than hidden (build output and logs are often what you want
+  to look at), and `.git` folders aren't shown.
 - A folder lists its first 5,000 entries, with a note when there are more.
 - Expanded folders reload by themselves when their contents change, from the same file watching
   that keeps the Git view current.
@@ -62,12 +64,14 @@ type somewhere different, so with no editor found, Gako says so.
 The Search view (⌘⇧F, Ctrl+Shift+F off macOS) searches file contents in the core, with ripgrep's
 own crates:
 
-- Text or a regular expression, match case, whole word, and globs to include and exclude.
-- **Scope:** all repositories, the base repository only, or a chosen set. Each repository is
-  searched with its own `.gitignore`, so a nested repository that the base repository ignores is
-  still searched as itself, and the base repository's search never wanders into it.
-- Ignored files are skipped unless "Search ignored files too" is on. Binary files and files over
-  5 MB are skipped.
+- Text or a regular expression, match case and whole word, toggled inside the search field.
+- **Scope:** all repositories, or the ones ticked in the "In" menu (the base folder's own
+  repository among them, when it is one). Each repository is searched with its own `.gitignore`,
+  so a nested repository that the base repository ignores is still searched as itself, and the base
+  repository's search never wanders into it.
+- **Filters**, folded away until wanted (with a count while any are set): files to include and to
+  exclude, by glob, and "Include files Git ignores" (ignored files are skipped otherwise). Binary
+  files and files over 5 MB are always skipped.
 - Results stream in as they're found, grouped by repository and file. A search stops at 20,000
   matches or 10,000 files with matches, and says so. A new search cancels the one before.
 

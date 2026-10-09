@@ -349,7 +349,7 @@ impl Workspace {
         }
     }
 
-    /// A search scope: every repo and folder (`all`), the base folder only (`base`), or chosen repos.
+    /// A search scope: every repo and folder (`all`), or chosen repos (`repos`).
     /// Repos inside a searched folder are skipped there: they're searched as themselves, or not at all.
     pub fn scope(&self, kind: &str, chosen: &[String]) -> crate::search::Scope {
         let repos: Vec<PathBuf> = self
@@ -361,7 +361,6 @@ impl Workspace {
             .map(|r| r.root.clone())
             .collect();
         let roots: Vec<PathBuf> = match kind {
-            "base" => vec![self.base.clone()],
             "repos" => repos
                 .iter()
                 .filter(|r| chosen.iter().any(|c| r.as_os_str() == c.as_str()))

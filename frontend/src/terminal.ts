@@ -127,7 +127,7 @@ export class TerminalTab {
       allowProposedApi: true,
       fontFamily: opts.fontFamily ?? 'Menlo, Consolas, "DejaVu Sans Mono", monospace',
       fontSize: opts.fontSize ?? 12,
-      theme: { background: '#1e1e1e', foreground: '#cccccc' },
+      theme: { background: '#1f1f1f', foreground: '#cccccc', selectionBackground: '#264f78' },
       // Option on macOS, as Shift elsewhere, selects text in a program that takes the mouse.
       macOptionClickForcesSelection: true,
     });

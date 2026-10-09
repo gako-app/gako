@@ -15,7 +15,7 @@
 // The read-only file viewer: one Monaco editor that never edits, with "open in editor" at the
 // cursor's line (or the top of the view), and the file's diff when it has changes.
 
-import { fontOptions, languageFor, monaco, openFind, restoreView, setText } from '../monaco';
+import { fontOptions, languageFor, monaco, openFind, restoreView, setText, THEME } from '../monaco';
 import { basename, delay, fill, freeze, h, settled } from './dom';
 import type { FileContent, Settings } from './model';
 import type { Reveal } from './search';
@@ -55,7 +55,7 @@ export class Viewer {
       readOnly: true,
       domReadOnly: true,
       automaticLayout: true,
-      theme: 'vs-dark',
+      theme: THEME,
       fontSize: 12,
       scrollBeyondLastLine: false,
       // Room in the gutter for the change markers, as in VS Code.

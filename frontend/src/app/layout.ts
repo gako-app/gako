@@ -17,7 +17,6 @@
 // threshold (dragging out again brings them back). Sizes are remembered on this machine.
 
 import { h } from './dom';
-import { iconButton } from './icons';
 
 const KEY = 'gako.layout';
 
@@ -27,8 +26,9 @@ interface Saved {
   right: number;
 }
 
-// The left sidebar's minimum fits its three tab labels.
-const LEFT = { initial: 300, min: 260, collapseBelow: 150 };
+const LEFT = { initial: 300, min: 220, collapseBelow: 150 };
+/** The activity bar's width, left of the sidebar (style.css). */
+const RAIL = 44;
 const RIGHT = { initial: 220, min: 160, collapseBelow: 110 };
 
 export interface RightBar {
@@ -38,8 +38,8 @@ export interface RightBar {
 }
 
 export class Layout {
-  /** Shown in place of the left sidebar when it's collapsed. */
-  readonly leftRail = h('div', { class: 'left-rail', hidden: true });
+  /** Called when the left sidebar is shown or hidden. */
+  onLeft?: () => void;
   private saved: Saved = { left: LEFT.initial, leftCollapsed: false, right: RIGHT.initial };
 
   constructor(private app: HTMLElement, private left: HTMLElement, private right: RightBar) {
@@ -50,10 +50,13 @@ export class Layout {
     // Sizes saved under older limits.
     this.saved.left = Math.max(LEFT.min, this.saved.left);
     this.saved.right = Math.max(RIGHT.min, this.saved.right);
-    this.leftRail.append(iconButton('sidebar-show', 'Show the sidebar', () => this.setLeftCollapsed(false), { class: 'bar-toggle' }));
     // The handles belong to the app, not the bars, so a bar collapsing mid-drag doesn't end it.
     this.app.append(this.handle('left'), this.handle('right'));
     this.apply();
+  }
+
+  get leftCollapsed(): boolean {
+    return this.saved.leftCollapsed;
   }
 
   setLeftCollapsed(collapsed: boolean): void {
@@ -68,10 +71,11 @@ export class Layout {
     this.app.style.setProperty('--left-w', `${this.saved.left}px`);
     this.app.style.setProperty('--right-w', `${this.saved.right}px`);
     // Where the handles sit: the visible widths.
-    this.app.style.setProperty('--left-edge', this.saved.leftCollapsed ? '36px' : `${this.saved.left}px`);
+    this.app.style.setProperty('--left-edge', `${RAIL + (this.saved.leftCollapsed ? 0 : this.saved.left)}px`);
     this.app.style.setProperty('--right-edge', this.right.collapsed ? '48px' : `${this.saved.right}px`);
+    const changed = this.left.hidden !== this.saved.leftCollapsed;
     this.left.hidden = this.saved.leftCollapsed;
-    this.leftRail.hidden = !this.saved.leftCollapsed;
+    if (changed) this.onLeft?.();
   }
 
   private save(): void {
@@ -88,7 +92,7 @@ export class Layout {
       const limits = side === 'left' ? LEFT : RIGHT;
       const move = (e: PointerEvent) => {
         const max = Math.round(innerWidth * 0.5);
-        const width = side === 'left' ? e.clientX : innerWidth - e.clientX;
+        const width = side === 'left' ? e.clientX - RAIL : innerWidth - e.clientX;
         const collapsed = width < limits.collapseBelow;
         if (side === 'left') {
           this.saved.leftCollapsed = collapsed;

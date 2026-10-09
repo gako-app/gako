@@ -23,7 +23,7 @@ import type { Repo } from './model';
 import { LETTER } from './model';
 import type { Editors } from './editors';
 import { type MenuItem, showMenu } from './menu';
-import { iconButton } from './icons';
+import { chevron, fileIcon, folderIcon, iconButton } from './icons';
 
 interface Entry {
   name: string;
@@ -82,6 +82,8 @@ export class Explorer {
     this.sep = base.includes('\\') && !base.includes('/') ? '\\' : '/';
     this.listings.clear();
     this.expanded = new Set([base]);
+    // Folders are marked up to the base folder (decorate).
+    this.decorationsStale = true;
     this.load(base);
   }
 
@@ -99,13 +101,16 @@ export class Explorer {
     this.letters.clear();
     this.dirty.clear();
     for (const r of repos) {
+      // Folders holding changes are marked up to the base folder, past the repo's own root, so a
+      // repo inside a plain folder shows on that folder while it's collapsed. A repo from outside
+      // the base folder (extraFolders) stops at its root.
+      const top = r.root.startsWith(this.base + this.sep) ? this.base : r.root;
       for (const e of r.status?.entries ?? []) {
         const abs = r.root + this.sep + e.path.replaceAll('/', this.sep);
         const letter = e.conflict ? '!' : e.untracked ? 'U' : LETTER[(e.worktree ?? e.index)!] ?? 'M';
         this.letters.set(abs, letter);
-        // Mark every folder up to the repo root as holding changes.
         let i = abs.lastIndexOf(this.sep);
-        while (i > r.root.length - 1) {
+        while (i > top.length - 1) {
           this.dirty.add(abs.slice(0, i));
           i = abs.lastIndexOf(this.sep, i - 1);
         }
@@ -216,14 +221,15 @@ export class Explorer {
           // A nested repo the base repo ignores is still a repo of its own: not dimmed.
           class: `tree-row ${entry.ignored && !entry.repo ? 'ignored' : ''} ${letter ? `st-${letter}` : ''} ${this.dirty.has(entry.path) ? 'dirty' : ''} ${entry.path === this.selected ? 'selected' : ''}`,
           style: `padding-left:${8 + depth * 12}px`,
-          'data-tip': entry.path,
+          // A repository's own folder icon marks it; the tooltip says so in words.
+          'data-tip': entry.repo ? `${entry.path}\nRepository` : entry.path,
           onclick: () => this.activate(row),
           ondblclick: () => { if (entry.kind !== 'dir') this.openFile(entry.path, true); },
           oncontextmenu: (e: MouseEvent) => this.contextMenu(e, entry),
         },
-        h('span', { class: 'twist' }, isDir ? (open ? '▾' : '▸') : ''),
+        h('span', { class: 'twist' }, isDir ? chevron(open) : null),
+        isDir ? folderIcon(open, !!entry.repo) : fileIcon(entry.name),
         h('span', { class: 'fname' }, entry.name),
-        entry.repo ? h('span', { class: 'badge repo' }, 'repo') : null,
         entry.kind === 'symlink' ? h('span', { class: 'dim' }, ' ↗') : null,
         // Pinned to the row's right edge, over the end of a long name, so they're in reach however
         // deep or long the entry is.
@@ -231,7 +237,7 @@ export class Explorer {
           diff ? iconButton('diff', 'Show diff', diff, { class: 'hover' }) : null,
           isDir ? null : iconButton('file', 'Open file', () => this.activate(row), { class: 'hover' }),
           iconButton('editor', this.editors.label(), () => this.editors.open({ path: entry.path }), { class: 'hover' }),
-          letter ? h('span', { class: 'letter' }, letter) : this.dirty.has(entry.path) ? h('span', { class: 'dirty-dot' }, '•') : null)));
+          letter ? h('span', { class: 'letter' }, letter) : this.dirty.has(entry.path) ? h('span', { class: 'dirty-dot', 'aria-label': 'Holds changes' }) : null)));
         if (open) walk(entry.path, depth + 1);
       }
       if (listing.omitted) {
