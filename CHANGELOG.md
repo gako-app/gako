@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-10-09
+
+Copy and paste in terminals on Windows and Linux, keys to close a terminal's tab there, find in
+the file or diff in front, and terminals that start in the base folder and keep more scrollback.
+
 ### Added
 
 - Copy and paste in terminals on Windows and Linux: Ctrl+Shift+C and Ctrl+Shift+V, Ctrl+Insert and
@@ -113,6 +118,7 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/gako-app/gako/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/gako-app/gako/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/gako-app/gako/releases/tag/v0.9.0
