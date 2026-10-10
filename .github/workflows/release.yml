@@ -102,12 +102,14 @@ jobs:
 
           ### Downloads
 
-          - **macOS** (Apple silicon): open the `.dmg` and drag Gako to Applications. Gako isn't
-            notarized by Apple, so the first time you open it macOS says it can't verify it: go to
-            System Settings › Privacy & Security and click **Open Anyway**.
-          - **Windows** (x64): unzip, and keep the `Gako` folder on a local disk.
-          - **Linux** (x64): untar, and run `gako` in the `gako` folder.
+          - **macOS** (Apple silicon): open the `.dmg` and drag Gako to Applications. The first time
+            you open it, macOS says it can't verify it: go to System Settings › Privacy & Security
+            and click **Open Anyway**.
+          - **Windows** (x64): unzip, keep the `Gako` folder on a local disk, and run `Gako.exe`. If
+            SmartScreen stops it, click **More info**, then **Run anyway**.
+          - **Linux** (x64): untar, and in the `gako` folder, on Ubuntu 24.04 and later, run
+            `sudo chown root chrome-sandbox && sudo chmod 4755 chrome-sandbox` before `./gako`.
 
-          More in the [README](https://github.com/gako-app/gako#install).
+          Step by step in the [README](https://github.com/gako-app/gako#install).
           EOF
           gh release create "$TAG" out/* --draft --verify-tag --title "Gako $version" --notes-file notes.md

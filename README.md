@@ -32,9 +32,49 @@ the way of your editor.
 
 Version 0.20.0. Gako is used every day on macOS. It runs on Windows and
 Linux, but they have had less use, and Windows hasn't been through the measurement suites yet.
-There are no prebuilt or signed packages yet: build it from source, as below.
 
 ## Install
+
+Download the package for your system from the
+[latest release](https://github.com/gako-app/gako/releases/latest). The packages aren't signed by
+Apple or Microsoft, so macOS and Windows ask you once before opening Gako.
+
+### macOS
+
+For Macs with Apple silicon.
+
+1. Open `Gako-<version>-arm64.dmg` and drag Gako to Applications.
+2. Open Gako. The first time, macOS says it can't verify it: close the message, go to
+   **System Settings › Privacy & Security**, and click **Open Anyway** beside Gako's name.
+
+### Windows
+
+For x64 Windows.
+
+1. Unzip `Gako-<version>-windows-x64.zip` and move the `Gako` folder in it to a local disk, for
+   example into `%LOCALAPPDATA%\Programs`. Started from a network drive or a redirected folder, as
+   corporate profiles and remote desktop hosts often have, Chromium can't start its helper
+   processes, and Gako says so and quits.
+2. Run `Gako.exe` in it. The first time, SmartScreen may say "Windows protected your PC": click
+   **More info**, then **Run anyway**.
+
+### Linux
+
+For x64 Linux. Unpack the tarball where you want to keep Gako, such as `~/.local/opt`, and run it:
+
+```bash
+mkdir -p ~/.local/opt
+tar -xzf Gako-*-linux-x64.tar.gz -C ~/.local/opt
+cd ~/.local/opt/gako
+sudo chown root chrome-sandbox && sudo chmod 4755 chrome-sandbox
+./gako
+```
+
+The `chrome-sandbox` line is for systems that restrict unprivileged user namespaces, such as Ubuntu
+24.04 and later: there, Chromium's sandbox needs that helper owned by root and setuid, which a
+tarball can't carry.
+
+## Build from source
 
 You need [Rust](https://rustup.rs) (via rustup), [Node.js](https://nodejs.org) (LTS or newer) and
 Git. On Windows, Rust also needs the Visual Studio Build Tools with "Desktop development with C++".
@@ -46,19 +86,10 @@ npm install
 npm run package
 ```
 
-This builds Gako into `dist/`:
-
-- **macOS:** `Gako.app`. Copy it to `/Applications`. `npm run dmg` then makes a disk image of it
-  too, which needs `python3`.
-- **Windows:** a `Gako` folder with `Gako.exe`. Keep the whole folder on a local disk, such as
-  `C:\Tools\Gako` or `%LOCALAPPDATA%\Programs\Gako`. Started from a network drive or a redirected
-  folder, as corporate profiles and remote desktop hosts often have, Chromium can't start its
-  helper processes, and Gako says so and quits.
-- **Linux:** a `gako` folder with the `gako` executable. On systems that restrict unprivileged
-  user namespaces, such as Ubuntu 24.04, Chromium's sandbox needs the folder's `chrome-sandbox` to
-  be owned by root and setuid: `sudo chown root chrome-sandbox && sudo chmod 4755 chrome-sandbox`.
-
-The package isn't signed, so it's meant for the machine that built it.
+This builds Gako into `dist/`: `Gako.app` on macOS, and on Windows and Linux a folder with
+`Gako.exe` or `gako` in it, which needs the same care as a downloaded one (see
+[Install](#install)). On macOS, `npm run dmg` then makes the disk image too, which needs
+`python3`.
 
 To run Gako from the repository instead, while working on it:
 
