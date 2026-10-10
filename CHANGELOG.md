@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.21.0] — 2026-10-10
+
+Packages to download for macOS, Windows and Linux, starting with this release, and a disk image
+for macOS.
+
 ### Added
 
 - Packages to download from each GitHub release: a disk image for macOS on Apple silicon, a zip
@@ -177,7 +182,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.21.0...HEAD
+[0.21.0]: https://github.com/gako-app/gako/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/gako-app/gako/compare/v0.11.0...v0.20.0
 [0.11.0]: https://github.com/gako-app/gako/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/gako-app/gako/compare/v0.9.0...v0.10.0
