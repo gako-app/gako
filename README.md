@@ -48,7 +48,8 @@ npm run package
 
 This builds Gako into `dist/`:
 
-- **macOS:** `Gako.app`. Copy it to `/Applications`.
+- **macOS:** `Gako.app`. Copy it to `/Applications`. `npm run dmg` then makes a disk image of it
+  too, which needs `python3`.
 - **Windows:** a `Gako` folder with `Gako.exe`. Keep the whole folder on a local disk, such as
   `C:\Tools\Gako` or `%LOCALAPPDATA%\Programs\Gako`. Started from a network drive or a redirected
   folder, as corporate profiles and remote desktop hosts often have, Chromium can't start its

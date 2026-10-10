@@ -173,11 +173,24 @@ docs/             these documents
 `npm run app -- <folder>` builds the frontend and the core and starts the shell from the
 repository. `npm run package` builds them, regenerates `THIRD-PARTY-NOTICES.txt`, and packages the
 shell with the core binary, the built frontend, the licence and the notices in its resources:
-`Gako.app` on macOS, a `Gako` folder on Windows, a `gako` folder on Linux, in `dist/`. Packaged
-builds aren't signed yet.
+`Gako.app` on macOS, a `Gako` folder on Windows, a `gako` folder on Linux, in `dist/`.
 
-The icon's source is `shells/electron/build/icon.svg`; `npm run icons -w shells/electron` renders
-the files packaging uses from it.
+On macOS, `Gako.app` is signed ad hoc as packaging's last step: the signature seals the whole
+bundle, which a downloaded app needs to open at all, but names no developer, so it isn't notarized
+and macOS asks before opening a downloaded copy the first time. `npm run dmg` then puts it in a disk
+image, `dist/Gako-<version>-arm64.dmg`, whose window shows Gako's icon, a link to Applications and
+a note on that first opening. The image is made by dmgbuild, a Python tool pinned with its hashes in
+`shells/electron/scripts/dmg-requirements.txt` and installed into `shells/electron/.venv`, so it
+needs `python3`. Windows and Linux packages aren't signed.
+
+Pushing a version tag (`v0.21.0`) runs `.github/workflows/release.yml`, which packages Gako on
+macOS (Apple silicon), Windows and Linux (x64), and makes a draft release of the tag with the disk
+image, a zip and a tarball attached and the version's section of `CHANGELOG.md` as its notes. It
+checks that the tag matches `package.json`'s version, and publishing the draft is left to you.
+
+The icon's source is `shells/electron/build/icon.svg`, and the disk image's background is
+`dmg-background.svg` beside it; `npm run icons -w shells/electron` renders the files packaging uses
+from both.
 
 For development and measurement, a few environment variables change how the parts behave:
 

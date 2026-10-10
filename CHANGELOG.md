@@ -6,6 +6,19 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Packages to download from each GitHub release: a disk image for macOS on Apple silicon, a zip
+  for Windows and a tarball for Linux. They're built by a release workflow when a version is
+  tagged.
+- `npm run dmg` puts a packaged Gako.app in a disk image whose window shows Gako, a link to
+  Applications, and what to do when macOS says it can't verify Gako.
+
+### Changed
+
+- On macOS, packaging signs the whole app ad hoc, so a downloaded copy opens once you allow it in
+  System Settings, instead of being reported as damaged.
+
 ## [0.20.0] — 2026-10-10
 
 A new look closer to VS Code's, with an activity bar, file icons and VS Code-style tabs; a simpler

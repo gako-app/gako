@@ -13,7 +13,9 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 // Renders build/icon.svg into the icon files the packaged app needs: icon.png (1024 px, and Linux's),
-// icon.ico (Windows) and, on macOS, icon.icns. Run it with Electron, which draws the SVG:
+// icon.ico (Windows) and, on macOS, icon.icns; and build/dmg-background.svg into the macOS disk
+// image's background, dmg-background.png and its Retina twin dmg-background@2x.png. Run it with
+// Electron, which draws the SVGs:
 //
 //   npm run icons -w shells/electron
 //
@@ -30,6 +32,8 @@ const SIZE = 1024;
 
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.dock?.hide();
+// Each drawing closes its window; the app quits when all are done, not when the first one closes.
+app.on('window-all-closed', () => {});
 
 /** An .ico holding PNG images (Windows Vista and later read these). */
 function ico(images) {
@@ -51,17 +55,24 @@ function ico(images) {
   return Buffer.concat([header, ...images.map((i) => i.png)]);
 }
 
-app.whenReady().then(async () => {
-  const svg = fs.readFileSync(path.join(build, 'icon.svg'), 'utf8');
+/** Draws an SVG file at `width` × `height` pixels, scaling it to fit. */
+async function render(file, width, height) {
+  const svg = fs.readFileSync(path.join(build, file), 'utf8')
+    .replace(/(<svg\b[^>]*?)\swidth="\d+"\s+height="\d+"/, `$1 width="${width}" height="${height}"`);
   const win = new BrowserWindow({
-    width: SIZE, height: SIZE, show: false, transparent: true, frame: false,
+    width, height, show: false, transparent: true, frame: false,
     backgroundColor: '#00000000', webPreferences: { offscreen: true },
   });
-  const html = `<html><body style="margin:0;background:transparent">${svg}</body></html>`;
+  const html = `<html><meta charset="utf-8"><body style="margin:0;background:transparent">${svg}</body></html>`;
   await win.loadURL(`data:text/html;base64,${Buffer.from(html).toString('base64')}`);
   await new Promise((r) => setTimeout(r, 300));
-  const image = await win.webContents.capturePage({ x: 0, y: 0, width: SIZE, height: SIZE });
-  const full = image.getSize().width === SIZE ? image : image.resize({ width: SIZE, height: SIZE, quality: 'best' });
+  const image = await win.webContents.capturePage({ x: 0, y: 0, width, height });
+  win.destroy();
+  return image.getSize().width === width ? image : image.resize({ width, height, quality: 'best' });
+}
+
+app.whenReady().then(async () => {
+  const full = await render('icon.svg', SIZE, SIZE);
   const png = (size) => (size === SIZE ? full : full.resize({ width: size, height: size, quality: 'best' })).toPNG();
 
   fs.writeFileSync(path.join(build, 'icon.png'), png(SIZE));
@@ -77,6 +88,8 @@ app.whenReady().then(async () => {
     execFileSync('iconutil', ['-c', 'icns', set, '-o', path.join(build, 'icon.icns')]);
     fs.rmSync(path.dirname(set), { recursive: true, force: true });
   }
-  console.log('icons written to', build);
+  fs.writeFileSync(path.join(build, 'dmg-background.png'), (await render('dmg-background.svg', 640, 360)).toPNG());
+  fs.writeFileSync(path.join(build, 'dmg-background@2x.png'), (await render('dmg-background.svg', 1280, 720)).toPNG());
+  console.log('icons and the disk image background written to', build);
   app.quit();
 });

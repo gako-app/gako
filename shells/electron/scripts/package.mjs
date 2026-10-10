@@ -20,6 +20,7 @@
 // added to its resources, where main.cjs looks for them once packaged.
 
 import { packager } from '@electron/packager';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -74,4 +75,16 @@ if (process.platform === 'darwin') {
 }
 // Gako's own licence goes in as GAKO-LICENSE.txt, clear of Electron's LICENSE on macOS.
 fs.copyFileSync(licence, path.join(resources, 'GAKO-LICENSE.txt'));
+
+// On macOS the app is signed again, whole, as the last step, since any change to the bundle
+// afterwards breaks the signature. Packaging leaves Electron's signature broken (the bundle is
+// renamed and its Info.plist and resources change), with only the executable signed by the linker.
+// An app built here runs anyway, but once downloaded macOS checks the whole bundle and calls an app
+// signed like that damaged. The signature is ad hoc: it seals the bundle but names no developer, so
+// macOS still asks before opening a downloaded copy for the first time.
+if (process.platform === 'darwin') {
+  const app = path.join(out, 'Gako.app');
+  execFileSync('codesign', ['--force', '--deep', '--sign', '-', app], { stdio: 'inherit' });
+  execFileSync('codesign', ['--verify', '--deep', '--strict', app], { stdio: 'inherit' });
+}
 console.log(`packaged: ${out}`);

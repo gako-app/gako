@@ -1,0 +1,113 @@
+# Builds Gako's packages on macOS (Apple silicon), Windows and Linux. For a pushed version tag
+# (v0.21.0), it then makes a draft GitHub release named after it, with the packages attached and the
+# version's section of CHANGELOG.md as its notes, for you to read over and publish. Run by hand
+# (Actions > Release > Run workflow), it only builds the packages, kept as the run's artifacts.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+          - name: Linux
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TERM_COLOR: always
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - run: npm ci
+      - run: npm run package
+
+      # Each platform's package goes into out/ under a name carrying the version and architecture.
+      - name: Disk image (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          npm run dmg
+          mkdir out && mv dist/Gako-*.dmg out/
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir out && mv dist/Gako-win32-x64 dist/Gako
+          (cd dist && 7z a -tzip -mx=9 "../out/Gako-$version-windows-x64.zip" Gako)
+      - name: Tarball (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          version=$(node -p "require('./package.json').version")
+          mkdir out && mv dist/Gako-linux-x64 dist/gako
+          tar -C dist -czf "out/Gako-$version-linux-x64.tar.gz" gako
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: gako-${{ runner.os }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: out
+          merge-multiple: true
+      - name: Draft the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#v}
+          if [ "$(node -p "require('./package.json').version")" != "$version" ]; then
+            echo "::error::the tag says $version, package.json says otherwise"; exit 1
+          fi
+          # The changelog's section for this version, without its heading.
+          awk -v v="$version" '
+            /^## \[/ { if (on) exit; on = index($0, "## [" v "]") == 1; next }
+            on' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no section for $version"; exit 1
+          fi
+          cat >> notes.md <<'EOF'
+
+          ### Downloads
+
+          - **macOS** (Apple silicon): open the `.dmg` and drag Gako to Applications. Gako isn't
+            notarized by Apple, so the first time you open it macOS says it can't verify it: go to
+            System Settings › Privacy & Security and click **Open Anyway**.
+          - **Windows** (x64): unzip, and keep the `Gako` folder on a local disk.
+          - **Linux** (x64): untar, and run `gako` in the `gako` folder.
+
+          More in the [README](https://github.com/gako-app/gako#install).
+          EOF
+          gh release create "$TAG" out/* --draft --verify-tag --title "Gako $version" --notes-file notes.md

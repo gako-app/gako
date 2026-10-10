@@ -9,6 +9,7 @@
     "start": "electron .",
     "icons": "electron scripts/icons.cjs",
     "package": "node scripts/package.mjs",
+    "dmg": "node scripts/dmg.mjs",
     "notices": "node scripts/notices.mjs"
   },
   "devDependencies": {
