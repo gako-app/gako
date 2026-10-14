@@ -182,6 +182,8 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .clean-repo { display: flex; align-items: center; gap: 4px; height: 26px; margin: 0 6px; padding: 0 6px 0 24px; border-radius: var(--radius); white-space: nowrap; overflow: hidden; }
 .clean-repo:hover { background: var(--hover); }
 .empty { padding: 16px; }
+/* Something the user asked for is under way (the branch list). */
+body.waiting, body.waiting * { cursor: progress !important; }
 /* Over the repos while they're found and scanned. It fades in a moment late, so a quick scan
    doesn't flash it. */
 .scan-progress { padding: 8px 14px 10px; animation: appear .2s .4s backwards; }

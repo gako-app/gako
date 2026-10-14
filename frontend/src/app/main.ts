@@ -503,11 +503,15 @@ class App {
    * tracking it). Git refuses if uncommitted changes would be overwritten, and the toast says so. */
   private async branchMenu(r: Repo, at: HTMLElement): Promise<void> {
     let b: { local: string[]; remote: string[] };
+    // Listing the branches can take a moment in a repo with many of them: show the wait.
+    document.body.classList.add('waiting');
     try {
       b = await this.git.branches(r.root);
     } catch (e) {
       this.toast(String((e as Error).message ?? e));
       return;
+    } finally {
+      document.body.classList.remove('waiting');
     }
     const current = r.status?.branch ?? null;
     const go = async (branch: string, remote: boolean) => {
