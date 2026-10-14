@@ -61,6 +61,8 @@ output it announces.
   - `{"t":"req","id":1,"m":"<method>","p":{…}}` → `{"t":"res","id":1,"r":…}`, or `"e"` with an
     error message.
   - `ack`, `resize`, `close` for terminals (see below), and `log` for timing records.
+  - If the connection is lost, the frontend connects again by itself (see
+    [Losing the connection](#losing-the-connection)).
   - Events pushed by the core: `exit` (a terminal's program ended), `repoStatus`, `repoTouched`,
     `repos`, `scanDone`, `filesChanged`, `searchResults`, `indexReady`, and `settings` (the
     settings file changed, or can't be read).
@@ -73,7 +75,7 @@ The requests, by area:
 |---|---|
 | Start | `hello` |
 | Workspace and Git | `workspaceOpen`, `gitFile`, `gitLog`, `gitCommitDetails`, `gitRevert`, `gitBranches`, `gitSwitch`, `gitFetch`, `gitPull`, `gitPush` |
-| Terminals | `termOpen`, `termStats`, `agents` |
+| Terminals | `termOpen`, `termAttach`, `termStats`, `agents` |
 | Files | `filesList`, `fileRead`, `readFile` (the measurement harness's) |
 | Search and navigation | `search`, `searchCancel`, `findFiles`, `symbolDefinitions`, `symbolSearch` |
 | Editors | `editors`, `openInEditor` |
@@ -95,6 +97,26 @@ Code's terminal does, so output is never dropped and memory never grows without 
 
 Splitting at arbitrary byte boundaries is safe: xterm.js holds incomplete escape sequences and
 UTF-8 characters until the rest arrives.
+
+### Losing the connection
+
+macOS closes the page's loopback socket while the screen sleeps, with no closing handshake. The
+core treats that as a lost connection, not a closed one:
+
+- The open workspace, its watchers and any search belong to the connection and end with it.
+- The terminals don't. Each keeps its unacknowledged output; its reader waits for a connection to
+  attach, as it does when the window falls behind.
+- The frontend's transport tries again after 100 ms, then 250 ms, 500 ms, 1 s and every 2 s, for
+  as long as the page lives. Meanwhile requests fail at once and typing is dropped, and a message
+  says the connection is lost.
+- Once it's back, the frontend opens the workspace again and sends `termAttach` for each terminal
+  that is still running, with the number of output bytes it has received and the number it has
+  finished with (acknowledgements sent over the lost connection never arrived). The reply says
+  whether the program ended meanwhile; the output it hadn't received follows the reply.
+
+A connection that closes properly (a closing handshake, as when the window closes) ends its
+terminals, as it always did. If the core can no longer write to a connection, that connection ends
+too.
 
 ## Security boundary
 

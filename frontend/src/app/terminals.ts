@@ -157,6 +157,19 @@ export class Terminals {
     });
   }
 
+  /** A lost connection is back: every terminal still running takes up where it left off. */
+  async reattach(): Promise<void> {
+    await Promise.all(this.tabs.map(async (tab) => {
+      try {
+        await tab.term.reattach();
+        if (tab.term.exit) this.showBanner(tab);
+      } catch (e) {
+        this.onError(`Couldn't reconnect ${tab.program.name}: ${(e as Error).message ?? e}`);
+      }
+    }));
+    this.tick();
+  }
+
   /** Called once the workspace is open: the settings, and which agents are installed. */
   async configure(settings: Settings, shell: string, agents: { name: string; command: string[]; path: string | null }[]): Promise<void> {
     this.applySettings(settings);

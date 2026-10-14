@@ -86,6 +86,8 @@ export class TerminalTab {
   pid: number | null = null;
   visible = false;
   received = 0;
+  /** Bytes xterm.js has finished with (what is acknowledged to the core). */
+  private processed = 0;
   hash = FNV_OFFSET;
   lastOutputAt = 0;
   /** When the user last typed or pasted into it. */
@@ -211,12 +213,29 @@ export class TerminalTab {
     // Marks held back at the end of a chunk are written once no more output follows.
     if (this.cap?.holding) this.flushTimer = setTimeout(() => this.term.write(this.cap!.flush()), 30);
     this.term.write(text, () => {
+      this.processed += data.length;
       this.t.send({ t: 'ack', term: this.id, n: data.length });
       if (this.echo) this.checkEcho();
     });
   }
 
+  /** Takes the terminal back on a new connection after the old one was lost: the core sends the
+   * output we hadn't received, and what we had finished with counts as acknowledged (the
+   * acknowledgements sent over the lost connection never arrived). */
+  async reattach(): Promise<void> {
+    if (!this.id || this.exit) return;
+    const r = await this.t.request<{ exit: Exit | null }>('termAttach', {
+      term: this.id,
+      received: this.received,
+      processed: this.processed,
+    });
+    if (r.exit) this.onExit(r.exit);
+    // The window may have changed size while away.
+    if (this.fit && this.opened) this.t.send({ t: 'resize', term: this.id, cols: this.term.cols, rows: this.term.rows });
+  }
+
   onExit(ev: Exit): void {
+    if (this.exit) return;
     this.exit = ev;
     for (const w of this.exitWaiters.splice(0)) w(ev);
   }

@@ -96,6 +96,15 @@ titles, notifications, bells and bursts of output in a recording.
 - **Reopening:** Gako remembers, per base folder, the terminals that were open and reopens them:
   the same program in the same folder, as a new session. Agents' conversations aren't resumed.
 
+## When the connection to the core is lost
+
+Closing the lid or letting the screen sleep makes macOS close the connection between the window and
+the core. Terminals keep their programs: Gako shows a message, connects again within a couple of
+seconds of waking, and each terminal carries on where it was, with the output it missed. A program
+that writes a lot while the Mac sleeps waits, as in any terminal the window can't keep up with. The
+folder is opened again too, so statuses are current. Details:
+[architecture.md](architecture.md#losing-the-connection).
+
 ## Output
 
 - **Scrollback** is 10,000 rows per terminal by default (`terminalScrollback`).

@@ -30,7 +30,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
@@ -98,6 +98,7 @@ pub struct State {
     /// The event log, when there is one (see main.rs).
     log: Option<Mutex<File>>,
     next_term: AtomicU32,
+    next_connection: AtomicU64,
     terminals: Mutex<HashMap<u32, Arc<Terminal>>>,
 }
 
@@ -127,6 +128,7 @@ impl State {
             env,
             log,
             next_term: AtomicU32::new(1),
+            next_connection: AtomicU64::new(1),
             terminals: Mutex::new(HashMap::new()),
         })
     }
@@ -234,11 +236,12 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
     })
     .await?;
 
+    let conn_id = state.next_connection.fetch_add(1, Ordering::Relaxed);
     let (mut sink, mut source) = ws.split();
     // One queue for everything sent, so a reply is never overtaken by output it announces.
     let (tx, mut rx) = mpsc::unbounded_channel::<Event>();
 
-    let writer = tokio::spawn(async move {
+    let mut writer = tokio::spawn(async move {
         while let Some(ev) = rx.recv().await {
             let msg = match ev {
                 Event::Data(frame) => Message::binary(frame),
@@ -256,7 +259,8 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
     });
 
     let mut mine: HashMap<u32, Arc<Terminal>> = HashMap::new();
-    let mut workspace: Option<Arc<Workspace>> = None;
+    // Shared with the requests that run on their own; `workspaceOpen` replaces it.
+    let workspace: Arc<Mutex<Option<Arc<Workspace>>>> = Arc::new(Mutex::new(None));
     let current = Arc::new(Mutex::new(Current::read()));
     let settings_watch = settings::user_file().and_then(|path| {
         let current = current.clone();
@@ -270,8 +274,25 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
         .ok()
     });
 
-    while let Some(msg) = source.next().await {
-        match msg? {
+    // A connection that can no longer be written to is over, even if it can still be read:
+    // replies and terminal output would be dropped without anyone knowing.
+    let mut outcome: Result<()> = Ok(());
+    loop {
+        let msg = tokio::select! {
+            m = source.next() => match m {
+                Some(Ok(m)) => m,
+                Some(Err(e)) => {
+                    outcome = Err(e.into());
+                    break;
+                }
+                None => break,
+            },
+            _ = &mut writer => {
+                outcome = Err(anyhow::anyhow!("can't write to the connection any more"));
+                break;
+            }
+        };
+        match msg {
             Message::Binary(bytes) => {
                 if bytes.len() >= 4 {
                     let id = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
@@ -307,20 +328,25 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                     }
                     ClientMessage::Log { rec } => state.log_record(rec),
                     // Git and file requests run on their own, so a slow one never holds up terminal
-                    // traffic.
+                    // traffic (input and acknowledgements are read by this loop).
                     ClientMessage::Req { id, m, p }
                         if m.starts_with("git")
                             || m.starts_with("file")
                             || m.starts_with("search")
                             || m.starts_with("symbol")
                             || m == "openInEditor"
-                            || m == "findFiles" =>
+                            || m == "findFiles"
+                            || m == "workspaceOpen" =>
                     {
-                        let ws = workspace.clone();
+                        let slot = workspace.clone();
+                        let ws = slot.lock().unwrap().clone();
                         let tx = tx.clone();
                         let current = current.clone();
                         tokio::spawn(async move {
                             let result = match ws {
+                                _ if m == "workspaceOpen" => {
+                                    workspace_open(&slot, &current, &tx, p).await
+                                }
                                 Some(ws) if m.starts_with("git") => git_request(&ws, &m, p).await,
                                 Some(ws)
                                     if m.starts_with("search")
@@ -336,23 +362,38 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                                 Ok(r) => json!({"t": "res", "id": id, "r": r}),
                                 Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
                             };
-                            let _ = tx.send(Event::Text(reply.to_string()));
+                            // A big file's reply is serialized off the workers, too.
+                            let text = if m == "fileRead" || m == "gitFile" {
+                                tokio::task::spawn_blocking(move || reply.to_string())
+                                    .await
+                                    .ok()
+                            } else {
+                                Some(reply.to_string())
+                            };
+                            if let Some(text) = text {
+                                let _ = tx.send(Event::Text(text));
+                            }
                         });
                     }
                     ClientMessage::Req { id, m, p } => {
                         let result =
-                            request(&state, &mut mine, &mut workspace, &current, &tx, &m, p).await;
+                            request(&state, conn_id, &mut mine, &current, &tx, &m, p).await;
                         let reply = match result {
                             Ok(r) => json!({"t": "res", "id": id, "r": r}),
                             Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
                         };
                         let _ = tx.send(Event::Text(reply.to_string()));
-                        if m == "termOpen"
+                        if (m == "termOpen" || m == "termAttach")
                             && let Some(t) = reply["r"]["term"]
                                 .as_u64()
                                 .and_then(|id| mine.get(&(id as u32)))
                         {
-                            t.start();
+                            // The reply is queued: output may follow it now.
+                            if m == "termOpen" {
+                                t.start();
+                            } else {
+                                t.resume();
+                            }
                         }
                     }
                 }
@@ -362,22 +403,36 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
         }
     }
 
-    // A connection owns its terminals: when the page goes away, so do they.
+    // A connection owns its terminals: when the page goes away, so do they. But a connection
+    // that was lost (the socket reset, as when the Mac sleeps) leaves them running, for the page
+    // to attach to again on a new connection; they wait, and the core's exit ends them.
+    let lost = outcome.is_err();
     for (id, t) in mine.drain() {
-        state.terminals.lock().unwrap().remove(&id);
-        t.close();
+        if t.owner() != conn_id {
+            continue; // a newer connection has it
+        }
+        t.detach();
+        if !lost {
+            state.terminals.lock().unwrap().remove(&id);
+            t.close();
+        }
     }
-    // The watcher holds a sender too: the writer ends only once every sender is gone.
+    // The watchers hold senders too: don't wait for them. Whatever is still queued goes out first,
+    // briefly.
     drop(settings_watch);
+    workspace.lock().unwrap().take();
     drop(tx);
-    let _ = writer.await;
-    Ok(())
+    if !writer.is_finished() {
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(1), &mut writer).await;
+        writer.abort();
+    }
+    outcome
 }
 
 async fn request(
     state: &Arc<State>,
+    conn_id: u64,
     mine: &mut HashMap<u32, Arc<Terminal>>,
-    workspace: &mut Option<Arc<Workspace>>,
     current: &Mutex<Current>,
     tx: &mpsc::UnboundedSender<Event>,
     method: &str,
@@ -397,16 +452,36 @@ async fn request(
         }
         "termOpen" => {
             let mut req: OpenRequest = serde_json::from_value(params)?;
+            // Spawning reads the login shell's environment; wait for it here, off the workers.
+            crate::shellenv::ready().await;
             if current.lock().unwrap().settings.agent_hooks {
                 req.cmd = req.cmd.map(crate::agents::adjust);
             }
             let id = state.next_term.fetch_add(1, Ordering::Relaxed);
             let term = Terminal::spawn(id, req, &state.root, state.flow, tx.clone())?;
+            term.set_owner(conn_id);
             state.log_record(json!({"ev": "termSpawn", "term": id, "pid": term.pid}));
             state.terminals.lock().unwrap().insert(id, term.clone());
             let pid = term.pid;
             mine.insert(id, term);
             Ok(json!({"term": id, "pid": pid}))
+        }
+        "termAttach" => {
+            // A page that lost its connection takes its terminals back.
+            let id: u32 = param(&params, "term")?;
+            let received: u64 = param(&params, "received")?;
+            let processed: u64 = param(&params, "processed")?;
+            let term = state
+                .terminals
+                .lock()
+                .unwrap()
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("no terminal {id}"))?;
+            term.set_owner(conn_id);
+            let exit = term.attach(id, tx.clone(), received, processed);
+            mine.insert(id, term);
+            Ok(json!({"term": id, "exit": exit}))
         }
         "termStats" => {
             let id: u32 = serde_json::from_value(params["term"].clone())?;
@@ -418,13 +493,16 @@ async fn request(
         "agents" => {
             // The configured agents, and whether each is on the PATH.
             let agents = current.lock().unwrap().settings.agents.clone();
-            let agents: Vec<Value> = agents
-                .iter()
-                .map(|a| {
-                    let found = a.command.first().and_then(|p| crate::shellenv::which(p));
-                    json!({"name": a.name, "command": a.command, "path": found})
-                })
-                .collect();
+            let agents: Vec<Value> = tokio::task::spawn_blocking(move || {
+                agents
+                    .iter()
+                    .map(|a| {
+                        let found = a.command.first().and_then(|p| crate::shellenv::which(p));
+                        json!({"name": a.name, "command": a.command, "path": found})
+                    })
+                    .collect()
+            })
+            .await?;
             Ok(json!({"shell": crate::pty::default_shell_name(), "agents": agents}))
         }
         "editors" => {
@@ -470,26 +548,39 @@ async fn request(
             }
             Ok(json!({"settings": saved}))
         }
-        "workspaceOpen" => {
-            let settings = settings::load(settings::user_file().as_deref())?;
-            let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;
-            let base = given
-                .or_else(|| settings.base.clone())
-                .ok_or_else(|| anyhow::anyhow!("no base folder given, and none in the settings"))?;
-            // The previous workspace, if any, stops watching when it's dropped here.
-            // Read just now, so the watcher's copy is no newer; an error it was reporting is over.
-            current.lock().unwrap().update(Ok(settings.clone()));
-            let ws = Workspace::open(base, settings, tx.clone())?;
-            *workspace = Some(ws.clone());
-            Ok(json!({
-                "base": ws.base,
-                "settings": ws.settings,
-                "repos": ws.repos(),
-                "statuses": ws.statuses(),
-            }))
-        }
         _ => anyhow::bail!("unknown method {method}"),
     }
+}
+
+/// Opens the workspace: finding the repos and starting the watcher take a while on a big folder,
+/// so this runs on its own and on a blocking thread, and the connection keeps serving terminals.
+async fn workspace_open(
+    slot: &Mutex<Option<Arc<Workspace>>>,
+    current: &Arc<Mutex<Current>>,
+    tx: &mpsc::UnboundedSender<Event>,
+    params: Value,
+) -> Result<Value> {
+    let given: Option<PathBuf> = serde_json::from_value(params["base"].clone())?;
+    let tx2 = tx.clone();
+    let current2 = current.clone();
+    let ws = tokio::task::spawn_blocking(move || -> Result<Arc<Workspace>> {
+        let settings = settings::load(settings::user_file().as_deref())?;
+        let base = given
+            .or_else(|| settings.base.clone())
+            .ok_or_else(|| anyhow::anyhow!("no base folder given, and none in the settings"))?;
+        // Read just now, so the watcher's copy is no newer; an error it was reporting is over.
+        current2.lock().unwrap().update(Ok(settings.clone()));
+        Workspace::open(base, settings, tx2)
+    })
+    .await??;
+    // The previous workspace, if any, stops watching when it's dropped here.
+    *slot.lock().unwrap() = Some(ws.clone());
+    Ok(json!({
+        "base": ws.base,
+        "settings": ws.settings,
+        "repos": ws.repos(),
+        "statuses": ws.statuses(),
+    }))
 }
 
 fn param<T: serde::de::DeserializeOwned>(params: &Value, key: &str) -> Result<T> {
@@ -532,10 +623,14 @@ async fn search_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Res
                 return Ok(json!({"ready": false, "symbols": []}));
             };
             let repo = from.as_deref().and_then(|p| ws.repo_of(p));
-            let found = index
-                .read()
-                .unwrap()
-                .definitions(&name, from.as_deref(), repo.as_deref());
+            // Reading the index can wait for an update to land: not on an async worker.
+            let found = tokio::task::spawn_blocking(move || {
+                index
+                    .read()
+                    .unwrap()
+                    .definitions(&name, from.as_deref(), repo.as_deref())
+            })
+            .await?;
             Ok(json!({"ready": true, "symbols": found}))
         }
         "symbolSearch" => {
@@ -543,13 +638,16 @@ async fn search_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Res
             let Some(index) = ws.symbols() else {
                 return Ok(json!({"ready": false, "symbols": []}));
             };
-            let found: Vec<Value> = index
-                .read()
-                .unwrap()
-                .search(&query, 100)
-                .into_iter()
-                .map(|(s, positions)| json!({"symbol": s, "positions": positions}))
-                .collect();
+            let found: Vec<Value> = tokio::task::spawn_blocking(move || {
+                index
+                    .read()
+                    .unwrap()
+                    .search(&query, 100)
+                    .into_iter()
+                    .map(|(s, positions)| json!({"symbol": s, "positions": positions}))
+                    .collect()
+            })
+            .await?;
             Ok(json!({"ready": true, "symbols": found}))
         }
         "findFiles" => {
@@ -574,15 +672,21 @@ async fn file_request(
     params: Value,
 ) -> Result<Value> {
     let path: PathBuf = param(&params, "path")?;
-    let path = crate::files::inside(&ws.roots(), &path)?;
+    // Resolving paths touches the file system, which can be slow (a network or cloud folder).
+    let ws2 = ws.clone();
+    let path =
+        tokio::task::spawn_blocking(move || crate::files::inside(&ws2.roots(), &path)).await??;
     match method {
         "filesList" => {
             let listing = tokio::task::spawn_blocking(move || crate::files::list(&path)).await??;
             Ok(serde_json::to_value(listing)?)
         }
-        "fileRead" => Ok(serde_json::to_value(
-            crate::files::read(&path, 50 << 20, params["raw"].as_bool().unwrap_or(false)).await?,
-        )?),
+        "fileRead" => {
+            let content =
+                crate::files::read(&path, 50 << 20, params["raw"].as_bool().unwrap_or(false))
+                    .await?;
+            Ok(tokio::task::spawn_blocking(move || serde_json::to_value(content)).await??)
+        }
         "openInEditor" => {
             let line = params["line"].as_u64().unwrap_or(1) as u32;
             let column = params["column"].as_u64().unwrap_or(1) as u32;
@@ -622,17 +726,16 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
                 "index" => git::Rev::Index,
                 c => git::Rev::Commit(c),
             };
-            Ok(serde_json::to_value(
-                git::file(
-                    g,
-                    &repo.root,
-                    rev,
-                    &path,
-                    50 << 20,
-                    params["raw"].as_bool().unwrap_or(false),
-                )
-                .await?,
-            )?)
+            let content = git::file(
+                g,
+                &repo.root,
+                rev,
+                &path,
+                50 << 20,
+                params["raw"].as_bool().unwrap_or(false),
+            )
+            .await?;
+            Ok(tokio::task::spawn_blocking(move || serde_json::to_value(content)).await??)
         }
         "gitLog" => {
             let skip = params["skip"].as_u64().unwrap_or(0) as usize;
@@ -686,4 +789,190 @@ fn epoch_ms() -> f64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs_f64() * 1000.0)
         .unwrap_or(0.0)
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio_tungstenite::client_async;
+
+    type Client = tokio_tungstenite::WebSocketStream<TcpStream>;
+
+    async fn connect(port: u16) -> Client {
+        let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let (ws, _) = client_async(format!("ws://127.0.0.1:{port}/?token=tok"), stream)
+            .await
+            .unwrap();
+        ws
+    }
+
+    async fn request(ws: &mut Client, id: u64, m: &str, p: Value) {
+        let msg = json!({"t": "req", "id": id, "m": m, "p": p});
+        ws.send(Message::text(msg.to_string())).await.unwrap();
+    }
+
+    /// Reads until the reply to `id` and returns it, with the terminal output seen on the way.
+    async fn reply(ws: &mut Client, id: u64, out: &mut Vec<u8>) -> Value {
+        loop {
+            let msg = tokio::time::timeout(Duration::from_secs(10), ws.next())
+                .await
+                .expect("no reply")
+                .unwrap()
+                .unwrap();
+            match msg {
+                Message::Binary(b) => out.extend_from_slice(&b[4..]),
+                Message::Text(t) => {
+                    let v: Value = serde_json::from_str(&t).unwrap();
+                    if v["t"] == "res" && v["id"] == id {
+                        return v;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Reads terminal output until it contains `needle`.
+    async fn until(ws: &mut Client, out: &mut Vec<u8>, needle: &str) {
+        while !String::from_utf8_lossy(out).contains(needle) {
+            let msg = tokio::time::timeout(Duration::from_secs(10), ws.next())
+                .await
+                .unwrap_or_else(|_| panic!("no {needle:?} in {:?}", String::from_utf8_lossy(out)))
+                .unwrap()
+                .unwrap();
+            if let Message::Binary(b) = msg {
+                out.extend_from_slice(&b[4..]);
+            }
+        }
+    }
+
+    /// The window's socket is closed without a closing handshake (macOS does this when the screen
+    /// sleeps). The terminal goes on, and a new connection takes it over and is sent exactly what
+    /// the first one hadn't received.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_terminal_survives_a_lost_connection() {
+        let dir = tempfile::tempdir().unwrap();
+        let flow = FlowConfig {
+            high: 1 << 19,
+            low: 1 << 17,
+            chunk: 4096,
+        };
+        let state = Arc::new(
+            State::new(
+                dir.path().to_path_buf(),
+                "tok".into(),
+                None,
+                flow,
+                BTreeMap::new(),
+            )
+            .unwrap(),
+        );
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(serve(listener, state.clone()));
+
+        let mut first = connect(port).await;
+        let script = "echo one; sleep 1; echo two; sleep 1; echo three";
+        request(
+            &mut first,
+            1,
+            "termOpen",
+            json!({"cols": 80, "rows": 24, "cmd": ["sh", "-c", script]}),
+        )
+        .await;
+        let mut seen = Vec::new();
+        let opened = reply(&mut first, 1, &mut seen).await;
+        let term = opened["r"]["term"].as_u64().unwrap();
+        until(&mut first, &mut seen, "one").await;
+        let received = seen.len() as u64;
+
+        // Gone, with no close frame and nothing acknowledged.
+        drop(first);
+        // "two" and "three" are written while no one is connected.
+        tokio::time::sleep(Duration::from_millis(2600)).await;
+
+        let mut second = connect(port).await;
+        request(
+            &mut second,
+            1,
+            "termAttach",
+            json!({"term": term, "received": received, "processed": 0}),
+        )
+        .await;
+        let mut more = Vec::new();
+        let attached = reply(&mut second, 1, &mut more).await;
+        assert_eq!(attached["r"]["term"], term);
+        until(&mut second, &mut more, "three").await;
+        let text = String::from_utf8_lossy(&more);
+        assert!(
+            !text.contains("one"),
+            "what it had was sent again: {text:?}"
+        );
+        assert!(
+            text.contains("two"),
+            "what it missed was not sent: {text:?}"
+        );
+
+        // The program ended while nobody was connected, and the new connection is told.
+        let exit = loop {
+            let msg = tokio::time::timeout(Duration::from_secs(10), second.next())
+                .await
+                .expect("no exit")
+                .unwrap()
+                .unwrap();
+            if let Message::Text(t) = msg {
+                let v: Value = serde_json::from_str(&t).unwrap();
+                if v["t"] == "exit" {
+                    break v;
+                }
+            }
+        };
+        assert_eq!(exit["term"], term);
+        assert_eq!(exit["code"], 0);
+        state.shutdown();
+    }
+
+    /// A page that closes its connection properly takes its terminals with it, as before.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_closed_connection_closes_its_terminals() {
+        let dir = tempfile::tempdir().unwrap();
+        let flow = FlowConfig {
+            high: 1 << 19,
+            low: 1 << 17,
+            chunk: 4096,
+        };
+        let state = Arc::new(
+            State::new(
+                dir.path().to_path_buf(),
+                "tok".into(),
+                None,
+                flow,
+                BTreeMap::new(),
+            )
+            .unwrap(),
+        );
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(serve(listener, state.clone()));
+
+        let mut ws = connect(port).await;
+        request(
+            &mut ws,
+            1,
+            "termOpen",
+            json!({"cols": 80, "rows": 24, "cmd": ["sh", "-c", "sleep 60"]}),
+        )
+        .await;
+        let mut out = Vec::new();
+        reply(&mut ws, 1, &mut out).await;
+        assert_eq!(state.terminals.lock().unwrap().len(), 1);
+        ws.close(None).await.unwrap();
+        let started = std::time::Instant::now();
+        while !state.terminals.lock().unwrap().is_empty() {
+            assert!(started.elapsed() < Duration::from_secs(10), "still open");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        state.shutdown();
+    }
 }

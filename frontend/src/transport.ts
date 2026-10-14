@@ -43,6 +43,13 @@ export type CoreEvent =
   // The settings file changed: its settings, or why it can't be read.
   | { t: 'settings'; settings?: unknown; error?: string };
 
+/** Why the connection to the core ended (a WebSocket close event). Code 1006 is an end with no closing handshake. */
+export interface CloseInfo {
+  code: number;
+  reason: string;
+  clean: boolean;
+}
+
 export interface Transport {
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
   send(msg: Control): void;
@@ -51,28 +58,71 @@ export interface Transport {
   /** Terminal output for one terminal. Returns an unsubscribe function. */
   onBytes(term: number, fn: (data: Uint8Array) => void): () => void;
   onEvent(fn: (ev: CoreEvent) => void): () => void;
+  /** Called when the connection is lost, as when macOS closes it while the screen sleeps. Requests
+   * fail and input is dropped until it comes back; the transport keeps trying by itself. */
+  onClose(fn: (info: CloseInfo) => void): () => void;
+  /** Called when a lost connection is back. The core has forgotten everything tied to the old
+   * one (the open workspace, a search under way), but not the terminals. */
+  onReconnect(fn: () => void): () => void;
 }
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void };
+
+/** How long to wait before trying to connect again, after the nth failure. */
+const RETRY_MS = [100, 250, 500, 1000, 2000];
 
 class WebSocketTransport implements Transport {
   private nextId = 1;
   private pending = new Map<number, Pending>();
   private bytes = new Map<number, (data: Uint8Array) => void>();
   private events = new Set<(ev: CoreEvent) => void>();
+  private closers = new Set<(info: CloseInfo) => void>();
+  private reconnectors = new Set<() => void>();
 
-  constructor(private ws: WebSocket) {
+  constructor(private url: string, private ws: WebSocket) {
+    this.adopt(ws);
+  }
+
+  private adopt(ws: WebSocket): void {
+    this.ws = ws;
     ws.binaryType = 'arraybuffer';
     ws.onmessage = (e) => this.receive(e);
-    ws.onclose = () => {
+    ws.onclose = (e) => {
+      // A socket that was already replaced says nothing new.
+      if (ws !== this.ws) return;
       for (const p of this.pending.values()) p.reject(new Error('core connection closed'));
       this.pending.clear();
+      const info = { code: e.code, reason: e.reason, clean: e.wasClean };
+      for (const fn of this.closers) fn(info);
+      this.reconnect(0);
     };
+  }
+
+  /** Connects again, as often as it takes: the page is still here, and so are its terminals. */
+  private reconnect(failures: number): void {
+    setTimeout(() => {
+      const ws = new WebSocket(this.url);
+      let opened = false;
+      ws.onopen = () => {
+        opened = true;
+        this.adopt(ws);
+        for (const fn of this.reconnectors) fn();
+      };
+      // A failed attempt closes the socket too; that is what is waited for.
+      ws.onclose = () => {
+        if (!opened) this.reconnect(failures + 1);
+      };
+    }, RETRY_MS[Math.min(failures, RETRY_MS.length - 1)]);
   }
 
   request<T>(method: string, params?: unknown): Promise<T> {
     const id = this.nextId++;
     return new Promise<T>((resolve, reject) => {
+      // Asking a core that is gone fails at once, instead of waiting for a reply that can't come.
+      if (this.ws.readyState !== WebSocket.OPEN) {
+        reject(new Error('core connection closed'));
+        return;
+      }
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
       this.ws.send(JSON.stringify({ t: 'req', id, m: method, p: params ?? null }));
     });
@@ -83,6 +133,7 @@ class WebSocketTransport implements Transport {
   }
 
   sendBytes(term: number, data: Uint8Array): void {
+    if (this.ws.readyState !== WebSocket.OPEN) return;
     const frame = new Uint8Array(4 + data.length);
     new DataView(frame.buffer).setUint32(0, term);
     frame.set(data, 4);
@@ -97,6 +148,16 @@ class WebSocketTransport implements Transport {
   onEvent(fn: (ev: CoreEvent) => void): () => void {
     this.events.add(fn);
     return () => this.events.delete(fn);
+  }
+
+  onClose(fn: (info: CloseInfo) => void): () => void {
+    this.closers.add(fn);
+    return () => this.closers.delete(fn);
+  }
+
+  onReconnect(fn: () => void): () => void {
+    this.reconnectors.add(fn);
+    return () => this.reconnectors.delete(fn);
   }
 
   private receive(e: MessageEvent): void {
@@ -119,9 +180,10 @@ class WebSocketTransport implements Transport {
 }
 
 export function connect(b: Boot): Promise<Transport> {
-  const ws = new WebSocket(`${b.url}/?token=${encodeURIComponent(b.token)}`);
+  const url = `${b.url}/?token=${encodeURIComponent(b.token)}`;
+  const ws = new WebSocket(url);
   return new Promise((resolve, reject) => {
-    ws.onopen = () => resolve(new WebSocketTransport(ws));
+    ws.onopen = () => resolve(new WebSocketTransport(url, ws));
     ws.onerror = () => reject(new Error(`cannot connect to gako-core at ${b.url}`));
   });
 }

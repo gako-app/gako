@@ -187,6 +187,8 @@ class App {
     (window as unknown as { gakoRunning: () => string[] }).gakoRunning = () => this.terminals.running();
     // The main area stays empty until a folder is open (or the form to choose one is up): a welcome
     // for no folder in particular would only flash.
+    t.onClose((info) => this.connectionLost(info));
+    t.onReconnect(() => { this.connectionRestored().catch((e) => this.toast(String(e?.message ?? e))); });
     t.onEvent((ev) => {
       if (ev.t === 'repoStatus') this.onStatus(ev.repo, ev.status as Status | undefined, ev.error);
       else if (ev.t === 'repoTouched') this.refreshOpenDiff([ev.repo]);
@@ -794,6 +796,31 @@ class App {
       h('button', { class: 'status-button icon-only', 'data-tip': `Settings (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'},)`, 'aria-label': 'Settings', onclick: () => this.showSettings() }, icon('settings')),
       this.showAbout ? h('button', { class: 'status-button icon-only', 'data-tip': 'About Gako', 'aria-label': 'About Gako', onclick: () => this.showAbout?.() }, icon('info')) : null,
     );
+  }
+
+  private lostBanner: HTMLElement | null = null;
+
+  /** The connection to the core was lost (macOS closes it while the screen sleeps). The transport
+   * keeps trying; until it succeeds nothing updates, and typing goes nowhere. */
+  private connectionLost(info: { code: number; reason: string; clean: boolean }): void {
+    console.error('gako: the connection to the core ended', info);
+    if (this.lostBanner) return;
+    const detail = info.reason ? `${info.code}: ${info.reason}` : `code ${info.code}`;
+    this.lostBanner = h('div', { class: 'toast' }, `The connection to Gako's core was lost (${detail}). Reconnecting…`);
+    this.toasts.append(this.lostBanner);
+  }
+
+  /** The connection is back: the core has forgotten the workspace, which is opened again as it
+   * was, and the terminals, which it kept, are taken back. */
+  private async connectionRestored(): Promise<void> {
+    this.lostBanner?.remove();
+    this.lostBanner = null;
+    this.log('reconnected');
+    const base = this.opened?.base;
+    await Promise.all([
+      this.terminals.reattach(),
+      base ? this.open(base, true) : Promise.resolve(),
+    ]);
   }
 
   private toast(message: string): void {

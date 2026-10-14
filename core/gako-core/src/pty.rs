@@ -18,10 +18,16 @@
 //! waiting for a newline. The frontend acknowledges bytes once xterm.js has processed them. When the
 //! unacknowledged bytes pass the high-water mark, the reader stops reading until they fall below the
 //! low-water mark, so the program writing to the terminal waits, as it would in any real terminal.
+//!
+//! A terminal outlives the connection that opened it when that connection is lost (the window's
+//! socket is closed by macOS when the screen sleeps). The unacknowledged output is kept, so a new
+//! connection can attach to the terminal and be sent everything it hasn't received; while no
+//! connection is attached the reader waits, as it does for acknowledgements.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -58,7 +64,7 @@ pub enum Event {
     Text(String),
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ExitInfo {
     pub term: u32,
@@ -79,9 +85,26 @@ pub struct Stats {
 }
 
 struct FlowState {
-    unacked: usize,
+    /// Bytes read from the PTY so far, and bytes the frontend has acknowledged.
+    sent: u64,
+    acked: u64,
+    /// The chunks not yet acknowledged, with the offset of each one's first byte, so a new
+    /// connection can be sent what it missed.
+    unacked: VecDeque<(u64, Vec<u8>)>,
     closed: bool,
     stats: Stats,
+    /// Where output goes, while a connection is attached.
+    sink: Option<UnboundedSender<Event>>,
+    /// A connection that attached and waits for its reply to be sent (see `Flow::resume`), with
+    /// the output it is owed.
+    attaching: Option<(UnboundedSender<Event>, Vec<Vec<u8>>)>,
+    exit: Option<ExitInfo>,
+}
+
+impl FlowState {
+    fn pending(&self) -> usize {
+        (self.sent - self.acked) as usize
+    }
 }
 
 struct Flow {
@@ -91,31 +114,131 @@ struct Flow {
 }
 
 impl Flow {
-    /// Records forwarded bytes and blocks while the frontend is too far behind.
-    fn forwarded(&self, chunk: &[u8]) {
+    fn new(config: FlowConfig, sink: UnboundedSender<Event>) -> Flow {
+        Flow {
+            config,
+            state: Mutex::new(FlowState {
+                sent: 0,
+                acked: 0,
+                unacked: VecDeque::new(),
+                closed: false,
+                stats: Stats {
+                    hash: FNV_OFFSET,
+                    ..Stats::default()
+                },
+                sink: Some(sink),
+                attaching: None,
+                exit: None,
+            }),
+            cv: Condvar::new(),
+        }
+    }
+
+    /// Records forwarded bytes, sends them to the attached connection, and blocks while the
+    /// frontend is too far behind or no connection is attached.
+    fn forwarded(&self, id: u32, chunk: &[u8]) {
         let mut s = self.state.lock().unwrap();
-        s.unacked += chunk.len();
+        let offset = s.sent;
+        s.unacked.push_back((offset, chunk.to_vec()));
+        s.sent += chunk.len() as u64;
         s.stats.bytes += chunk.len() as u64;
         s.stats.hash = fnv1a(s.stats.hash, chunk);
-        s.stats.max_unacked = s.stats.max_unacked.max(s.unacked);
-        if s.unacked > self.config.high {
+        let mut frame = Vec::with_capacity(4 + chunk.len());
+        frame.extend_from_slice(&id.to_be_bytes());
+        frame.extend_from_slice(chunk);
+        if let Some((_, owed)) = &mut s.attaching {
+            // A connection is taking over: this follows the output it is already owed.
+            owed.push(frame);
+        } else if let Some(sink) = &s.sink
+            && sink.send(Event::Data(frame)).is_err()
+        {
+            s.sink = None;
+        }
+        let pending = s.pending();
+        s.stats.max_unacked = s.stats.max_unacked.max(pending);
+        if pending > self.config.high {
             s.stats.pauses += 1;
-            while s.unacked >= self.config.low && !s.closed {
+            while s.pending() >= self.config.low && !s.closed {
                 s = self.cv.wait(s).unwrap();
             }
+        }
+        // No connection: the program waits for one, as it does for acknowledgements.
+        while (s.sink.is_none() || s.attaching.is_some()) && !s.closed {
+            s = self.cv.wait(s).unwrap();
         }
     }
 
     fn ack(&self, n: usize) {
         let mut s = self.state.lock().unwrap();
-        s.unacked = s.unacked.saturating_sub(n);
-        if s.unacked < self.config.low {
+        s.acked = (s.acked + n as u64).min(s.sent);
+        self.trim(&mut s);
+        if s.pending() < self.config.low {
             self.cv.notify_all();
         }
     }
 
+    fn trim(&self, s: &mut FlowState) {
+        let acked = s.acked;
+        while let Some((offset, chunk)) = s.unacked.front() {
+            if offset + chunk.len() as u64 <= acked {
+                s.unacked.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Prepares a new connection to take over: what the frontend has processed counts as
+    /// acknowledged (acknowledgements sent over the lost connection never arrived), and what it
+    /// hasn't received yet is set aside to send once the reply is queued.
+    fn attach(&self, sink: UnboundedSender<Event>, id: u32, received: u64, processed: u64) {
+        let mut s = self.state.lock().unwrap();
+        s.sink = None;
+        s.acked = s.acked.max(processed.min(received).min(s.sent));
+        self.trim(&mut s);
+        let received = received.min(s.sent);
+        let mut owed = Vec::new();
+        for (offset, chunk) in &s.unacked {
+            let end = offset + chunk.len() as u64;
+            if end <= received {
+                continue;
+            }
+            let from = received.saturating_sub(*offset) as usize;
+            let mut frame = Vec::with_capacity(4 + chunk.len() - from);
+            frame.extend_from_slice(&id.to_be_bytes());
+            frame.extend_from_slice(&chunk[from..]);
+            owed.push(frame);
+        }
+        s.attaching = Some((sink, owed));
+        // The reader is held until `resume`, so the output it reads next follows the owed output.
+    }
+
+    /// Sends the owed output and lets the reader go on, to the new connection.
+    fn resume(&self) {
+        let mut s = self.state.lock().unwrap();
+        if let Some((sink, owed)) = s.attaching.take() {
+            for frame in owed {
+                if sink.send(Event::Data(frame)).is_err() {
+                    break;
+                }
+            }
+            if let Some(info) = &s.exit {
+                let _ = sink.send(Event::Exit(info.clone()));
+            }
+            s.sink = Some(sink);
+            self.cv.notify_all();
+        }
+    }
+
+    /// The connection is gone: the reader waits for another.
+    fn detach(&self) {
+        self.state.lock().unwrap().sink = None;
+    }
+
     fn close(&self) {
-        self.state.lock().unwrap().closed = true;
+        let mut s = self.state.lock().unwrap();
+        s.closed = true;
+        s.attaching = None;
         self.cv.notify_all();
     }
 
@@ -125,6 +248,19 @@ impl Flow {
 
     fn stats(&self) -> Stats {
         self.state.lock().unwrap().stats
+    }
+
+    /// The program ended: told to the attached connection, and kept for one that attaches later.
+    fn finished(&self, info: ExitInfo) {
+        let mut s = self.state.lock().unwrap();
+        if let Some(sink) = &s.sink {
+            let _ = sink.send(Event::Exit(info.clone()));
+        }
+        s.exit = Some(info);
+    }
+
+    fn exit(&self) -> Option<ExitInfo> {
+        self.state.lock().unwrap().exit.clone()
     }
 }
 
@@ -216,6 +352,9 @@ pub struct Terminal {
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     flow: Arc<Flow>,
     start: Mutex<Option<std_mpsc::Sender<()>>>,
+    /// The connection that has the terminal (0: none yet), so a connection that ends doesn't close
+    /// a terminal a newer one has taken over.
+    owner: AtomicU64,
     recorder: Option<Arc<Recorder>>,
 }
 
@@ -311,18 +450,7 @@ impl Terminal {
         let mut reader = pair.master.try_clone_reader().context("pty reader")?;
         let mut writer = pair.master.take_writer().context("pty writer")?;
 
-        let flow = Arc::new(Flow {
-            config,
-            state: Mutex::new(FlowState {
-                unacked: 0,
-                closed: false,
-                stats: Stats {
-                    hash: FNV_OFFSET,
-                    ..Stats::default()
-                },
-            }),
-            cv: Condvar::new(),
-        });
+        let flow = Arc::new(Flow::new(config, tx));
 
         let (input_tx, input_rx) = std_mpsc::channel::<Vec<u8>>();
         let (start_tx, start_rx) = std_mpsc::channel::<()>();
@@ -347,6 +475,7 @@ impl Terminal {
             killer: Mutex::new(killer),
             flow: flow.clone(),
             start: Mutex::new(Some(start_tx)),
+            owner: AtomicU64::new(0),
             recorder: recorder.clone(),
         });
 
@@ -379,16 +508,10 @@ impl Terminal {
                         // Unix PTYs report EIO once the child side is closed.
                         Err(_) => break,
                     };
-                    let mut frame = Vec::with_capacity(4 + n);
-                    frame.extend_from_slice(&id.to_be_bytes());
-                    frame.extend_from_slice(&buf[..n]);
-                    if tx.send(Event::Data(frame)).is_err() {
-                        break;
-                    }
                     if let Some(r) = &recorder {
                         r.record("out", &buf[..n]);
                     }
-                    flow.forwarded(&buf[..n]);
+                    flow.forwarded(id, &buf[..n]);
                     if flow.is_closed() {
                         break;
                     }
@@ -398,11 +521,11 @@ impl Terminal {
                 // waiting on each other (and the program alive, stuck exiting).
                 drop(reader);
                 let code = status_rx.recv().ok().flatten();
-                let _ = tx.send(Event::Exit(ExitInfo {
+                flow.finished(ExitInfo {
                     term: id,
                     code,
                     stats: flow.stats(),
-                }));
+                });
             })?;
 
         Ok(term)
@@ -414,6 +537,38 @@ impl Terminal {
         if let Some(start) = self.start.lock().unwrap().take() {
             let _ = start.send(());
         }
+    }
+
+    /// Hands the terminal to a new connection (after the old one was lost): `received` is how many
+    /// output bytes the frontend has been given in all, `processed` how many it has finished with.
+    /// Returns the program's exit, if it has ended. The output it is owed follows once `resume`
+    /// is called, after the reply to the request is queued.
+    pub fn attach(
+        &self,
+        id: u32,
+        sink: UnboundedSender<Event>,
+        received: u64,
+        processed: u64,
+    ) -> Option<ExitInfo> {
+        self.flow.attach(sink, id, received, processed);
+        self.flow.exit()
+    }
+
+    pub fn set_owner(&self, connection: u64) {
+        self.owner.store(connection, Ordering::SeqCst);
+    }
+
+    pub fn owner(&self) -> u64 {
+        self.owner.load(Ordering::SeqCst)
+    }
+
+    pub fn resume(&self) {
+        self.flow.resume();
+    }
+
+    /// The connection is gone, but the terminal stays: its output waits for another.
+    pub fn detach(&self) {
+        self.flow.detach();
     }
 
     pub fn write(&self, bytes: Vec<u8>) {
@@ -477,6 +632,62 @@ mod tests {
     fn alive(pid: u32) -> bool {
         // SAFETY: signal 0 only checks that the process exists.
         unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
+    }
+
+    fn frames(rx: &mut tokio::sync::mpsc::UnboundedReceiver<Event>) -> Vec<Vec<u8>> {
+        let mut v = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            if let Event::Data(f) = ev {
+                v.push(f);
+            }
+        }
+        v
+    }
+
+    /// A connection that takes a terminal over is sent what the one before it hadn't received,
+    /// whether or not that was acknowledged, and nothing it already has.
+    #[test]
+    fn a_new_connection_is_sent_what_it_missed() {
+        let config = FlowConfig {
+            high: 1 << 20,
+            low: 1 << 18,
+            chunk: 4096,
+        };
+        let (tx1, mut rx1) = tokio::sync::mpsc::unbounded_channel();
+        let flow = Flow::new(config, tx1);
+        flow.forwarded(7, b"hello");
+        flow.forwarded(7, b" world");
+        assert_eq!(frames(&mut rx1).len(), 2);
+        flow.ack(5);
+
+        // The page had received "hello world" but processed only "hello", and the connection
+        // then died: nothing is owed, and the rest is still counted as unacknowledged.
+        let (tx2, mut rx2) = tokio::sync::mpsc::unbounded_channel();
+        flow.attach(tx2, 7, 11, 5);
+        flow.resume();
+        assert!(frames(&mut rx2).is_empty());
+        assert_eq!(flow.state.lock().unwrap().pending(), 6);
+
+        // Output read while the page was away reaches the next connection, from the byte it
+        // had got to: in the middle of a chunk here.
+        flow.forwarded(7, b" again");
+        let (tx3, mut rx3) = tokio::sync::mpsc::unbounded_channel();
+        flow.attach(tx3, 7, 8, 8);
+        // A chunk read while the connection is being handed over follows what it is owed.
+        let flow = Arc::new(flow);
+        let reader = {
+            let flow = flow.clone();
+            std::thread::spawn(move || flow.forwarded(7, b"!"))
+        };
+        // The reader holds off until the handover is complete.
+        while flow.state.lock().unwrap().sent < 18 {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        flow.resume();
+        reader.join().unwrap();
+        let got: Vec<Vec<u8>> = frames(&mut rx3).iter().map(|f| f[4..].to_vec()).collect();
+        assert_eq!(got.concat(), b"rld again!");
+        assert_eq!(&frames(&mut rx3).len(), &0);
     }
 
     /// A program that ignores SIGHUP, as Claude Code does, and its child are still ended when

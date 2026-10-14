@@ -172,6 +172,30 @@ written.
 **Cost:** a program writing faster than Gako can draw is slowed to Gako's pace. In practice Gako
 draws large dumps faster than VS Code: four to eight times faster on macOS.
 
+## Terminals outlive a lost connection
+
+**Decision:** a terminal belongs to the core, not to the connection that opened it. When the page
+closes its connection properly, its terminals end with it, as before. When the connection is
+*lost* (the socket ends without a closing handshake), the terminals keep running, and the page
+connects again by itself and takes them back, sent the output it hadn't received.
+
+**Why:** macOS closes the page's loopback socket while the screen sleeps or the lid is closed. The
+page then had no connection and never made another, and the core's terminal readers stopped for
+good at the first output nobody could receive. Coming back to Gako meant windows that showed their
+old output and took no input, over agents that had carried on, unseen. Reconnecting alone would have
+left the terminals dead, and ending them on every lost socket would have killed agents' work for a
+sleeping laptop.
+
+**How:** a terminal keeps the output not yet acknowledged (bounded by the flow-control mark, 512 KB),
+and its reader waits while no connection is attached, as it does when the window falls behind. The
+page counts what it has received and finished with, and `termAttach` sends those counts; the core
+resends from there. Acknowledgements sent over the lost connection never arrived, so the page's
+count of what it finished with replaces them.
+
+**Cost:** a terminal whose page is gone for good (a renderer that died without closing its socket)
+stays in the core, and so does its program, until Gako quits. A program that writes while the
+Mac sleeps waits at the flow-control mark rather than running ahead.
+
 ## Combining marks: bound the variety, not the length
 
 **Decision:** a run of more than 4 combining marks on one character is dropped whole.
