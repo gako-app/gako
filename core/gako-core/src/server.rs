@@ -366,13 +366,14 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                             let text = if m == "fileRead" || m == "gitFile" {
                                 tokio::task::spawn_blocking(move || reply.to_string())
                                     .await
-                                    .ok()
+                                    .unwrap_or_else(|e| {
+                                        json!({"t": "res", "id": id, "e": format!("{e}")})
+                                            .to_string()
+                                    })
                             } else {
-                                Some(reply.to_string())
+                                reply.to_string()
                             };
-                            if let Some(text) = text {
-                                let _ = tx.send(Event::Text(text));
-                            }
+                            let _ = tx.send(Event::Text(text));
                         });
                     }
                     ClientMessage::Req { id, m, p } => {

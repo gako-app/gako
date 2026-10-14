@@ -54,17 +54,24 @@ impl Git {
     /// `git <args>` in `dir` for a request from the user, returning stdout. Fails on a non-zero
     /// exit, with git's stderr.
     pub async fn run(&self, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
-        self.run_with(&self.interactive, dir, args).await
+        Ok(self.run_with(&self.interactive, dir, args).await?.0)
     }
 
-    /// Like `run`, for the background status scans.
-    async fn run_background(&self, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
+    /// Like `run`, for the background status scans; also returns how long the process itself
+    /// took, without the wait for a permit.
+    async fn run_background(&self, dir: &Path, args: &[&str]) -> Result<(Vec<u8>, Duration)> {
         self.run_with(&self.permits, dir, args).await
     }
 
-    async fn run_with(&self, pool: &Semaphore, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
-        let _permit = pool.acquire().await?;
+    async fn run_with(
+        &self,
+        pool: &Semaphore,
+        dir: &Path,
+        args: &[&str],
+    ) -> Result<(Vec<u8>, Duration)> {
         crate::shellenv::ready().await;
+        let _permit = pool.acquire().await?;
+        let started = std::time::Instant::now();
         let mut cmd = Command::new("git");
         cmd.args(args)
             .current_dir(dir)
@@ -95,19 +102,20 @@ impl Git {
                 String::from_utf8_lossy(&out.stderr).trim()
             );
         }
-        Ok(out.stdout)
+        Ok((out.stdout, started.elapsed()))
     }
 }
 
 /// A repo's status, plus the operation in progress. Untracked entries for nested repos (which git
-/// shows as untracked folders) are dropped: they're repos of their own.
+/// shows as untracked folders) are dropped: they're repos of their own. The duration is the
+/// `git status` process alone, not the wait for a permit; `None` when git didn't run to the end.
 pub async fn status(
     git: &Git,
     repo: &Repo,
     nested: &[PathBuf],
     untracked_limit: usize,
-) -> Result<RepoStatus> {
-    let out = git
+) -> (Result<RepoStatus>, Option<Duration>) {
+    let (out, took) = match git
         .run_background(
             &repo.root,
             &[
@@ -118,8 +126,19 @@ pub async fn status(
                 "--untracked-files=all",
             ],
         )
-        .await?;
-    let mut st = status::parse(&out, untracked_limit);
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return (Err(e), None),
+    };
+    (
+        Ok(parse_status(repo, nested, untracked_limit, &out)),
+        Some(took),
+    )
+}
+
+fn parse_status(repo: &Repo, nested: &[PathBuf], untracked_limit: usize, out: &[u8]) -> RepoStatus {
+    let mut st = status::parse(out, untracked_limit);
     let nested_rel: Vec<String> = nested
         .iter()
         .filter_map(|n| n.strip_prefix(&repo.root).ok())
@@ -131,10 +150,10 @@ pub async fn status(
                 .iter()
                 .any(|n| e.path.trim_end_matches('/') == n || e.path.starts_with(&format!("{n}/"))))
     });
-    Ok(RepoStatus {
+    RepoStatus {
         status: st,
         operation: discover::operation(&repo.git_dir),
-    })
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]

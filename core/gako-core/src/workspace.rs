@@ -237,8 +237,13 @@ impl Workspace {
 
     /// Whether a path lies in a folder the scan ignores (`node_modules` by default). Builds and
     /// installs write thousands of files there, none of which is a change to look at.
-    fn in_ignored_folder(&self, path: &Path) -> bool {
-        let Ok(rel) = path.strip_prefix(&self.base) else {
+    /// `roots` is `self.roots()`, taken once by the caller: it canonicalizes the extra folders.
+    fn in_ignored_folder(&self, roots: &[PathBuf], path: &Path) -> bool {
+        // Relative to the root it lies in (the base or an extra folder), as discovery does.
+        let Some(rel) = roots
+            .iter()
+            .find_map(|r| path.strip_prefix(r).ok().map(Path::to_path_buf))
+        else {
             return false;
         };
         rel.components().any(|c| {
@@ -251,6 +256,7 @@ impl Workspace {
         // The explorer still hears about every folder (one may be open); the rest of the work,
         // which costs a status scan and an index update, skips the ignored ones.
         let listed: Vec<String> = {
+            let mut seen = std::collections::HashSet::new();
             let mut v: Vec<String> = Vec::new();
             let inner = self.inner.lock().unwrap();
             for p in all_paths {
@@ -259,35 +265,34 @@ impl Workspace {
                 }
                 if let Some(parent) = p.parent() {
                     let d = parent.to_string_lossy().into_owned();
-                    if !v.contains(&d) {
+                    if seen.insert(d.clone()) {
                         v.push(d);
                     }
                 }
             }
             v
         };
+        let roots = self.roots();
         let paths: Vec<PathBuf> = all_paths
             .iter()
-            .filter(|p| !self.in_ignored_folder(p))
+            .filter(|p| !self.in_ignored_folder(&roots, p))
             .cloned()
             .collect();
         let paths = &paths[..];
-        // Folders whose listing may have changed, for the file explorer (git dirs aside).
-        let mut dirs: Vec<String> = Vec::new();
-        {
-            let inner = self.inner.lock().unwrap();
-            for p in paths {
-                if inner.repos.iter().any(|r| p.starts_with(&r.git_dir)) {
-                    continue;
-                }
-                if let Some(parent) = p.parent() {
-                    let d = parent.to_string_lossy().into_owned();
-                    if !dirs.contains(&d) {
-                        dirs.push(d);
-                    }
-                }
-            }
-        }
+        // Folders whose listing may have changed, for the file explorer (git dirs aside), minus
+        // the ignored ones: those are `listed` folders that also hold a path that is kept.
+        let dirs: Vec<String> = {
+            let kept: std::collections::HashSet<String> = paths
+                .iter()
+                .filter_map(|p| p.parent())
+                .map(|d| d.to_string_lossy().into_owned())
+                .collect();
+            listed
+                .iter()
+                .filter(|d| kept.contains(*d))
+                .cloned()
+                .collect()
+        };
         if !listed.is_empty() {
             // Cheap, so it covers every folder: the list is rebuilt when next asked for.
             self.inner.lock().unwrap().files = None;
@@ -363,10 +368,12 @@ impl Workspace {
                 (repo, nested)
             };
             let started = Instant::now();
-            let result =
+            let (result, ran) =
                 git::status(&self.git, &repo, &nested, self.settings.untracked_limit).await;
-            let took = started.elapsed();
-            let ms = took.as_secs_f64() * 1000.0;
+            // The backoff follows git's own time, not the wait for a permit: when many repos
+            // change at once, queueing says nothing about how costly this one is.
+            let took = ran.unwrap_or_else(|| started.elapsed());
+            let ms = started.elapsed().as_secs_f64() * 1000.0;
             let value = match result {
                 Ok(st) => json!({"status": st}),
                 Err(e) => json!({"error": format!("{e:#}")}),
@@ -554,5 +561,33 @@ impl Workspace {
 
     fn send(&self, msg: Value) {
         let _ = self.tx.send(Event::Text(msg.to_string()));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Folders in `scanIgnore` are skipped under the base and under an extra folder alike.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn ignored_folders_under_every_root() {
+        let base = tempfile::tempdir().unwrap();
+        let extra = tempfile::tempdir().unwrap();
+        let settings = Settings {
+            extra_folders: vec![extra.path().to_path_buf()],
+            ..Settings::default()
+        };
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let ws = Workspace::open(base.path().to_path_buf(), settings, tx).unwrap();
+        let base = ws.base.clone();
+        let extra = crate::files::canonical(extra.path()).unwrap();
+        let roots = ws.roots();
+
+        assert!(ws.in_ignored_folder(&roots, &base.join("app/node_modules/x/index.js")));
+        assert!(ws.in_ignored_folder(&roots, &extra.join("lib/node_modules/y.js")));
+        assert!(!ws.in_ignored_folder(&roots, &base.join("app/src/index.js")));
+        assert!(!ws.in_ignored_folder(&roots, &extra.join("lib/src/y.js")));
+        // Outside every root: not this workspace's business.
+        assert!(!ws.in_ignored_folder(&roots, Path::new("/elsewhere/node_modules/z.js")));
     }
 }

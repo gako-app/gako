@@ -62,10 +62,11 @@ status refresh once it has been quiet for `debounceMs` (150 ms by default):
   repository, is watched as well.
 - Changes inside a folder `scanIgnore` names (`node_modules` by default) trigger no status scan and
   no symbol update: a build or install writes thousands of files there. The Files view still hears
-  about them.
+  about them. That holds under the extra folders as well.
 - While files keep changing, a repository's scans are spaced: the next starts no sooner than half
-  a second after the last one started, and no sooner than three times its duration, so a slow
-  repository doesn't keep `git` busy. The status is then a moment late, never wrong.
+  a second after the last one started, and no sooner than three times its duration (the
+  `git status` process itself, not the wait for a free slot, so a burst of changes in many
+  repositories doesn't stretch the spacing), so a slow repository doesn't keep `git` busy. The status is then a moment late, never wrong.
 - On macOS, file events name only the folder that changed, so nothing relies on per-file detail.
 - **The first change after a quiet spell can show up late on macOS:** FSEvents itself delivers it
   0.4–0.6 s after the change, where later changes take about 0.25 s end to end. Set

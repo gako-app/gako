@@ -87,7 +87,7 @@ async fn nested_repos_are_not_untracked_folders() {
     init(&base.join("services/auth"));
     std::fs::write(base.join("notes.txt"), "untracked").unwrap();
     let nested = vec![base.join("services/auth")];
-    let st = status(&git(), &repo(&base), &nested, 100).await.unwrap();
+    let st = status(&git(), &repo(&base), &nested, 100).await.0.unwrap();
     let paths: Vec<_> = st.status.entries.iter().map(|e| e.path.as_str()).collect();
     assert_eq!(paths, vec!["README.md", "notes.txt"]);
     assert_eq!(st.status.oid, None, "unborn");
@@ -103,14 +103,14 @@ async fn contents_log_and_commit_details() {
     let g = git();
 
     sh_git(&dir, &["add", "a.txt"]);
-    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    let st = status(&g, &repo(&dir), &[], 100).await.0.unwrap().status;
     assert_eq!(st.entries[0].index, Some(Change::Added));
     sh_git(&dir, &["commit", "-q", "-m", "First\n\nWith a body."]);
     std::fs::write(dir.join("a.txt"), "two\n").unwrap();
     sh_git(&dir, &["add", "a.txt"]);
     std::fs::write(dir.join("a.txt"), "three\n").unwrap();
 
-    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    let st = status(&g, &repo(&dir), &[], 100).await.0.unwrap().status;
     assert_eq!(
         (st.entries[0].index, st.entries[0].worktree),
         (Some(Change::Modified), Some(Change::Modified))
@@ -196,7 +196,7 @@ async fn merge_conflict_and_rename() {
         .output();
     sh_git(&dir, &["mv", "old name.txt", "new name.txt"]);
 
-    let st = status(&git(), &repo(&dir), &[], 100).await.unwrap();
+    let st = status(&git(), &repo(&dir), &[], 100).await.0.unwrap();
     assert_eq!(st.operation, Some(Operation::Merge));
     let f = st
         .status
@@ -236,12 +236,20 @@ async fn detached_head_and_ahead_behind() {
     sh_git(&upstream, &["commit", "-q", "-m", "3"]);
     sh_git(&down, &["fetch", "-q"]);
 
-    let st = status(&git(), &repo(&down), &[], 100).await.unwrap().status;
+    let st = status(&git(), &repo(&down), &[], 100)
+        .await
+        .0
+        .unwrap()
+        .status;
     assert_eq!((st.ahead, st.behind), (1, 1));
     assert_eq!(st.upstream.as_deref(), Some("origin/main"));
 
     sh_git(&down, &["checkout", "-q", "--detach", "HEAD~1"]);
-    let st = status(&git(), &repo(&down), &[], 100).await.unwrap().status;
+    let st = status(&git(), &repo(&down), &[], 100)
+        .await
+        .0
+        .unwrap()
+        .status;
     assert_eq!(st.branch, None);
     assert!(st.oid.is_some());
 }
@@ -265,10 +273,10 @@ async fn fetch_pull_and_push_against_a_remote() {
     sh_git(&a, &["push", "-q", "-u", "origin", "HEAD"]);
     std::fs::write(a.join("f"), "2").unwrap();
     sh_git(&a, &["commit", "-q", "-am", "two"]);
-    let s = status(&git(), &repo(&a), &[], 100).await.unwrap();
+    let s = status(&git(), &repo(&a), &[], 100).await.0.unwrap();
     assert_eq!(s.status.ahead, 1);
     remote(&a, "push").await.unwrap();
-    let s = status(&git(), &repo(&a), &[], 100).await.unwrap();
+    let s = status(&git(), &repo(&a), &[], 100).await.0.unwrap();
     assert_eq!(s.status.ahead, 0);
 
     sh_git(&b, &["fetch", "-q"]);
@@ -278,7 +286,7 @@ async fn fetch_pull_and_push_against_a_remote() {
     );
     sh_git(&b, &["reset", "-q", "--hard", "HEAD~1"]);
     remote(&b, "fetch").await.unwrap();
-    let s = status(&git(), &repo(&b), &[], 100).await.unwrap();
+    let s = status(&git(), &repo(&b), &[], 100).await.0.unwrap();
     assert_eq!(s.status.behind, 1);
     remote(&b, "pull").await.unwrap();
     assert_eq!(std::fs::read_to_string(b.join("f")).unwrap(), "2");
@@ -353,7 +361,7 @@ async fn revert_each_kind_of_change() {
             .await
             .is_err()
     );
-    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    let st = status(&g, &repo(&dir), &[], 100).await.0.unwrap().status;
     assert!(st.entries.is_empty(), "{:?}", st.entries);
 }
 
@@ -384,10 +392,10 @@ async fn list_and_switch_branches() {
     );
 
     switch(&g, &dir, "local-only", false).await.unwrap();
-    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    let st = status(&g, &repo(&dir), &[], 100).await.0.unwrap().status;
     assert_eq!(st.branch.as_deref(), Some("local-only"));
     switch(&g, &dir, "origin/feature", true).await.unwrap();
-    let st = status(&g, &repo(&dir), &[], 100).await.unwrap().status;
+    let st = status(&g, &repo(&dir), &[], 100).await.0.unwrap().status;
     assert_eq!(
         (st.branch.as_deref(), st.upstream.as_deref()),
         (Some("feature"), Some("origin/feature"))

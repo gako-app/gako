@@ -28,6 +28,7 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 static ENV: OnceLock<HashMap<String, String>> = OnceLock::new();
+static READY: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
 static STARTED: std::sync::Once = std::sync::Once::new();
 const TIMEOUT: Duration = Duration::from_secs(5);
 const MARKER: &str = "__GAKO_SHELL_ENV__";
@@ -61,8 +62,13 @@ pub fn get() -> &'static HashMap<String, String> {
 /// thread, and only if the environment isn't resolved yet. Call it before code that reaches `get`.
 pub async fn ready() {
     if ENV.get().is_none() {
-        start();
-        let _ = tokio::task::spawn_blocking(get).await;
+        // One waiting thread for all callers, however many there are while it resolves.
+        READY
+            .get_or_init(|| async {
+                start();
+                let _ = tokio::task::spawn_blocking(get).await;
+            })
+            .await;
     }
 }
 

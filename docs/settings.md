@@ -65,7 +65,7 @@ per-folder settings files.
 | `scanDepth` | `2` | How many folder levels below the base folder to look for repositories. |
 | `scanIgnore` | `["node_modules"]` | Folder names never looked into. |
 | `extraFolders` | `[]` | More folders to look for repositories in, to the same depth. |
-| `maxGitProcesses` | `4` | How many `git` processes may run at once. |
+| `maxGitProcesses` | `4` | How many background status scans may run at once. What you ask for (a file at a commit, the log, a branch switch) has a pool of its own, so 2 to 4 more `git` processes can run besides these. |
 | `debounceMs` | `150` | How long a repository must be quiet after a change before its status is refreshed, in milliseconds. |
 | `untrackedLimit` | `2000` | Untracked files listed per repository; the rest are counted. |
 | `gitTimeoutSecs` | `30` | Seconds before a `git` command is given up on. |
