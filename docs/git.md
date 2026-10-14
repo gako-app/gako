@@ -17,6 +17,12 @@ When a base folder opens, the core walks it for repositories:
 - The base folder may be a repository itself. Its status never lists the repositories nested in it
   as untracked folders, whether its `.gitignore` excludes them or not.
 
+On a big layout or a slow disk this takes a while, and so do the first status scans and the
+symbol index that follow, so the window says what it is waiting for rather than look stuck: a
+line over the repositories reads "Finding repositories…", then "Scanning repositories… 12 of 27"
+with a bar, and the status bar shows "Indexing symbols…" until the index is ready. The line fades
+in after 0.4 s, so a quick open doesn't flash it.
+
 ## Status
 
 Each repository's status comes from `git status --porcelain=v2 -z --branch --untracked-files=all`,

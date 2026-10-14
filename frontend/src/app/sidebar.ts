@@ -119,6 +119,15 @@ export class Sidebar {
   selected: string | null = null;
   repos: Repo[] = [];
   baseName = '';
+  /** What the repositories are waiting for: the core finding them, or their first status scans.
+   * Null once that's done. */
+  phase: 'finding' | 'scanning' | null = null;
+  private scanText = h('span', { class: 'scan-text' });
+  private scanFill = h('div', { class: 'scan-fill' });
+  /** Built once and updated in place, so its spinner and bar run on undisturbed as statuses arrive. */
+  private scanBar = h('div', { class: 'scan-progress', role: 'status' },
+    h('div', { class: 'scan-line' }, icon('busy'), this.scanText),
+    h('div', { class: 'scan-track' }, this.scanFill));
   explorer: Explorer | null = null;
   search: SearchView | null = null;
 
@@ -314,6 +323,18 @@ export class Sidebar {
     }
   }
 
+  /** The progress line over the repos while they are found and scanned: how many of them have a
+   * status yet. It fades in a moment late, so a quick scan doesn't flash it. */
+  private progress(): HTMLElement {
+    const total = this.repos.length;
+    const done = this.repos.filter((r) => r.status || r.error).length;
+    const finding = this.phase === 'finding';
+    this.scanText.textContent = finding ? 'Finding repositories…' : `Scanning repositories… ${done} of ${total}`;
+    this.scanBar.classList.toggle('indeterminate', finding);
+    this.scanFill.style.width = finding || !total ? '' : `${(done / total) * 100}%`;
+    return this.scanBar;
+  }
+
   /** Atop the repos: Fetch all, and Pull all while any repo is behind, with how it's going. */
   /** A line over the repos while there's something to say: "Fetch all" or "Pull all" under way, or
    * how many repos are behind, ahead or diverged, with "Pull all" for the ones behind. ("Fetch all"
@@ -381,10 +402,13 @@ export class Sidebar {
           h('span', { class: 'spacer' }),
           this.repoActions(r))) : null));
     }
-    if (!changed.length && !clean.length) wanted.push(h('div', { class: 'empty dim' }, 'Looking for repositories…'));
-    else if (!changed.length) wanted.unshift(h('div', { class: 'empty dim' }, 'No changes in any repository.'));
+    if (!this.phase) {
+      if (!changed.length && !clean.length) wanted.push(h('div', { class: 'empty dim' }, 'No repositories found.'));
+      else if (!changed.length) wanted.unshift(h('div', { class: 'empty dim' }, 'No changes in any repository.'));
+    }
     const bar = this.reposBar();
     if (bar) wanted.unshift(bar);
+    if (this.phase) wanted.unshift(this.progress());
     // Move nodes only where the order changed.
     const current = [...this.list.children];
     if (current.length !== wanted.length || current.some((c, i) => c !== wanted[i])) {

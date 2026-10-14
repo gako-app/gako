@@ -85,6 +85,11 @@ class App {
   private goto: GoToFile;
   private nav: Navigator;
   private indexInfo = '';
+  /** The symbol index is being built (it is, from the folder opening to `indexReady`). */
+  private indexing = false;
+  /** This folder's `scanDone` and `indexReady` have arrived, possibly before the answer to the open. */
+  private scanFinished = false;
+  private indexed = false;
   private historyRepo: Repo | null = null;
   private editors: Editors;
   private docs: DocTabs;
@@ -201,12 +206,17 @@ class App {
       else if (ev.t === 'repos') this.onRepos(ev.repos as RepoInfo[]);
       else if (ev.t === 'settings') this.onSettings(ev.settings as Settings | undefined, ev.error);
       else if (ev.t === 'indexReady') {
+        this.indexed = true;
+        this.indexing = false;
         this.indexInfo = `${ev.symbols.toLocaleString()} symbols indexed`;
         this.log('indexReady', { files: ev.files, symbols: ev.symbols, ms: ev.ms });
         this.renderStatusbar();
       } else if (ev.t === 'scanDone') {
         this.onScanned?.();
         this.onScanned = null;
+        this.scanFinished = true;
+        this.sidebar.phase = null;
+        this.sidebar.render();
         // From asking for the workspace to every repo's status: discovery and the first scan.
         const sinceOpen = performance.now() - this.openedAt;
         this.scanInfo = `${ev.repos.toLocaleString()} repositor${ev.repos === 1 ? 'y' : 'ies'} scanned (${Math.round(sinceOpen).toLocaleString()} ms)`;
@@ -285,6 +295,18 @@ class App {
     try {
       this.openedAt = performance.now();
       this.scanned = new Promise((resolve) => { this.onScanned = resolve; });
+      // The core answers once it has found the repositories, which takes a while on a big layout
+      // or a slow disk. The core's events for this folder can arrive before that answer.
+      this.scanFinished = false;
+      this.indexed = false;
+      this.indexInfo = '';
+      this.indexing = false;
+      if (!again) {
+        this.scanInfo = 'Finding repositories…';
+        this.sidebar.phase = 'finding';
+        this.sidebar.render();
+        this.renderStatusbar();
+      }
       const opened = await this.git.open(base);
       this.opened = opened;
       this.settingsError = null;
@@ -295,7 +317,11 @@ class App {
       this.search.base = opened.base;
       this.viewer.configure(opened.settings);
       this.diff.configure(opened.settings);
-      this.scanInfo = 'Scanning…';
+      if (!this.scanFinished) {
+        this.scanInfo = 'Scanning…';
+        this.sidebar.phase = 'scanning';
+      }
+      this.indexing = !this.indexed;
       this.repos = opened.repos.map((r) => ({ ...r }));
       for (const s of opened.statuses) this.onStatus(s.repo, 'status' in s ? s.status : undefined, 'error' in s ? s.error : undefined);
       this.sidebar.repos = this.repos;
@@ -322,6 +348,10 @@ class App {
       else cover?.();
     } catch (e) {
       cover?.();
+      this.sidebar.phase = null;
+      if (this.scanInfo === 'Finding repositories…') this.scanInfo = '';
+      this.sidebar.render();
+      this.renderStatusbar();
       const message = String((e as Error).message ?? e);
       if (again) {
         this.toast(message);
@@ -784,11 +814,14 @@ class App {
   }
 
   private renderStatusbar(): void {
-    const scanning = this.scanInfo === 'Scanning…';
+    const scanning = this.scanInfo === 'Scanning…' || this.scanInfo === 'Finding repositories…';
     fill(this.statusbar,
       this.opened ? h('span', { class: 'status-item' }, icon('folder'), h('span', { class: 'status-text' }, this.opened.base)) : null,
       this.scanInfo ? h('span', { class: `status-item dim ${scanning ? 'spinning' : ''}` }, icon(scanning ? 'busy' : 'repos'), h('span', { class: 'status-text' }, this.scanInfo)) : null,
-      this.indexInfo ? h('span', { class: 'status-item dim' }, icon('symbols'), h('span', { class: 'status-text' }, this.indexInfo)) : null,
+      this.indexInfo || this.indexing
+        ? h('span', { class: `status-item dim ${this.indexing ? 'spinning' : ''}` }, icon(this.indexing ? 'busy' : 'symbols'),
+          h('span', { class: 'status-text' }, this.indexing ? 'Indexing symbols…' : this.indexInfo))
+        : null,
       h('span', { class: 'spacer' }),
       this.settingsError ? h('button', { class: 'status-button warning', 'data-tip': this.settingsError, onclick: () => this.showSettings() },
         icon('warning'), 'Settings file has an error') : null,
