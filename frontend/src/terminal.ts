@@ -142,6 +142,15 @@ export class TerminalTab {
     }
     this.copyOnSelect = !!opts.copyOnSelect;
     this.term.attachCustomKeyEventHandler((e) => {
+      // Codex on Windows never sees Ctrl+J as a key: ConPTY turns the raw LF into an Enter event
+      // (Windows Terminal avoids that with win32-input-mode, which xterm.js lacks). Alt+Enter
+      // (ESC CR) survives and Codex takes it as a newline.
+      if (platform === 'windows' && this.isCodex() && e.type === 'keydown' && e.key.toLowerCase() === 'j'
+        && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        this.term.input('\x1b\r');
+        return false;
+      }
       const action = clipboardKey(e, platform, this.term.hasSelection());
       if (!action) return true;
       e.preventDefault();
@@ -171,6 +180,11 @@ export class TerminalTab {
       this.resizeObserver = new ResizeObserver(() => this.refit());
       this.resizeObserver.observe(this.el);
     }
+  }
+
+  private isCodex(): boolean {
+    const exe = this.opts.cmd?.[0]?.split(/[\\/]/).pop()?.toLowerCase();
+    return exe === 'codex' || exe === 'codex.exe' || exe === 'codex.cmd';
   }
 
   /** Starts the program. With a fitted terminal, show it first so it starts at the right size. */
