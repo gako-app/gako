@@ -17,7 +17,7 @@
 //! Its limit (docs/navigation.md): this resolves by name, not by binding. It's built in the
 //! background when a workspace opens and kept current from the watcher's change events.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::SystemTime;
@@ -196,6 +196,12 @@ pub struct Index {
     files: HashMap<PathBuf, FileEntry>,
 }
 
+/// The result of `Index::prepare`: files to forget and files to (re)index.
+pub struct Update {
+    removed: Vec<PathBuf>,
+    updated: Vec<(PathBuf, FileEntry)>,
+}
+
 fn modified(path: &Path) -> Option<SystemTime> {
     let m = std::fs::metadata(path).ok()?;
     (m.is_file() && m.len() <= MAX_FILE)
@@ -237,13 +243,21 @@ impl Index {
         }
     }
 
-    /// Re-reads the supported files in `dirs` that changed, and forgets those that went away.
-    /// `keep` decides which files belong (ignored files and other workspaces' files don't).
-    pub fn update(&mut self, dirs: &[PathBuf], keep: &dyn Fn(&Path) -> bool) -> usize {
-        let mut changed = 0;
-        for dir in dirs {
-            self.files
-                .retain(|p, _| !(p.parent() == Some(dir.as_path()) && !p.exists()));
+    /// Works out what re-reading `dirs` changes, without modifying the index: the supported files
+    /// that changed or are new, and those that went away. `keep` decides which files belong
+    /// (ignored files and other workspaces' files don't). All the disk reading and parsing happens
+    /// here, so a caller holding a read lock never makes readers wait for a writer that waits on
+    /// the disk; `apply` is quick.
+    pub fn prepare(&self, dirs: &[PathBuf], keep: &dyn Fn(&Path) -> bool) -> Update {
+        let dirs: HashSet<&Path> = dirs.iter().map(PathBuf::as_path).collect();
+        let removed = self
+            .files
+            .keys()
+            .filter(|p| p.parent().is_some_and(|d| dirs.contains(d)) && !p.exists())
+            .cloned()
+            .collect();
+        let mut updated = Vec::new();
+        for dir in &dirs {
             let Ok(entries) = std::fs::read_dir(dir) else {
                 continue;
             };
@@ -257,12 +271,28 @@ impl Index {
                     continue;
                 }
                 if let Some(entry) = parse_file(&p) {
-                    self.files.insert(p, entry);
-                    changed += 1;
+                    updated.push((p, entry));
                 }
             }
         }
+        Update { removed, updated }
+    }
+
+    /// Applies what `prepare` found; returns how many files were (re)indexed.
+    pub fn apply(&mut self, update: Update) -> usize {
+        for p in &update.removed {
+            self.files.remove(p);
+        }
+        let changed = update.updated.len();
+        self.files.extend(update.updated);
         changed
+    }
+
+    /// `prepare` and `apply` in one step.
+    #[cfg(test)]
+    pub fn update(&mut self, dirs: &[PathBuf], keep: &dyn Fn(&Path) -> bool) -> usize {
+        let update = self.prepare(dirs, keep);
+        self.apply(update)
     }
 
     pub fn counts(&self) -> (usize, usize) {

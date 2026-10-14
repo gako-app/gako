@@ -33,6 +33,10 @@ use crate::git::{self, Git, Repo, RepoKind, watch};
 use crate::pty::Event;
 use crate::settings::Settings;
 
+/// The least time between the start of a status scan and the start of the next one for the same
+/// repo, when files changed in between.
+const MIN_RESCAN_GAP: Duration = Duration::from_millis(500);
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RepoInfo {
@@ -68,6 +72,10 @@ pub struct Workspace {
     pub git: Git,
     tx: UnboundedSender<Event>,
     inner: Mutex<Inner>,
+    /// Held while repos are discovered again, so two rediscoveries never overwrite each other.
+    rediscovering: Mutex<()>,
+    /// Held while the symbol index is brought up to date, so the update never waits for another.
+    indexing: Mutex<()>,
 }
 
 impl Workspace {
@@ -97,6 +105,8 @@ impl Workspace {
                 states: Vec::new(),
                 watcher: None,
             }),
+            rediscovering: Mutex::new(()),
+            indexing: Mutex::new(()),
         });
         ws.rediscover(true)?;
         ws.clone().build_index();
@@ -155,6 +165,7 @@ impl Workspace {
 
     /// Finds repos again, restarts the watcher, and refreshes repos that are new.
     fn rediscover(self: &Arc<Self>, first: bool) -> Result<()> {
+        let _only_one = self.rediscovering.lock().unwrap();
         let roots = self.roots();
         let repos =
             git::discover::discover(&roots, self.settings.scan_depth, &self.settings.scan_ignore);
@@ -224,7 +235,43 @@ impl Workspace {
         Ok(())
     }
 
-    fn changed(self: &Arc<Self>, paths: &[PathBuf]) {
+    /// Whether a path lies in a folder the scan ignores (`node_modules` by default). Builds and
+    /// installs write thousands of files there, none of which is a change to look at.
+    fn in_ignored_folder(&self, path: &Path) -> bool {
+        let Ok(rel) = path.strip_prefix(&self.base) else {
+            return false;
+        };
+        rel.components().any(|c| {
+            let name = c.as_os_str().to_string_lossy();
+            self.settings.scan_ignore.iter().any(|s| *s == name)
+        })
+    }
+
+    fn changed(self: &Arc<Self>, all_paths: &[PathBuf]) {
+        // The explorer still hears about every folder (one may be open); the rest of the work,
+        // which costs a status scan and an index update, skips the ignored ones.
+        let listed: Vec<String> = {
+            let mut v: Vec<String> = Vec::new();
+            let inner = self.inner.lock().unwrap();
+            for p in all_paths {
+                if inner.repos.iter().any(|r| p.starts_with(&r.git_dir)) {
+                    continue;
+                }
+                if let Some(parent) = p.parent() {
+                    let d = parent.to_string_lossy().into_owned();
+                    if !v.contains(&d) {
+                        v.push(d);
+                    }
+                }
+            }
+            v
+        };
+        let paths: Vec<PathBuf> = all_paths
+            .iter()
+            .filter(|p| !self.in_ignored_folder(p))
+            .cloned()
+            .collect();
+        let paths = &paths[..];
         // Folders whose listing may have changed, for the file explorer (git dirs aside).
         let mut dirs: Vec<String> = Vec::new();
         {
@@ -241,9 +288,12 @@ impl Workspace {
                 }
             }
         }
-        if !dirs.is_empty() {
+        if !listed.is_empty() {
+            // Cheap, so it covers every folder: the list is rebuilt when next asked for.
             self.inner.lock().unwrap().files = None;
-            self.send(json!({"t": "filesChanged", "dirs": dirs}));
+            self.send(json!({"t": "filesChanged", "dirs": listed}));
+        }
+        if !dirs.is_empty() {
             self.update_index(dirs.iter().map(PathBuf::from).collect());
         }
         let (changes, roots) = {
@@ -265,10 +315,15 @@ impl Workspace {
                 changes.rediscover
             );
         }
-        if changes.rediscover
-            && let Err(e) = self.rediscover(false)
-        {
-            eprintln!("gako-core: rediscovering repos: {e:#}");
+        if changes.rediscover {
+            // Walking the folders and starting a new watcher take a while on a big workspace:
+            // not on an async worker. New repos are refreshed by the rediscovery itself.
+            let ws = self.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Err(e) = ws.rediscover(false) {
+                    eprintln!("gako-core: rediscovering repos: {e:#}");
+                }
+            });
         }
         for root in roots {
             let ws = self.clone();
@@ -310,7 +365,8 @@ impl Workspace {
             let started = Instant::now();
             let result =
                 git::status(&self.git, &repo, &nested, self.settings.untracked_limit).await;
-            let ms = started.elapsed().as_secs_f64() * 1000.0;
+            let took = started.elapsed();
+            let ms = took.as_secs_f64() * 1000.0;
             let value = match result {
                 Ok(st) => json!({"status": st}),
                 Err(e) => json!({"error": format!("{e:#}")}),
@@ -336,16 +392,26 @@ impl Workspace {
                 // an open diff in this repo has to re-read its file.
                 self.send(json!({"t": "repoTouched", "repo": repo_id}));
             }
+            {
+                let mut inner = self.inner.lock().unwrap();
+                let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
+                    return;
+                };
+                if !inner.states[i].dirty {
+                    inner.states[i].running = false;
+                    return;
+                }
+            }
+            // Files kept changing during the scan (a build, an install, an agent writing). The
+            // next scan waits so that scans take up a third of the time at most: the status is a
+            // moment late while it churns, and a slow repo doesn't keep git busy. Changes during
+            // the wait are covered by that scan.
+            tokio::time::sleep((took * 2).max(MIN_RESCAN_GAP.saturating_sub(took))).await;
             let mut inner = self.inner.lock().unwrap();
             let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
                 return;
             };
-            if inner.states[i].dirty {
-                inner.states[i].dirty = false;
-            } else {
-                inner.states[i].running = false;
-                return;
-            }
+            inner.states[i].dirty = false;
         }
     }
 
@@ -429,7 +495,9 @@ impl Workspace {
         let Some(index) = self.inner.lock().unwrap().symbols.clone() else {
             return;
         };
+        let ws = self.clone();
         tokio::task::spawn_blocking(move || {
+            let _only_one = ws.indexing.lock().unwrap();
             let mut keep = std::collections::HashSet::new();
             for d in &dirs {
                 if let Ok(listing) = crate::files::list(d) {
@@ -442,7 +510,10 @@ impl Workspace {
                     );
                 }
             }
-            index.write().unwrap().update(&dirs, &|p| keep.contains(p));
+            // Reading and parsing happen under the read lock, which searches don't wait for; the
+            // write lock is held only to swap the results in.
+            let update = index.read().unwrap().prepare(&dirs, &|p| keep.contains(p));
+            index.write().unwrap().apply(update);
         });
     }
 

@@ -34,7 +34,11 @@ pub use status::Status;
 /// Runs `git` with a limit on how many run at once and a timeout.
 #[derive(Clone)]
 pub struct Git {
+    /// For the status scans the file watcher triggers: they can pile up while files keep changing.
     permits: Arc<Semaphore>,
+    /// For what the user asked for (a file's content, the log, a branch switch): never queued
+    /// behind the scans.
+    interactive: Arc<Semaphore>,
     timeout: Duration,
 }
 
@@ -42,13 +46,25 @@ impl Git {
     pub fn new(max_processes: usize, timeout: Duration) -> Git {
         Git {
             permits: Arc::new(Semaphore::new(max_processes.max(1))),
+            interactive: Arc::new(Semaphore::new(max_processes.clamp(2, 4))),
             timeout,
         }
     }
 
-    /// `git <args>` in `dir`, returning stdout. Fails on a non-zero exit, with git's stderr.
+    /// `git <args>` in `dir` for a request from the user, returning stdout. Fails on a non-zero
+    /// exit, with git's stderr.
     pub async fn run(&self, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
-        let _permit = self.permits.acquire().await?;
+        self.run_with(&self.interactive, dir, args).await
+    }
+
+    /// Like `run`, for the background status scans.
+    async fn run_background(&self, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
+        self.run_with(&self.permits, dir, args).await
+    }
+
+    async fn run_with(&self, pool: &Semaphore, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
+        let _permit = pool.acquire().await?;
+        crate::shellenv::ready().await;
         let mut cmd = Command::new("git");
         cmd.args(args)
             .current_dir(dir)
@@ -92,7 +108,7 @@ pub async fn status(
     untracked_limit: usize,
 ) -> Result<RepoStatus> {
     let out = git
-        .run(
+        .run_background(
             &repo.root,
             &[
                 "status",
@@ -164,7 +180,7 @@ pub async fn file(
             }
         }
     };
-    Ok(Some(FileContent::new(&bytes, limit, raw)))
+    Ok(Some(FileContent::new_off_thread(bytes, limit, raw).await))
 }
 
 fn is_missing(e: &anyhow::Error) -> bool {
@@ -190,6 +206,17 @@ pub struct FileContent {
 }
 
 impl FileContent {
+    /// `new`, on a blocking thread when the file is big enough for decoding (and encoding) it to
+    /// hold up an async worker.
+    pub async fn new_off_thread(bytes: Vec<u8>, limit: usize, raw: bool) -> FileContent {
+        if bytes.len() < 256 << 10 {
+            return FileContent::new(&bytes, limit, raw);
+        }
+        tokio::task::spawn_blocking(move || FileContent::new(&bytes, limit, raw))
+            .await
+            .expect("decoding a file")
+    }
+
     /// A file's content for the viewer: its text up to `limit` bytes, or, binary, only reported as
     /// binary. With `raw`, the bytes instead, unless they're over `limit` (then only reported).
     pub fn new(bytes: &[u8], limit: usize, raw: bool) -> FileContent {
@@ -364,6 +391,7 @@ pub async fn remote(repo: &Path, action: &str) -> Result<()> {
         "push" => &["push"],
         _ => bail!("unknown remote action {action}"),
     };
+    crate::shellenv::ready().await;
     let mut cmd = Command::new("git");
     cmd.args(args)
         .current_dir(repo)

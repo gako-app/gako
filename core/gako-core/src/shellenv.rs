@@ -57,6 +57,15 @@ pub fn get() -> &'static HashMap<String, String> {
     ENV.wait()
 }
 
+/// Waits for the environment without holding up an async worker: the wait happens on a blocking
+/// thread, and only if the environment isn't resolved yet. Call it before code that reaches `get`.
+pub async fn ready() {
+    if ENV.get().is_none() {
+        start();
+        let _ = tokio::task::spawn_blocking(get).await;
+    }
+}
+
 fn resolve() -> Option<HashMap<String, String>> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| {
         if cfg!(target_os = "macos") {

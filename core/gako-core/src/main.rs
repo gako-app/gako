@@ -92,7 +92,13 @@ fn main() -> Result<()> {
     )?);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
+        // Few, since the work is mostly waiting; but more than two, so a handful of slow requests
+        // can't leave the connection without a thread to run on.
+        .worker_threads(
+            std::thread::available_parallelism()
+                .map_or(4, |n| n.get())
+                .clamp(4, 8),
+        )
         .enable_all()
         .build()?;
 

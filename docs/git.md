@@ -43,7 +43,9 @@ Gako runs the `git` CLI, so a repository's own configuration applies: hooks, `co
 signing, credential helpers. Every `git` runs with:
 
 - a limit on how many run at once (`maxGitProcesses`, 4 by default), so a large layout doesn't
-  thrash;
+  thrash. The limit is for the status scans the watcher triggers; what you ask for (a file's
+  content at a commit, the log, a branch switch) has a pool of its own (2 to 4), so it is never
+  queued behind a scan;
 - a timeout (`gitTimeoutSecs`, 30 by default);
 - `GIT_TERMINAL_PROMPT=0`, so a missing credential fails instead of waiting for input nobody can
   give, and `GIT_OPTIONAL_LOCKS=0`, so a status refresh never holds the index lock an agent's
@@ -58,13 +60,22 @@ status refresh once it has been quiet for `debounceMs` (150 ms by default):
 - Changes in a repository's Git folder count too: a commit, a branch switch or a fetch from a
   terminal shows up like a file edit. A worktree's Git folder, which lives inside its main
   repository, is watched as well.
+- Changes inside a folder `scanIgnore` names (`node_modules` by default) trigger no status scan and
+  no symbol update: a build or install writes thousands of files there. The Files view still hears
+  about them.
+- While files keep changing, a repository's scans are spaced: the next starts no sooner than half
+  a second after the last one started, and no sooner than three times its duration, so a slow
+  repository doesn't keep `git` busy. The status is then a moment late, never wrong.
 - On macOS, file events name only the folder that changed, so nothing relies on per-file detail.
 - **The first change after a quiet spell can show up late on macOS:** FSEvents itself delivers it
   0.4–0.6 s after the change, where later changes take about 0.25 s end to end. Set
   `GAKO_DEBUG_WATCH=1` to see events as they arrive.
 
 The same events tell the Files view which folders to reload and the symbol index which files to
-parse again.
+parse again. The core keeps its runtime threads free for the connection: finding repositories
+again, reading or decoding big files, searching the symbol index and resolving paths all run on
+blocking threads, and the index is updated by reading and parsing under a read lock and taking
+the write lock only to swap the results in.
 
 ## Changed files
 
