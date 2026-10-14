@@ -6,6 +6,41 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.22.0] — 2026-10-14
+
+Terminals survive a lost connection, opening a big folder says what it is waiting for, and the core
+stays responsive while files change.
+
+### Added
+
+- While a folder opens, the sidebar says what Gako is waiting for: "Finding repositories…", then
+  "Scanning repositories… 12 of 27" with a bar, and the status bar shows "Indexing symbols…" until
+  the symbol index is ready. The line fades in after a moment, so a quick open doesn't flash it.
+- A progress cursor while a repository's branch list loads, which takes a moment in a repository
+  with many branches.
+
+### Changed
+
+- A terminal now belongs to the core: if the connection to the window is lost (macOS closes it
+  when the screen sleeps), the terminals keep running, and the window connects again by itself,
+  reopens the workspace and reattaches them with the output they missed. A message says while the
+  connection is lost.
+- `maxGitProcesses` limits the background status scans only; what you ask for (a file at a
+  commit, the log, a branch switch) has a pool of its own, 2 to 4 more, so it is never queued
+  behind a scan.
+- Changes inside the folders `scanIgnore` names (`node_modules` by default) no longer trigger a
+  status scan or a symbol update, under the extra folders as well.
+- While files keep changing, a repository's scans are spaced: at least half a second apart and
+  three times the duration of the `git status` itself, so a slow repository doesn't keep Git busy.
+
+### Fixed
+
+- The window no longer freezes every request at once when the disk, a lock or Git is slow: the
+  symbol index swaps in its updates without blocking searches, repositories are found again off the
+  async workers, and the core runs more worker threads.
+- Ctrl+J reaches Codex on Windows as a newline (sent as Alt+Enter, which ConPTY lets through).
+- A request whose reply couldn't be prepared now gets an error instead of waiting forever.
+
 ## [0.21.0] — 2026-10-10
 
 Packages to download for macOS, Windows and Linux, starting with this release, and a disk image
@@ -182,7 +217,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.21.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/gako-app/gako/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/gako-app/gako/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/gako-app/gako/compare/v0.11.0...v0.20.0
 [0.11.0]: https://github.com/gako-app/gako/compare/v0.10.0...v0.11.0
