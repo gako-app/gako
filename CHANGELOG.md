@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.22.1] — 2026-10-15
+
+A git command that hangs or a status scan that gets lost no longer leaves a repository showing an
+error for good, and a timeout says what happened.
+
 ### Changed
 
 - A git command that takes too long now says so in plain words ("Git didn't answer within 30
@@ -231,7 +236,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.22.1...HEAD
+[0.22.1]: https://github.com/gako-app/gako/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/gako-app/gako/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/gako-app/gako/compare/v0.20.0...v0.21.0
 [0.20.0]: https://github.com/gako-app/gako/compare/v0.11.0...v0.20.0
