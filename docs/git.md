@@ -52,7 +52,15 @@ signing, credential helpers. Every `git` runs with:
   thrash. The limit is for the status scans the watcher triggers; what you ask for (a file's
   content at a commit, the log, a branch switch) has a pool of its own (2 to 4), so it is never
   queued behind a scan;
-- a timeout (`gitTimeoutSecs`, 30 by default);
+- a timeout (`gitTimeoutSecs`, 30 by default) on the process: once git has exited, Gako waits two
+  more seconds for its output and then goes on with what it got, since a program git started can
+  keep the pipes open (the core logs when that happens). A timeout is shown as an explanation, not
+  as git's command line;
+- a limit of five minutes on the wait for a status scan's git, a free slot included, so nothing in
+  a scan can leave it hanging for good. A failed scan is tried again on its own, after 10, 20, 40,
+  80 and then every 160 seconds, so its error doesn't stay up until a file happens to change. A
+  repo whose scan loop has made no progress for ten minutes is scanned by a new loop, and the old
+  one stops if it ever wakes up, rather than leaving the repo "already running";
 - `GIT_TERMINAL_PROMPT=0`, so a missing credential fails instead of waiting for input nobody can
   give, and `GIT_OPTIONAL_LOCKS=0`, so a status refresh never holds the index lock an agent's
   `git` needs.

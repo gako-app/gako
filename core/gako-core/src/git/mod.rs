@@ -31,6 +31,123 @@ use tokio::sync::Semaphore;
 pub use discover::{Operation, Repo, RepoKind};
 pub use status::Status;
 
+const REMOTE_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// A git command that didn't finish in time and was killed.
+#[derive(Debug)]
+pub struct TimedOut {
+    command: String,
+    after: Duration,
+}
+
+impl TimedOut {
+    pub fn new(args: &[&str], after: Duration) -> TimedOut {
+        TimedOut {
+            command: args.join(" "),
+            after,
+        }
+    }
+}
+
+impl std::fmt::Display for TimedOut {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "git {} timed out after {:?}", self.command, self.after)
+    }
+}
+
+impl std::error::Error for TimedOut {}
+
+/// How long output pipes may stay open after git has exited.
+const PIPE_GRACE: Duration = Duration::from_secs(2);
+
+/// Reads a pipe to its end into a buffer the caller can take whatever arrived from.
+fn drain<R>(mut r: R) -> (Arc<std::sync::Mutex<Vec<u8>>>, tokio::task::JoinHandle<()>)
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    use tokio::io::AsyncReadExt;
+    let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = buf.clone();
+    let task = tokio::spawn(async move {
+        let mut chunk = [0u8; 16 << 10];
+        while let Ok(n) = r.read(&mut chunk).await {
+            if n == 0 {
+                break;
+            }
+            sink.lock().unwrap().extend_from_slice(&chunk[..n]);
+        }
+    });
+    (buf, task)
+}
+
+/// Like `Child::wait_with_output`, with a limit on the process, and no wait for the pipes once it
+/// has exited: a program git started can inherit them and keep them open long after (on Windows,
+/// handles leak into processes started at the same moment), and the output would never end.
+async fn output_within(
+    mut child: tokio::process::Child,
+    args: &[&str],
+    limit: Duration,
+) -> Result<std::process::Output> {
+    let (stdout, mut out_task) = drain(child.stdout.take().context("git's stdout")?);
+    let (stderr, mut err_task) = drain(child.stderr.take().context("git's stderr")?);
+    let started = std::time::Instant::now();
+    let status = match tokio::time::timeout(limit, child.wait()).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(e)) => {
+            out_task.abort();
+            err_task.abort();
+            return Err(e.into());
+        }
+        Err(_) => {
+            eprintln!(
+                "gako-core: git {} was still running after {limit:?}; killing it",
+                args.join(" ")
+            );
+            out_task.abort();
+            err_task.abort();
+            return Err(TimedOut::new(args, limit).into());
+        }
+    };
+    let both = async {
+        let _ = tokio::join!(&mut out_task, &mut err_task);
+    };
+    if tokio::time::timeout(PIPE_GRACE, both).await.is_err() {
+        eprintln!(
+            "gako-core: git {} exited after {:?}, but its output stayed open; using what it wrote",
+            args.join(" "),
+            started.elapsed()
+        );
+        out_task.abort();
+        err_task.abort();
+    }
+    let take = |b: &Arc<std::sync::Mutex<Vec<u8>>>| std::mem::take(&mut *b.lock().unwrap());
+    Ok(std::process::Output {
+        status,
+        stdout: take(&stdout),
+        stderr: take(&stderr),
+    })
+}
+
+/// An error as the user should read it. The raw text (`{e:#}`) is for logs; a timeout, the one
+/// failure that says nothing about the repo, gets an explanation instead of git's command line.
+pub fn friendly(e: &anyhow::Error) -> String {
+    let Some(t) = e.downcast_ref::<TimedOut>() else {
+        return format!("{e:#}");
+    };
+    let secs = t.after.as_secs();
+    let remote = ["fetch", "pull", "push"]
+        .iter()
+        .any(|a| t.command.starts_with(a));
+    if remote {
+        format!(
+            "The remote didn't answer within {secs} seconds, so Gako gave up. Check your network \
+             connection and your SSH agent or credential helper, then try again."
+        )
+    } else {
+        format!("Git didn't answer within {secs} seconds, so Gako gave up on it.")
+    }
+}
+
 /// Runs `git` with a limit on how many run at once and a timeout.
 #[derive(Clone)]
 pub struct Git {
@@ -92,9 +209,7 @@ impl Git {
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         let child = cmd.spawn().context("starting git")?;
-        let out = tokio::time::timeout(self.timeout, child.wait_with_output())
-            .await
-            .with_context(|| format!("git {} timed out", args.join(" ")))??;
+        let out = output_within(child, args, self.timeout).await?;
         if !out.status.success() {
             bail!(
                 "git {}: {}",
@@ -423,9 +538,7 @@ pub async fn remote(repo: &Path, action: &str) -> Result<()> {
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     let child = cmd.spawn().context("starting git")?;
-    let out = tokio::time::timeout(Duration::from_secs(120), child.wait_with_output())
-        .await
-        .with_context(|| format!("git {} timed out after two minutes", args.join(" ")))??;
+    let out = output_within(child, args, REMOTE_TIMEOUT).await?;
     if !out.status.success() {
         bail!(
             "git {}: {}",

@@ -6,6 +6,20 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A git command that takes too long now says so in plain words ("Git didn't answer within 30
+  seconds…", or that the remote didn't answer) instead of showing git's command line.
+- A repository whose status scan failed is scanned again on its own, after 10, 20, 40, 80 and then
+  every 160 seconds, instead of keeping the error until a file changes.
+
+### Fixed
+
+- A repository could keep showing a git timeout after git had recovered. Gako now stops waiting
+  for git's output once git has exited, limits how long a status scan waits for git to five
+  minutes, and starts a new scan for a repository whose scan was lost. It logs when any of these
+  happens.
+
 ## [0.22.0] — 2026-10-14
 
 Terminals survive a lost connection, opening a big folder says what it is waiting for, and the core

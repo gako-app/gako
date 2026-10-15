@@ -36,6 +36,23 @@ use crate::settings::Settings;
 /// The least time between the start of a status scan and the start of the next one for the same
 /// repo, when files changed in between.
 const MIN_RESCAN_GAP: Duration = Duration::from_millis(500);
+/// The most one status scan may take, waiting for a slot included. `git` has its own, shorter
+/// timeout; this one makes sure that nothing else in a scan can leave it hanging for good.
+const SCAN_LIMIT: Duration = Duration::from_secs(5 * 60);
+/// A scan loop that hasn't started an iteration for this long is taken for lost: the next refresh
+/// replaces it (the old one stops if it ever wakes up), so a repo can't be stuck "scanning" with
+/// its last error on show.
+const STALE_SCAN: Duration = Duration::from_secs(10 * 60);
+
+/// Numbers the scan loops. It is shared by all repos and never reused, so a repo that drops out and
+/// comes back (with a fresh `RepoState`) can't match the number of a loop from before.
+static NEXT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// How long to wait before scanning a repo again after its `failures`-th failure in a row:
+/// 10, 20, 40, 80 and then 160 seconds.
+fn retry_wait(failures: u32) -> Duration {
+    Duration::from_secs(5 << failures.clamp(1, 5))
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,7 +66,11 @@ pub struct RepoInfo {
 
 #[derive(Default)]
 struct RepoState {
-    running: bool,
+    /// When the scan loop last started an iteration; `None` when none is running.
+    running_since: Option<Instant>,
+    /// Which scan loop owns the repo (see `NEXT_GENERATION`): a loop that finds it changed has been
+    /// replaced and stops.
+    generation: u64,
     dirty: bool,
     last: Option<Value>,
 }
@@ -339,20 +360,32 @@ impl Workspace {
     /// Refreshes one repo's status; pushes it if it changed. If a refresh is already running, it
     /// runs once more when that one ends.
     pub async fn refresh(self: &Arc<Self>, root: &Path) {
-        {
+        let generation = {
             let mut inner = self.inner.lock().unwrap();
             let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
                 return;
             };
-            if inner.states[i].running {
-                inner.states[i].dirty = true;
-                if std::env::var_os("GAKO_DEBUG_WATCH").is_some() {
-                    eprintln!("refresh: {} already running, queued", root.display());
+            match inner.states[i].running_since {
+                Some(since) if since.elapsed() < STALE_SCAN => {
+                    inner.states[i].dirty = true;
+                    if std::env::var_os("GAKO_DEBUG_WATCH").is_some() {
+                        eprintln!("refresh: {} already running, queued", root.display());
+                    }
+                    return;
                 }
-                return;
+                Some(since) => eprintln!(
+                    "gako-core: the status scan of {} made no progress for {:?}; starting another",
+                    root.display(),
+                    since.elapsed()
+                ),
+                None => {}
             }
-            inner.states[i].running = true;
-        }
+            inner.states[i].running_since = Some(Instant::now());
+            let generation = NEXT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            inner.states[i].generation = generation;
+            generation
+        };
+        let mut failures = 0u32;
         loop {
             let (repo, nested) = {
                 let inner = self.inner.lock().unwrap();
@@ -368,21 +401,51 @@ impl Workspace {
                 (repo, nested)
             };
             let started = Instant::now();
-            let (result, ran) =
-                git::status(&self.git, &repo, &nested, self.settings.untracked_limit).await;
+            {
+                let mut inner = self.inner.lock().unwrap();
+                match inner.repos.iter().position(|r| r.root == root) {
+                    Some(i) if inner.states[i].generation == generation => {
+                        inner.states[i].running_since = Some(started);
+                    }
+                    _ => return,
+                }
+            }
+            let (result, ran) = match tokio::time::timeout(
+                SCAN_LIMIT,
+                git::status(&self.git, &repo, &nested, self.settings.untracked_limit),
+            )
+            .await
+            {
+                Ok(r) => r,
+                Err(_) => (
+                    Err(git::TimedOut::new(&["status"], SCAN_LIMIT).into()),
+                    None,
+                ),
+            };
             // The backoff follows git's own time, not the wait for a permit: when many repos
             // change at once, queueing says nothing about how costly this one is.
             let took = ran.unwrap_or_else(|| started.elapsed());
             let ms = started.elapsed().as_secs_f64() * 1000.0;
             let value = match result {
                 Ok(st) => json!({"status": st}),
-                Err(e) => json!({"error": format!("{e:#}")}),
+                Err(e) => {
+                    eprintln!("gako-core: status of {}: {e:#}", root.display());
+                    let mut message = git::friendly(&e);
+                    if e.is::<git::TimedOut>() {
+                        message.push_str(" Gako will try again shortly.");
+                    }
+                    json!({"error": message})
+                }
             };
+            let failed = value.get("error").is_some();
             let changed = {
                 let mut inner = self.inner.lock().unwrap();
                 let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
                     return;
                 };
+                if inner.states[i].generation != generation {
+                    return;
+                }
                 let changed = inner.states[i].last.as_ref() != Some(&value);
                 inner.states[i].last = Some(value.clone());
                 changed
@@ -399,15 +462,31 @@ impl Workspace {
                 // an open diff in this repo has to re-read its file.
                 self.send(json!({"t": "repoTouched", "repo": repo_id}));
             }
+            failures = if failed {
+                failures.saturating_add(1)
+            } else {
+                0
+            };
             {
                 let mut inner = self.inner.lock().unwrap();
                 let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
                     return;
                 };
-                if !inner.states[i].dirty {
-                    inner.states[i].running = false;
+                if inner.states[i].generation != generation {
                     return;
                 }
+                if failed {
+                    // Nothing may change in the repo to trigger another scan, and the error
+                    // would stay up for good: try again, further apart each time.
+                    inner.states[i].dirty = true;
+                } else if !inner.states[i].dirty {
+                    inner.states[i].running_since = None;
+                    return;
+                }
+            }
+            if failed {
+                tokio::time::sleep(retry_wait(failures)).await;
+                continue;
             }
             // Files kept changing during the scan (a build, an install, an agent writing). The
             // next scan waits so that scans take up a third of the time at most: the status is a
@@ -418,6 +497,9 @@ impl Workspace {
             let Some(i) = inner.repos.iter().position(|r| r.root == root) else {
                 return;
             };
+            if inner.states[i].generation != generation {
+                return;
+            }
             inner.states[i].dirty = false;
         }
     }
@@ -567,6 +649,14 @@ impl Workspace {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retries_back_off_up_to_160_seconds() {
+        let secs: Vec<u64> = [1, 2, 3, 4, 5, 6, 1000, u32::MAX]
+            .map(|n| retry_wait(n).as_secs())
+            .into();
+        assert_eq!(secs, [10, 20, 40, 80, 160, 160, 160, 160]);
+    }
 
     /// Folders in `scanIgnore` are skipped under the base and under an extra folder alike.
     #[tokio::test(flavor = "multi_thread")]

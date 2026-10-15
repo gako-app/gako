@@ -360,7 +360,7 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                             };
                             let reply = match result {
                                 Ok(r) => json!({"t": "res", "id": id, "r": r}),
-                                Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
+                                Err(e) => json!({"t": "res", "id": id, "e": git::friendly(&e)}),
                             };
                             // A big file's reply is serialized off the workers, too.
                             let text = if m == "fileRead" || m == "gitFile" {
@@ -381,7 +381,7 @@ async fn connection(stream: TcpStream, state: Arc<State>) -> Result<()> {
                             request(&state, conn_id, &mut mine, &current, &tx, &m, p).await;
                         let reply = match result {
                             Ok(r) => json!({"t": "res", "id": id, "r": r}),
-                            Err(e) => json!({"t": "res", "id": id, "e": format!("{e:#}")}),
+                            Err(e) => json!({"t": "res", "id": id, "e": git::friendly(&e)}),
                         };
                         let _ = tx.send(Event::Text(reply.to_string()));
                         if (m == "termOpen" || m == "termAttach")

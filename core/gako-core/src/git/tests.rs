@@ -403,3 +403,13 @@ async fn list_and_switch_branches() {
     assert!(switch(&g, &dir, "nope", false).await.is_err());
     assert!(switch(&g, &dir, "--detach", false).await.is_err());
 }
+
+#[tokio::test]
+async fn a_timeout_reads_as_an_explanation() {
+    let e: anyhow::Error = TimedOut::new(&["status", "-z"], Duration::from_secs(30)).into();
+    let m = friendly(&e);
+    assert!(m.contains("30 seconds") && !m.contains("status"), "{m}");
+    let e: anyhow::Error = TimedOut::new(&["fetch", "--prune"], Duration::from_secs(120)).into();
+    assert!(friendly(&e).starts_with("The remote didn't answer"));
+    assert_eq!(friendly(&anyhow::anyhow!("boom")), "boom");
+}
