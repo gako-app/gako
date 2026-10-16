@@ -86,6 +86,19 @@ promise.
 **Cost:** Monaco is large for a read-only viewer, and running `git` is slower than a library
 would be. If `git status` ever becomes the bottleneck, `gix` is the fallback.
 
+## xterm.js from its 6.1 betas, for the kitty keyboard protocol
+
+**Decision:** the terminals run on xterm.js's published 6.1 betas (built from its `main`), pinned to
+exact versions, with `vtExtensions.kittyKeyboard` turned on, and `win32InputMode` on Windows.
+
+**Why:** the protocol lets Pi, OpenCode and the others tell Shift+Enter and Ctrl+Enter from a plain
+Enter. It isn't in 6.0.0, and xterm.js keeps it off unless asked. VS Code's terminal turns it on, so
+agents already expect it. win32-input-mode is what ConPTY needs to deliver keys such as Ctrl+J
+intact, which replaced a per-agent workaround for Codex.
+
+**Cost:** unreleased code, and a program that mishandles the protocol may show stray sequences
+such as `[57358u`, and on Windows every key is encoded differently. Go back to 6.x once a release carries the option.
+
 ## No UI framework
 
 **Decision:** the frontend is plain TypeScript, with a small helper for building the DOM.

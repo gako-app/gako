@@ -6,6 +6,12 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- Terminals support the kitty keyboard protocol, so agents that ask for it can tell Shift+Enter
+  and Ctrl+Enter from Enter. On Windows they also support win32-input-mode, which replaces the
+  Ctrl+J workaround for Codex. Both come from xterm.js's 6.1 betas, pinned to exact versions.
+
 ## [0.22.1] — 2026-10-15
 
 A git command that hangs or a status scan that gets lost no longer leaves a repository showing an

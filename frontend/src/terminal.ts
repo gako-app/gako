@@ -132,6 +132,10 @@ export class TerminalTab {
       theme: { background: '#1f1f1f', foreground: '#cccccc', selectionBackground: '#264f78' },
       // Option on macOS, as Shift elsewhere, selects text in a program that takes the mouse.
       macOptionClickForcesSelection: true,
+      // The kitty keyboard protocol: a program that asks for it tells Shift+Enter, Ctrl+Enter and
+      // the like from a plain Enter. Off by default in xterm.js, and only in its 6.1 betas.
+      // On Windows, win32-input-mode too: ConPTY asks for it, and without it turns Ctrl+J into Enter.
+      vtExtensions: { kittyKeyboard: true, win32InputMode: platform === 'windows' },
     });
     this.term.onTitleChange((title) => { this.title = title; });
     for (const code of [9, 99, 777]) {
@@ -144,15 +148,6 @@ export class TerminalTab {
     }
     this.copyOnSelect = !!opts.copyOnSelect;
     this.term.attachCustomKeyEventHandler((e) => {
-      // Codex on Windows never sees Ctrl+J as a key: ConPTY turns the raw LF into an Enter event
-      // (Windows Terminal avoids that with win32-input-mode, which xterm.js lacks). Alt+Enter
-      // (ESC CR) survives and Codex takes it as a newline.
-      if (platform === 'windows' && this.isCodex() && e.type === 'keydown' && e.key.toLowerCase() === 'j'
-        && e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
-        e.preventDefault();
-        this.term.input('\x1b\r');
-        return false;
-      }
       const action = clipboardKey(e, platform, this.term.hasSelection());
       if (!action) return true;
       e.preventDefault();
@@ -182,11 +177,6 @@ export class TerminalTab {
       this.resizeObserver = new ResizeObserver(() => this.refit());
       this.resizeObserver.observe(this.el);
     }
-  }
-
-  private isCodex(): boolean {
-    const exe = this.opts.cmd?.[0]?.split(/[\\/]/).pop()?.toLowerCase();
-    return exe === 'codex' || exe === 'codex.exe' || exe === 'codex.cmd';
   }
 
   /** Starts the program. With a fitted terminal, show it first so it starts at the right size. */

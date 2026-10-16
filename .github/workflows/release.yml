@@ -1,6 +1,8 @@
 # Builds Gako's packages on macOS (Apple silicon), Windows and Linux. For a pushed version tag
 # (v0.21.0), it then makes a draft GitHub release named after it, with the packages attached and the
-# version's section of CHANGELOG.md as its notes, for you to read over and publish. Run by hand
+# version's section of CHANGELOG.md as its notes, for you to read over and publish. A version with
+# a suffix (v0.23.0-beta.1) is a pre-release: GitHub never offers it as the latest release, and its
+# notes are the changelog's Unreleased section. Run by hand
 # (Actions > Release > Run workflow), it only builds the packages, kept as the run's artifacts.
 name: Release
 
@@ -91,12 +93,16 @@ jobs:
           if [ "$(node -p "require('./package.json').version")" != "$version" ]; then
             echo "::error::the tag says $version, package.json says otherwise"; exit 1
           fi
-          # The changelog's section for this version, without its heading.
-          awk -v v="$version" '
+          # The changelog's section for this version, without its heading. A pre-release has none
+          # of its own: it carries what's under Unreleased.
+          section=$version
+          flags=()
+          if [[ "$version" == *-* ]]; then section=Unreleased; flags=(--prerelease); fi
+          awk -v v="$section" '
             /^## \[/ { if (on) exit; on = index($0, "## [" v "]") == 1; next }
             on' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then
-            echo "::error::CHANGELOG.md has no section for $version"; exit 1
+            echo "::error::CHANGELOG.md has no section for $section"; exit 1
           fi
           cat >> notes.md <<'EOF'
 
@@ -112,4 +118,4 @@ jobs:
 
           Step by step in the [README](https://github.com/gako-app/gako#install).
           EOF
-          gh release create "$TAG" out/* --draft --verify-tag --title "Gako $version" --notes-file notes.md
+          gh release create "$TAG" out/* --draft --verify-tag "${flags[@]}" --title "Gako $version" --notes-file notes.md
