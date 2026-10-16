@@ -127,8 +127,10 @@ Dragging selects text, double-clicking a word and triple-clicking a line. Then:
 | Copy | ⌘C | Ctrl+Shift+C, Ctrl+Insert, or Ctrl+C while text is selected | Ctrl+Shift+C, Ctrl+Insert |
 | Paste | ⌘V | Ctrl+Shift+V, Shift+Insert | Ctrl+Shift+V, Shift+Insert |
 
-Ctrl+V stays with the program off macOS: shells and agents use it themselves, Claude Code to paste
-images among them. On Windows, Ctrl+C copies only while text is selected, and clears the selection,
+⌘ shortcuts on macOS (⌘C, ⌘V and the like) are the app's, in every terminal: they're never sent
+to the program, even to one that asks for the kitty keyboard protocol. Ctrl+V stays with the
+program everywhere: shells and agents use it themselves, Claude Code and Codex to paste images
+among them (⌘V pastes text only). On Windows, Ctrl+C copies only while text is selected, and clears the selection,
 so pressing it again interrupts, as in Windows Terminal. A right click opens a menu with Copy, Paste
 and Select all, and `terminalCopyOnSelect` copies text as soon as the mouse button is up.
 

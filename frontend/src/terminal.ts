@@ -35,7 +35,7 @@ import { FNV_OFFSET, fnv1a } from './check';
 import { CombiningCap } from './combining';
 import { Notifications } from './app/agentstate';
 import { showMenu } from './app/menu';
-import { clipboardKey, platformOf } from './clipboardkeys';
+import { appShortcut, clipboardKey, platformOf } from './clipboardkeys';
 import type { CoreEvent, TermStats, Transport } from './transport';
 
 export type Renderer = 'webgl' | 'dom';
@@ -148,6 +148,8 @@ export class TerminalTab {
     }
     this.copyOnSelect = !!opts.copyOnSelect;
     this.term.attachCustomKeyEventHandler((e) => {
+      // Left alone, not prevented: the menu or the app's own handler takes it from here.
+      if (appShortcut(e, platform)) return false;
       const action = clipboardKey(e, platform, this.term.hasSelection());
       if (!action) return true;
       e.preventDefault();

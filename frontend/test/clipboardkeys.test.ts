@@ -15,7 +15,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { clipboardKey, platformOf } from '../src/clipboardkeys.ts';
+import { appShortcut, clipboardKey, platformOf } from '../src/clipboardkeys.ts';
 
 const key = (k: string, mods: string[] = [], type = 'keydown') => ({
   type, key: k,
@@ -50,5 +50,16 @@ test('Ctrl+C on Windows copies only while text is selected', () => {
 test('macOS leaves copy and paste to the app menu', () => {
   for (const k of [key('C', ['ctrl', 'shift']), key('c', ['meta']), key('Insert', ['shift'])]) {
     assert.equal(clipboardKey(k, 'mac', true), null);
+  }
+});
+
+test('⌘ letter shortcuts on macOS are the app\'s, not the program\'s', () => {
+  for (const k of [key('c', ['meta']), key('v', ['meta']), key('C', ['meta', 'shift']), key('V', ['meta', 'shift'])]) {
+    assert.equal(appShortcut(k, 'mac'), true);
+    assert.equal(appShortcut(k, 'windows'), false);
+  }
+  // Arrows, Backspace and the like, and Ctrl or Option chords, still go to the program.
+  for (const k of [key('ArrowLeft', ['meta']), key('Backspace', ['meta']), key('c', ['ctrl']), key('c', ['meta', 'alt']), key('c')]) {
+    assert.equal(appShortcut(k, 'mac'), false);
   }
 });

@@ -27,6 +27,15 @@ export function platformOf(navigatorPlatform: string): Platform {
 
 type Key = Pick<KeyboardEvent, 'type' | 'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'>;
 
+/**
+ * Whether the key is a ⌘ shortcut on macOS: those belong to the app (the menu's ⌘C and ⌘V among
+ * them), never to the program. A program that asks for the kitty keyboard protocol would otherwise
+ * get them as `CSI 99;9u` and the menu would never see them.
+ */
+export function appShortcut(e: Key, platform: Platform): boolean {
+  return platform === 'mac' && e.metaKey && !e.ctrlKey && !e.altKey && e.key.length === 1;
+}
+
 /** What a key does to the clipboard, or null if it goes to the program. */
 export function clipboardKey(e: Key, platform: Platform, hasSelection: boolean): 'copy' | 'paste' | null {
   if (platform === 'mac' || e.type !== 'keydown' || e.altKey || e.metaKey) return null;
