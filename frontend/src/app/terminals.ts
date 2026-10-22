@@ -428,6 +428,11 @@ export class Terminals {
     }
   }
 
+  /** The text selected in the terminal holding `el`; '' if none. */
+  selectionAt(el: Element): string {
+    return this.tabs.find((t) => t.term.el.contains(el))?.term.term.getSelection() ?? '';
+  }
+
   setCollapsed(collapsed: boolean): void {
     this.collapsed = collapsed;
     try { localStorage.setItem(COLLAPSED, collapsed ? '1' : '0'); } catch { /* storage unavailable */ }

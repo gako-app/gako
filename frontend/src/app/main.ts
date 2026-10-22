@@ -40,6 +40,7 @@ import { icon } from './icons';
 import { confirmAction } from './confirm';
 import { showMenu } from './menu';
 import { tabKey } from './tabkeys';
+import { monaco } from '../monaco';
 
 const LAST_BASE = 'gako.lastBase';
 /** Settings the open folder was opened with: a change opens it again. */
@@ -266,8 +267,11 @@ class App {
         }
         if (e.key.toLowerCase() === 'f' && e.shiftKey) {
           e.preventDefault();
+          // What's selected, if it's on one line, is what to search for, as in VS Code.
+          const selected = this.selectedText(e.target as Element);
           if (!this.terminals.reviewActive) this.terminals.select(null);
           this.sidebar.setView('search');
+          if (selected.trim() && !/[\r\n]/.test(selected)) this.search.searchFor(selected);
           this.search.focus();
           return;
         }
@@ -777,6 +781,18 @@ class App {
   private join(root: string, rel: string): string {
     const sep = root.includes('\\') && !root.includes('/') ? '\\' : '/';
     return root + sep + rel.replaceAll('/', sep);
+  }
+
+  /** The text selected where the keyboard is: in a terminal, a file or diff, or the page itself
+   * (a commit's message, say); '' if none. */
+  private selectedText(target: Element): string {
+    if (target.closest?.('.xterm')) return this.terminals.selectionAt(target);
+    const editor = monaco.editor.getEditors().find((ed) => ed.hasTextFocus());
+    if (editor) {
+      const range = editor.getSelection();
+      return range ? editor.getModel()?.getValueInRange(range) ?? '' : '';
+    }
+    return window.getSelection()?.toString() ?? '';
   }
 
   /** A path relative to the base folder, for display. */

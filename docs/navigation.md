@@ -73,7 +73,8 @@ type somewhere different, so with no editor found, Gako says so.
 ## Search
 
 The Search view (⌘⇧F, Ctrl+Shift+F off macOS) searches file contents in the core, with ripgrep's
-own crates:
+own crates. Text selected when it's opened, in a file, a diff, a terminal or anywhere else, is
+searched for straight away, as long as it's on one line; otherwise the last search stays.
 
 - Text or a regular expression, match case and whole word, toggled inside the search field.
 - **Scope:** all repositories, or the ones ticked in the "In" menu (the base folder's own
