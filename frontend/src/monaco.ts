@@ -70,6 +70,17 @@ export function languageFor(path: string): string {
   return 'plaintext';
 }
 
+/** The Monaco language a code block's tag names (ts, python, sh…), by id, alias or extension; null
+ * if none. */
+export function languageNamed(name: string): string | null {
+  const n = name.toLowerCase();
+  if (aliases[n]) return aliases[n];
+  for (const lang of monaco.languages.getLanguages()) {
+    if (lang.id === n || lang.aliases?.some((a) => a.toLowerCase() === n) || lang.extensions?.includes(`.${n}`)) return lang.id;
+  }
+  return null;
+}
+
 /** Makes `model` hold `text` by replacing only the part that differs (between what the two have in
  * common at the start and at the end), so the rest of what's shown, the scroll position and the
  * decorations stay put: a file that changed on disk is updated the way an edit would update it.

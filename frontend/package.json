@@ -17,10 +17,13 @@
     "@xterm/addon-web-links": "0.13.0-beta.310",
     "@xterm/addon-webgl": "0.20.0-beta.309",
     "@xterm/xterm": "6.1.0-beta.315",
+    "dompurify": "^3.4.17",
     "lucide": "^1.52.0",
+    "markdown-it": "^14.3.3",
     "monaco-editor": "^0.57.0"
   },
   "devDependencies": {
+    "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.19.1",
     "@xterm/headless": "6.1.0-beta.313",
     "typescript": "^7.0.2",

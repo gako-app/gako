@@ -17,7 +17,7 @@
 
 import {
   ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, Code, Columns2, Copy, CornerDownRight, createElement,
-  ExternalLink, File, FileArchive, Files, FileBraces, FileCode, FileCog, FileDiff, FileImage, FileLock, FilePen, FileTerminal, FileText,
+  ExternalLink, Eye, File, FileArchive, Files, FileBraces, FileCode, FileCog, FileDiff, FileImage, FileLock, FilePen, FileTerminal, FileText,
   FileType, Folder, FolderGit2, FolderOpen, SquareTerminal, GitBranch, Globe, History, type IconNode, Info,
   LoaderCircle, Proportions, PanelLeftClose, PanelRightClose, PanelRightOpen, Plus, RefreshCw,
   RotateCcw, Rows2, Search, Settings, SquareSplitHorizontal, TriangleAlert, Undo2, X,
@@ -64,6 +64,7 @@ const ICONS = {
   search: Search,
   website: Globe,
   source: Code,
+  preview: Eye,
   issue: Bug,
   expand: ChevronRight,
   close: X,

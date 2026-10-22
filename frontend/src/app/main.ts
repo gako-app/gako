@@ -153,6 +153,8 @@ class App {
       (path) => this.relative(path),
       (path) => this.baseline(path),
       (path) => this.diffOf(path),
+      (path) => this.openFile(path),
+      (path) => this.repoOf(path)?.root ?? null,
     );
     this.settingsView = new SettingsView(t, {
       pickFolder,

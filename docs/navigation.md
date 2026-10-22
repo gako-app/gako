@@ -32,6 +32,16 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
   the file's extension, and the browser is told that type rather than left to guess, so a
   mislabelled file fails to show rather than being treated as something else. SVG files are text,
   and show as text.
+- **Markdown files** (`.md`, `.markdown`, `.mdown`, `.mkd`) show rendered, with GitHub's tables,
+  task lists and strikethrough, and code blocks coloured as the viewer colours code. **Show
+  source** and **Show preview** switch between the two at the same place in the file, and each
+  file keeps its choice until its tab is closed; a file opened at a line (a search result, a
+  definition) shows its source. Blocks with changes since the last commit are tinted and marked
+  in a gutter, in the change markers' colours (a deletion as a mark below the block before it);
+  clicking a mark shows the change in the source. Links to headings scroll to them, links to
+  other files open them in Gako, and web links open in the browser. Images in the repository
+  show; images from the web don't load, and show as their description instead. HTML in the file
+  is cleaned before it's shown: no scripts, forms, styles or classes of its own.
 - Other binary files show their size instead of their contents, and files over 50 MB are cut off
   there (images and PDFs over 50 MB aren't shown).
 - **Open in editor** opens the file at the cursor's line, or at the top of the view.
@@ -39,7 +49,8 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
   widget. Pressed outside the editor (in the sidebar, say), it opens on the file in front, or on a
   diff's side after the change (before it, for a deleted file). The widget has match case, whole
   word and regular expressions, with Enter and Shift+Enter (or F3 and Shift+F3) stepping through
-  the matches. There's no replace, since the viewer is read-only.
+  the matches. There's no replace, since the viewer is read-only. On a rendered Markdown file it
+  shows the source, at the same place, and searches that.
 
 Tabs work as VS Code's editor tabs do: a single click opens a preview tab (in italics) that the
 next one replaces, and a double click keeps it. Dragging a tab moves it along the bar (a preview tab

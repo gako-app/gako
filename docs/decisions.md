@@ -86,6 +86,24 @@ promise.
 **Cost:** Monaco is large for a read-only viewer, and running `git` is slower than a library
 would be. If `git status` ever becomes the bottleneck, `gix` is the fallback.
 
+## Markdown rendered with markdown-it, cleaned with DOMPurify
+
+**Decision:** Markdown files show rendered, by markdown-it, with the HTML cleaned by DOMPurify
+before it's shown. Find and "open in editor" use the source, which the editor holds either way.
+
+**Why:** new documents and sections are much easier to review rendered than as source, and
+agents write a lot of them. markdown-it is the parser VS Code's own preview uses, so files render
+as people expect, and it records the source lines of every block, which is what lets the change
+markers carry over to the rendered view. The files are anyone's, so what they hold is cleaned
+rather than trusted, on top of the content security policy (which already stops scripts): no
+forms, styles, classes or ids of their own, and no images from the web, which would tell a server
+the file was read.
+
+**Cost:** two more dependencies to keep current (DOMPurify especially, for its security fixes),
+and about 130 KB of minified code, loaded with the first Markdown file shown rather than with the
+window. Changes are marked by block, not by line, and find doesn't search the rendered text: it
+switches to the source.
+
 ## xterm.js from its 6.1 betas, for the kitty keyboard protocol
 
 **Decision:** the terminals run on xterm.js's published 6.1 betas (built from its `main`), pinned to

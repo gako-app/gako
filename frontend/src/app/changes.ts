@@ -23,8 +23,9 @@
 import { monaco } from '../monaco';
 import { h } from './dom';
 import { icon, iconButton } from './icons';
+import type { ChangeKind, LineChange } from './markdown';
 
-type Kind = 'added' | 'modified' | 'deleted';
+type Kind = ChangeKind;
 
 interface Hunk {
   kind: Kind;
@@ -48,6 +49,8 @@ export class ChangeMarkers {
    * that room (a zone's own content sits under the text layer, where it can't be clicked). */
   private zone: { id: string; hunk: Hunk; widget: monaco.editor.IOverlayWidget; scroll: monaco.IDisposable } | null = null;
   private ticket = 0;
+  /** Told whenever the marks change: worked out, or cleared. */
+  onUpdate: () => void = () => {};
 
   constructor(private editor: monaco.editor.ICodeEditor) {
     // Off screen and never shown: only its diff computation is used.
@@ -58,8 +61,7 @@ export class ChangeMarkers {
     this.highlight = editor.createDecorationsCollection();
     editor.onMouseDown((e) => {
       if (e.target.type !== monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS) return;
-      const line = e.target.position?.lineNumber ?? 0;
-      const hunk = this.hunks.find((x) => (x.kind === 'deleted' ? line === Math.max(1, x.start) : line >= x.start && line <= x.end));
+      const hunk = this.hunkAt(e.target.position?.lineNumber ?? 0);
       if (hunk) this.toggle(hunk);
     });
     // The model is replaced when another file opens or this one reloads: markers go with it.
@@ -103,6 +105,25 @@ export class ChangeMarkers {
         overviewRuler: { color: MARKER_COLOUR[x.kind], position: monaco.editor.OverviewRulerLane.Left },
       },
     })));
+    this.onUpdate();
+  }
+
+  /** The changes marked: lines of the file now, as the gutter shows them. */
+  changes(): LineChange[] {
+    return this.hunks.map(({ kind, start, end }) => ({ kind, start, end }));
+  }
+
+  /** Opens the change marked at `line` (as a click on its marker does), brought into view. */
+  openAt(line: number): void {
+    const hunk = this.hunkAt(line);
+    if (!hunk) return;
+    this.editor.revealLineInCenter(Math.max(1, hunk.start));
+    this.closeZone();
+    this.openZone(hunk);
+  }
+
+  private hunkAt(line: number): Hunk | undefined {
+    return this.hunks.find((x) => (x.kind === 'deleted' ? line === Math.max(1, x.start) : line >= x.start && line <= x.end));
   }
 
   private compute(original: monaco.editor.ITextModel, modified: monaco.editor.ITextModel): Promise<monaco.editor.ILineChange[] | null> {
@@ -124,6 +145,7 @@ export class ChangeMarkers {
     this.hunks = [];
     this.closeZone();
     this.decorations.clear();
+    this.onUpdate();
   }
 
   private toggle(hunk: Hunk): void {

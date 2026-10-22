@@ -13,7 +13,9 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 // The read-only file viewer: one Monaco editor that never edits, with "open in editor" at the
-// cursor's line (or the top of the view), and the file's diff when it has changes.
+// cursor's line (or the top of the view), and the file's diff when it has changes. A Markdown file
+// shows rendered, with its source a click away; the editor holds its text either way, so its change
+// markers, find and "open in editor" work the same.
 
 import { fontOptions, languageFor, monaco, openFind, restoreView, setText, THEME } from '../monaco';
 import { basename, delay, fill, freeze, h, settled } from './dom';
@@ -25,6 +27,14 @@ import { ChangeMarkers } from './changes';
 import { iconButton } from './icons';
 import { mediaType } from './media';
 import { type MediaView, mediaView } from './mediaview';
+import { isMarkdown } from './markdown';
+import { MarkdownView } from './mdview';
+
+/** What a file's tab keeps when it's left: the editor's place, and the rendered view's scroll. */
+interface Saved {
+  editor: monaco.editor.ICodeEditorViewState | null;
+  preview: number | null;
+}
 
 export class Viewer {
   readonly el = h('section', { class: 'diff' });
@@ -35,6 +45,13 @@ export class Viewer {
   /** Where an image or a PDF shows instead of the editor. */
   private mediaHost = h('div', { class: 'media-host', hidden: true });
   private media: MediaView | null = null;
+  /** Where a Markdown file shows rendered. */
+  private mdHost = h('div', { class: 'md-host', hidden: true });
+  private md: MarkdownView;
+  /** The Markdown files shown as source rather than rendered: switched, or opened at a line. */
+  private source = new Set<string>();
+  /** A heading to go to in the next file shown, from a link to it. */
+  private anchor: { path: string; id: string } | null = null;
   private editor: monaco.editor.IStandaloneCodeEditor;
   path: string | null = null;
   private ticket = 0;
@@ -49,8 +66,12 @@ export class Viewer {
     private baseline: (path: string) => Promise<string | null>,
     /** What opens a changed file's diff; null if it has none to show. */
     private diffOf: (path: string) => (() => void) | null,
+    /** Opens another file (a link in a Markdown file). */
+    open: (path: string) => void,
+    /** The repository a file is in. */
+    rootOf: (path: string) => string | null,
   ) {
-    this.el.append(this.header, this.notice, this.host, this.mediaHost);
+    this.el.append(this.header, this.notice, this.host, this.mediaHost, this.mdHost);
     this.editor = monaco.editor.create(this.host, {
       readOnly: true,
       domReadOnly: true,
@@ -62,6 +83,53 @@ export class Viewer {
       lineDecorationsWidth: 12,
     });
     this.markers = new ChangeMarkers(this.editor);
+    this.md = new MarkdownView({
+      read: (path) => this.read(path, true),
+      open: (path, id) => {
+        this.anchor = id ? { path, id } : null;
+        open(path);
+      },
+      rootOf,
+      showChange: (line) => {
+        this.setSource(true);
+        this.markers.openAt(line);
+      },
+    });
+    this.mdHost.append(this.md.el);
+    this.markers.onUpdate = () => { if (this.previewing) this.md.mark(this.markers.changes()); };
+  }
+
+  /** Whether the file is shown rendered. */
+  private get previewing(): boolean {
+    return !this.mdHost.hidden;
+  }
+
+  /** Shows the open Markdown file's source, or its rendered view, at the same place. */
+  private setSource(source: boolean): void {
+    const path = this.path;
+    if (!path || source === !this.previewing) return;
+    if (source) {
+      this.source.add(path);
+      const line = this.md.topLine();
+      this.mdHost.hidden = true;
+      this.host.hidden = false;
+      this.editor.layout();
+      this.editor.setScrollTop(this.editor.getTopForLineNumber(line));
+      this.renderActions();
+    } else {
+      // Rendered again: the text may have changed since the file was last shown rendered.
+      this.source.delete(path);
+      const line = this.editor.getVisibleRanges()[0]?.startLineNumber ?? 1;
+      const ticket = this.ticket;
+      this.md.render(this.editor.getValue(), path).then(() => {
+        if (ticket !== this.ticket) return;
+        this.host.hidden = true;
+        this.mdHost.hidden = false;
+        this.md.mark(this.markers.changes());
+        this.md.scrollToLine(line);
+        this.renderActions();
+      });
+    }
   }
 
   /** Applies the settings' file font. */
@@ -82,8 +150,11 @@ export class Viewer {
    * once it's drawn as it will stay, change markers included. Another file isn't shown while this one
    * loads; the file it shows already (a refresh, `keepView`, or its tab shown again) is updated in
    * place. */
-  async show(path: string, keepView = false, reveal?: Reveal, saved?: unknown): Promise<void> {
+  async show(path: string, keepView = false, reveal?: Reveal, kept?: unknown): Promise<void> {
     const ticket = ++this.ticket;
+    const saved = kept as Saved | undefined;
+    // Opened at a line (a search result, a definition): shown where the line is, in the source.
+    if (reveal && isMarkdown(path)) this.source.add(path);
     // The viewer shows this file already, and there's no place in it to go to.
     const shown = this.path === path && this.editor.getModel() !== null && !reveal;
     const same = keepView && shown;
@@ -112,13 +183,17 @@ export class Viewer {
       setText(model, content.text);
       this.notice.hidden = true;
       await Promise.race([this.markers.show(before), delay(150)]);
-      if (!keepView) restoreView(this.editor, saved);
+      if (!keepView) restoreView(this.editor, saved?.editor);
       this.setStale(false);
       return;
     }
     const thaw = same ? freeze(this.el) : null;
     try {
       await this.draw(ticket, path, content, before, type, same, reveal, saved);
+      if (ticket === this.ticket && this.anchor?.path === path) {
+        if (this.previewing) this.md.reveal(this.anchor.id);
+        this.anchor = null;
+      }
     } finally {
       thaw?.();
     }
@@ -128,14 +203,19 @@ export class Viewer {
   private setStale(stale: boolean): void {
     this.host.classList.toggle('stale', stale);
     this.mediaHost.classList.toggle('stale', stale);
+    this.mdHost.classList.toggle('stale', stale);
   }
 
   private async draw(ticket: number, path: string, content: FileContent, before: string | null,
-    type: ReturnType<typeof mediaType>, same: boolean, reveal?: Reveal, saved?: unknown): Promise<void> {
+    type: ReturnType<typeof mediaType>, same: boolean, reveal?: Reveal, saved?: Saved): Promise<void> {
     this.media?.dispose();
     this.media = null;
-    this.host.hidden = !!type;
+    const preview = !type && !content.binary && isMarkdown(path) && !this.source.has(path);
+    const scroll = same && this.previewing ? this.md.scroll : saved?.preview ?? null;
+    this.host.hidden = !!type || preview;
     this.mediaHost.hidden = !type;
+    this.mdHost.hidden = !preview;
+    this.renderActions();
     if (type) {
       // An image or a PDF: shown as it is, with nothing for the editor to hold.
       this.notice.hidden = true;
@@ -156,7 +236,7 @@ export class Viewer {
     ].filter(Boolean);
     this.notice.textContent = notes.join(' ');
     this.notice.hidden = notes.length === 0;
-    const view = same ? this.editor.saveViewState() : (saved as monaco.editor.ICodeEditorViewState | undefined) ?? null;
+    const view = same ? this.editor.saveViewState() : saved?.editor ?? null;
     const previous = this.editor.getModel();
     this.editor.setModel(monaco.editor.createModel(content.binary ? '' : content.text, languageFor(path)));
     previous?.dispose();
@@ -177,26 +257,41 @@ export class Viewer {
       this.editor.setPosition({ lineNumber: reveal.line, column: fixed[0]?.startColumn ?? reveal.column ?? 1 });
       this.editor.focus();
     }
+    if (preview) {
+      await this.md.render(content.text, path);
+      if (ticket !== this.ticket) return;
+      this.md.mark(this.markers.changes());
+      this.md.scroll = scroll ?? 0;
+      this.setStale(false);
+      return;
+    }
     // Drawn now rather than at the next frame, so it's whole when shown however busy the window is.
     this.editor.render(true);
     this.setStale(false);
     await settled(this.el);
   }
 
-  /** Show diff (when the file has changes) and open in the editor. */
+  /** Source or preview (a Markdown file), show diff (when the file has changes) and open in the
+   * editor (at the top of the rendered view, when it's shown). */
   private renderActions(): void {
-    const diff = this.path ? this.diffOf(this.path) : null;
+    const path = this.path;
+    const diff = path ? this.diffOf(path) : null;
+    const markdown = !!path && isMarkdown(path) && (this.previewing || !this.host.hidden);
     fill(this.actions,
+      markdown && this.previewing ? iconButton('source', 'Show source', () => this.setSource(true), { class: 'framed' }) : null,
+      markdown && !this.previewing ? iconButton('preview', 'Show preview', () => this.setSource(false), { class: 'framed' }) : null,
       diff ? iconButton('diff', 'Show diff', diff, { class: 'framed' }) : null,
-      this.editors.button(() => (this.path ? spotIn(this.editor, this.path) : null)));
+      this.editors.button(() => (!path ? null : this.previewing ? { path, line: this.md.topLine(), column: 1 } : spotIn(this.editor, path))));
   }
 
   saveView(): unknown {
-    return this.path ? this.editor.saveViewState() : null;
+    return this.path ? { editor: this.editor.saveViewState(), preview: this.previewing ? this.md.scroll : null } satisfies Saved : null;
   }
 
-  /** Opens find on the file shown; false if there's no text (an image, a PDF, nothing). */
+  /** Opens find on the file shown; false if there's no text (an image, a PDF, nothing). A rendered
+   * Markdown file is searched in its source, shown at the same place. */
   find(): boolean {
+    if (this.path && this.previewing) this.setSource(true);
     return !!this.path && !this.host.hidden && openFind(this.editor);
   }
 
