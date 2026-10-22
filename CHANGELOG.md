@@ -6,11 +6,31 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Markdown files show rendered in the viewer, with GitHub's tables, task lists and strikethrough,
+  and code blocks coloured as the viewer colours code. **Show source** and **Show preview** switch
+  between the two at the same place. Blocks changed since the last commit are tinted and marked in
+  a gutter; clicking a mark shows the change in the source. Links to headings and to other files
+  open in Gako and web links in the browser; images in the repository show, images from the web
+  aren't loaded, and HTML in the file is cleaned of scripts, forms and styles. Find (⌘F, Ctrl+F)
+  switches to the source.
+- Search in files (⌘⇧F, Ctrl+Shift+F) starts with the text selected in a file, a diff, a
+  terminal or anywhere else, if it's on one line.
+
 ### Changed
 
 - Terminals support the kitty keyboard protocol, so agents that ask for it can tell Shift+Enter
   and Ctrl+Enter from Enter. On Windows they also support win32-input-mode, which replaces the
   Ctrl+J workaround for Codex. Both come from xterm.js's 6.1 betas, pinned to exact versions.
+  ⌘ shortcuts on macOS stay with the app in every terminal, so ⌘C and ⌘V keep working in agents
+  that use the protocol.
+- "Clean repositories" starts open, and stays open or collapsed as you left it, across restarts.
+
+### Fixed
+
+- A new or untracked file's change markers showed every line as changed (blue) rather than added
+  (green).
 
 ## [0.22.1] — 2026-10-15
 

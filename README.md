@@ -15,14 +15,15 @@ the way of your editor.
 ## What it does
 
 - **Every repository in one view.** Gako finds the repositories under a folder and lists the ones
-  with changes, each with its branch, its sync state and its changed files. Clean repositories fold
-  away. Fetch, pull, push, switch branch or revert a file without leaving the list.
+  with changes, each with its branch, its sync state and its changed files. Clean repositories wait
+  in a group of their own. Fetch, pull, push, switch branch or revert a file without leaving the
+  list.
 - **Agents in real terminals.** Start Claude Code, Codex, OpenCode, Pi or any other program in any
   repository. The agent bar shows which agents are working, which have finished while you were
   away, and which are waiting for your approval.
-- **Review without an editor's weight.** Read-only diffs and files with syntax highlighting, each
-  repository's history, search scoped to the repositories you choose, and go to definition across
-  all of them.
+- **Review without an editor's weight.** Read-only diffs and files with syntax highlighting,
+  Markdown rendered with its changes marked, each repository's history, search scoped to the
+  repositories you choose, and go to definition across all of them.
 - **Your editor for editing.** Gako never edits code. "Open in editor" opens the file at the right
   line in VS Code, Zed, Cursor or the editor you configure.
 - **Light.** Idle, Gako uses about a seventh of VS Code's memory on the same machine; with four
@@ -107,7 +108,7 @@ or the last one it had open, or asks. **Open folder…** in the status bar picks
 | ⌘P / Ctrl+P | Go to file |
 | ⌘T / Ctrl+T | Go to symbol |
 | ⌘F / Ctrl+F | Find in the file or diff in front |
-| ⌘⇧F / Ctrl+Shift+F | Search in files |
+| ⌘⇧F / Ctrl+Shift+F | Search in files (for the selected text, if any) |
 | F12, or ⌘-click / Ctrl-click | Go to definition |
 | Shift+F12 | Find references (by name) |
 | ⌘W / Ctrl+W, Ctrl+Shift+W, Ctrl+F4 | Close the tab in front (in a terminal, Ctrl+W stays with the shell) |
