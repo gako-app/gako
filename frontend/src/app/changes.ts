@@ -75,9 +75,13 @@ export class ChangeMarkers {
       this.clear();
       return;
     }
-    const original = monaco.editor.createModel(before, model.getLanguageId());
-    const changes = await this.compute(original, model);
-    original.dispose();
+    // A new file is all added: diffed against an empty model, which still has one (empty) line, it
+    // would show as that line changed.
+    const original = before === '' ? null : monaco.editor.createModel(before, model.getLanguageId());
+    const changes = original
+      ? await this.compute(original, model)
+      : [{ originalStartLineNumber: 0, originalEndLineNumber: 0, modifiedStartLineNumber: 1, modifiedEndLineNumber: model.getLineCount() }];
+    original?.dispose();
     if (ticket !== this.ticket || this.editor.getModel() !== model) return;
     const beforeLines = before === '' ? [] : before.split(/\r?\n/);
     this.hunks = (changes ?? []).map((c) => {
