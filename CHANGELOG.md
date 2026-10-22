@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.23.0] — 2026-10-22
+
+Markdown files show rendered, with their changes marked, and terminals speak the kitty keyboard
+protocol.
+
 ### Added
 
 - Markdown files show rendered in the viewer, with GitHub's tables, task lists and strikethrough,
@@ -262,7 +267,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.22.1...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/gako-app/gako/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/gako-app/gako/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/gako-app/gako/compare/v0.21.0...v0.22.0
 [0.21.0]: https://github.com/gako-app/gako/compare/v0.20.0...v0.21.0

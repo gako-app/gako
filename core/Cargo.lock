@@ -367,7 +367,7 @@ dependencies = [
 
 [[package]]
 name = "gako-core"
-version = "0.23.0-beta.2"
+version = "0.23.0"
 dependencies = [
  "anyhow",
  "data-encoding",
@@ -1311,7 +1311,7 @@ dependencies = [
 
 [[package]]
 name = "tui-load"
-version = "0.23.0-beta.2"
+version = "0.23.0"
 dependencies = [
  "crossterm",
 ]
