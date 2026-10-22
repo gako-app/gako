@@ -39,9 +39,10 @@ parsed in the core:
 
 Repositories with changes are listed first, each with its groups, together with any whose branch
 is behind or ahead of its upstream (with no changes, just their header), so commits to pull or push
-stay in sight. The rest, clean and level with their upstream, collapse into a "Clean repositories"
-group at the bottom, one line each, so their history stays a click away. A line over the list counts
-the repositories behind, ahead and diverged.
+stay in sight. The rest, clean and level with their upstream, go into a "Clean repositories" group
+at the bottom, one line each, so their history stays a click away. The group is open at first and
+can be collapsed; it stays as it was left, across restarts and base folders. A line over the list
+counts the repositories behind, ahead and diverged.
 
 ### Running git
 

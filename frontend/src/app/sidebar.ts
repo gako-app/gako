@@ -13,7 +13,7 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 // The sidebar: the repos view (changed repos with their staged, unstaged, untracked and conflicted
-// files; clean repos collapsed at the bottom), the file tree and search.
+// files; clean repos in a group at the bottom), the file tree and search.
 //
 // Staging and committing are left to the agents; each repo offers its history, a fetch, and a pull
 // or push when its branch is behind or ahead of its upstream. A bar at the top fetches them all,
@@ -74,6 +74,8 @@ const GROUP_LABEL = { conflicts: 'Merge conflicts', staged: 'Staged changes', ch
 const REMOTE_BUSY = { fetch: 'Fetching…', pull: 'Pulling…', push: 'Pushing…' };
 /** How many fetches or pulls "Fetch all" and "Pull all" run at once. */
 const ALL_AT_ONCE = 4;
+/** Whether "Clean repositories" was left collapsed; open by default. */
+const CLEAN_COLLAPSED = 'gako.cleanCollapsed';
 /** Where a repo's branch stands against its upstream: level with it (or none to compare with),
  * behind it, ahead of it, or both. */
 function sync(r: Repo): 'even' | 'behind' | 'ahead' | 'diverged' {
@@ -107,7 +109,7 @@ export class Sidebar {
   private list = h('div', { class: 'sidebar-list', tabIndex: 0 });
   private sections = new Map<string, Section>();
   private collapsed = new Set<string>();
-  private cleanOpen = false;
+  private cleanOpen = true;
   private items: Item[] = [];
   /** Repos with a fetch, pull or push running. */
   private busy = new Map<string, RemoteAction>();
@@ -133,6 +135,7 @@ export class Sidebar {
 
   constructor(private hooks: SidebarHooks) {
     this.el.append(this.header, this.list);
+    try { this.cleanOpen = localStorage.getItem(CLEAN_COLLAPSED) !== '1'; } catch { /* storage unavailable */ }
     this.list.addEventListener('keydown', (e) => {
       if (this.key(e)) e.preventDefault();
     });
@@ -386,6 +389,13 @@ export class Sidebar {
       !busy && sync(r) === 'ahead' ? iconButton('push', waiting || `Push ${plural(s!.ahead)} to ${upstream}`, () => this.run(r, 'push'), { label: String(s!.ahead), class: 'sync', disabled: queued }) : null);
   }
 
+  /** Opens or collapses "Clean repositories", remembered for next time. */
+  private toggleClean(): void {
+    this.cleanOpen = !this.cleanOpen;
+    try { localStorage.setItem(CLEAN_COLLAPSED, this.cleanOpen ? '0' : '1'); } catch { /* storage unavailable */ }
+    this.render();
+  }
+
   private renderRepos(changed: Repo[], clean: Repo[]): void {
     const wanted: HTMLElement[] = [];
     for (const r of changed) {
@@ -395,7 +405,7 @@ export class Sidebar {
     }
     if (clean.length) {
       wanted.push(h('div', { class: 'clean' },
-        h('button', { class: 'group-toggle', onclick: () => { this.cleanOpen = !this.cleanOpen; this.render(); } },
+        h('button', { class: 'group-toggle', onclick: () => this.toggleClean() },
           chevron(this.cleanOpen), 'Clean repositories', h('span', { class: 'count' }, String(clean.length))),
         this.cleanOpen ? clean.map((r) => h('div', { class: 'clean-repo', 'data-tip': r.root },
           h('span', { class: 'repo-name' }, this.name(r)), ' ', this.branch(r),
