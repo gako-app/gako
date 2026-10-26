@@ -156,6 +156,22 @@ function aboutInfo() {
   };
 }
 
+/** Gako's latest release on GitHub: its version and page, or null if there's none. Asked from
+ * here, not the page, whose content security policy reaches only the core. Pre-releases and drafts
+ * aren't "latest" to GitHub. The page link is checked, since the frontend opens it. */
+async function latestRelease() {
+  const res = await net.fetch('https://api.github.com/repos/gako-app/gako/releases/latest', {
+    headers: { Accept: 'application/vnd.github+json', 'User-Agent': `Gako/${app.getVersion()}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
+  const r = await res.json();
+  const url = String(r.html_url ?? '');
+  if (typeof r.tag_name !== 'string' || !url.startsWith('https://github.com/gako-app/gako/releases/')) throw new Error('unexpected answer from GitHub');
+  return { version: r.tag_name.replace(/^v/, ''), url };
+}
+
 /** Links open in the user's browser, never inside the app, and a window never navigates away. */
 function keepInApp(win) {
   const outside = (url) => { if (/^https?:\/\//.test(url)) shell.openExternal(url); };
@@ -315,6 +331,7 @@ app.whenReady().then(async () => {
     if (what === 'settings' && fs.existsSync(settingsFile())) shell.showItemInFolder(settingsFile());
     else if (what === 'data') shell.openPath(app.getPath('userData'));
   });
+  ipcMain.handle('gako:latestRelease', async () => ({ current: app.getVersion(), latest: await latestRelease() }));
   ipcMain.handle('gako:openNotice', (_e, which) => {
     const file = electronNotice(which);
     if (fs.existsSync(file)) return shell.openPath(file);

@@ -71,6 +71,8 @@ pub struct Settings {
     pub editor: Option<crate::editors::EditorSetting>,
     /// Start Claude Code with a hook that reports when it waits for approval (see agents.rs).
     pub agent_hooks: bool,
+    /// `notify`: say in the status bar when a newer release is out; `off`: never ask.
+    pub updates: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -124,6 +126,7 @@ impl Default for Settings {
             file_font_ligatures: false,
             editor: None,
             agent_hooks: true,
+            updates: "notify".into(),
         }
     }
 }

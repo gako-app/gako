@@ -151,4 +151,6 @@ export interface Settings {
   fileFontSize: number;
   fileFontFamily: string;
   fileFontLigatures: boolean;
+  /** "notify" or "off". */
+  updates: string;
 }

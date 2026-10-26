@@ -108,6 +108,14 @@ export const SECTIONS: Section[] = [
         help: 'The editor "Open in editor" uses. Saving it here replaces one picked from the Files view.' },
     ],
   },
+  {
+    title: 'Updates',
+    fields: [
+      { key: 'updates', title: 'New releases', type: 'choice',
+        options: [['notify', 'Say when one is out'], ['off', "Don't check"]],
+        help: "Ask GitHub every few hours for Gako's latest release, and say in the status bar when it's newer. Nothing is downloaded." },
+    ],
+  },
 ];
 
 /** Splits a command line into the program and its arguments: spaces separate them, and quotes

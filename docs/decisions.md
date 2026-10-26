@@ -257,6 +257,19 @@ file would let a repository choose those commands, and nobody used per-folder se
 
 **Cost:** different layouts can't have different scan settings.
 
+## New releases: a notice, not an updater
+
+**Decision:** Gako asks GitHub for its latest release now and then and says in the status bar when
+it's newer, linking to the release page. It doesn't download or install anything.
+
+**Why:** the standard Electron updaters (Squirrel, `electron-updater`) only update a macOS app
+signed with an Apple Developer ID, which Gako isn't, and want installers in place of the zip and
+tarball Gako ships for Windows and Linux. A notice works the same on all three and needs none of
+that. The question is the one connection Gako makes to the internet of its own accord, so it carries
+nothing but Gako's version, and the `updates` setting turns it off.
+
+**Cost:** updating is still done by hand: download, replace the app, start it again.
+
 ## Budgets measured against VS Code
 
 **Decision:** performance budgets are set relative to VS Code on the same machine, chiefly memory:

@@ -29,11 +29,12 @@ each part is allowed to do.
   interface. Monaco shows files and diffs, read-only; xterm.js draws terminals.
 - **The shell** (`shells/electron/`) creates windows, starts the core and hands the frontend its
   address, and shows the few things only a native shell can: the folder picker, the warning before
-  quitting with agents running, showing a file in the file manager, the About window. It has no
-  app logic.
+  quitting with agents running, showing a file in the file manager, the About window. It also asks
+  GitHub for the latest release, when the frontend wants to know. It has no app logic.
 
 The frontend never calls Electron directly. Apart from `boot.ts`, which asks the shell for the
-core's address, a folder picker, the About window and the menu's call for the settings, everything
+core's address, a folder picker, the About window, the menu's call for the settings and the latest
+release, everything
 goes through the `Transport` interface to the core. That keeps the shell replaceable: the frontend
 runs unchanged in a plain browser for development, given the core's address in the URL.
 
@@ -133,9 +134,12 @@ Gako runs as you, with your rights. What it guards against is everyone else:
   the page makes itself (how PDFs are shown), and connections only to the app and to the loopback
   interface. Inline styles are allowed, since Monaco and xterm.js set them.
 - The preload scripts expose a short, fixed list of calls: the core's address and token, the folder
-  picker and the About window for the main window; facts, "show in file manager" and Electron's own
+  picker, the About window and the latest release's version and page for the main window; facts, "show in file manager" and Electron's own
   notices for the About window.
 - Settings come only from your own settings file, never from a folder Gako opens.
+- The only connection Gako makes beyond your machine of its own accord is the check for a new
+  release (`api.github.com`, see [settings.md](settings.md#updates)), which the `updates` setting
+  turns off. The page it links to must be one of Gako's release pages on GitHub.
 
 [SECURITY.md](../SECURITY.md) says what counts as a vulnerability and how to report one.
 

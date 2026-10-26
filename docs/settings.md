@@ -24,7 +24,7 @@ Every key is optional; a key you leave out keeps its default.
 Gako watches the file, so a change applies as soon as you save it:
 
 - **At once:** the fonts, in the files, diffs and terminals already open; `terminalCopyOnSelect`; the agents offered for
-  new terminals; the editor; `agentHooks`, for agents started from then on.
+  new terminals; the editor; `agentHooks`, for agents started from then on; `updates`.
 - **By opening the folder again**, which Gako does for you, keeping what's open: the repository
   settings (`scanDepth`, `scanIgnore`, `extraFolders`, `maxGitProcesses`, `debounceMs`,
   `untrackedLimit`, `gitTimeoutSecs`).
@@ -112,3 +112,13 @@ The known editors' ids are `vscode`, `vscode-insiders`, `vscodium`, `cursor`, `w
 
 An editor picked from the Files view's context menu is remembered on that machine and wins over
 this setting, until the editor is next set on the settings screen.
+
+## Updates
+
+| Key | Default | What it does |
+|---|---|---|
+| `updates` | `"notify"` | `"notify"`: ask GitHub for Gako's latest release ten seconds after starting and every six hours, and say in the status bar when it's newer than the one running; clicking it opens the release page. `"off"`: never ask. |
+
+Nothing is downloaded or installed: you update as you installed. The question goes to
+`api.github.com` and carries nothing about you or your folders, only Gako's version in the
+`User-Agent` header. Pre-releases aren't offered.

@@ -41,6 +41,7 @@ import { confirmAction } from './confirm';
 import { showMenu } from './menu';
 import { tabKey } from './tabkeys';
 import { monaco } from '../monaco';
+import { Updates } from './updates';
 
 const LAST_BASE = 'gako.lastBase';
 /** Settings the open folder was opened with: a change opens it again. */
@@ -99,10 +100,17 @@ class App {
   private openedAt = 0;
   /** Why the settings file can't be read, while it can't (the last good settings stay in use). */
   private settingsError: string | null = null;
+  /** Whether a newer release is out (with a shell that can ask). */
+  private updates: Updates | null = null;
   private log: (ev: string, data?: Record<string, unknown>) => void;
 
-  constructor(private t: Transport, env: Record<string, string>, private pickFolder?: Boot['pickFolder'], private showAbout?: Boot['showAbout']) {
+  constructor(private t: Transport, env: Record<string, string>, private pickFolder?: Boot['pickFolder'], private showAbout?: Boot['showAbout'],
+    latestRelease?: Boot['latestRelease']) {
     this.git = new Git(t);
+    if (latestRelease) {
+      this.updates = new Updates(latestRelease, () => this.renderStatusbar());
+      t.request<{ settings: Settings }>('settingsGet').then((i) => this.updates?.configure(i.settings.updates), () => this.updates?.configure('notify'));
+    }
     this.log = env.GAKO_LOG
       ? (ev, data = {}) => t.send({ t: 'log', rec: { ev, epochMs: performance.timeOrigin + performance.now(), ...data } })
       : () => {};
@@ -380,6 +388,7 @@ class App {
     this.settingsError = error ?? null;
     this.renderStatusbar();
     this.settingsView.refresh().catch(() => { /* shown again when its tab is */ });
+    if (settings) this.updates?.configure(settings.updates);
     const opened = this.opened;
     // With no folder open, opening one reads the file.
     if (!settings || !opened) return;
@@ -845,6 +854,8 @@ class App {
           h('span', { class: 'status-text' }, this.indexing ? 'Indexing symbols…' : this.indexInfo))
         : null,
       h('span', { class: 'spacer' }),
+      this.updates?.available ? h('button', { class: 'status-button', 'data-tip': 'Open the release page', onclick: () => window.open(this.updates?.available?.url, '_blank') },
+        icon('update'), `Update available (${this.updates.available.version})`) : null,
       this.settingsError ? h('button', { class: 'status-button warning', 'data-tip': this.settingsError, onclick: () => this.showSettings() },
         icon('warning'), 'Settings file has an error') : null,
       h('button', { class: 'status-button', onclick: () => this.chooseFolder() }, icon('folder-open'), 'Open folder…'),
@@ -964,7 +975,7 @@ async function main(): Promise<void> {
   const b = boot();
   const t = await connect(b);
   const hello = await t.request<{ env: Record<string, string> }>('hello');
-  const app = new App(t, hello.env, b.pickFolder, b.showAbout);
+  const app = new App(t, hello.env, b.pickFolder, b.showAbout, b.latestRelease);
   b.onShowSettings?.(() => app.showSettings());
   let last: string | undefined;
   try { last = localStorage.getItem(LAST_BASE) ?? undefined; } catch { /* storage unavailable */ }

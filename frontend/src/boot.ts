@@ -13,8 +13,8 @@
 // If not, see <https://www.gnu.org/licenses/>.
 
 // The one place that knows which shell the frontend runs in. It finds out how to reach gako-core,
-// and whether the shell offers a native folder picker, an About window and a menu that asks for the
-// settings; everything else goes through the Transport.
+// and whether the shell offers a native folder picker, an About window, a menu that asks for the
+// settings and a way to learn of new releases; everything else goes through the Transport.
 //
 // - Electron exposes `window.__GAKO_BOOT__` and `window.__GAKO_SHELL__` from its preload script.
 // - In a plain browser (development), pass `?core=ws://127.0.0.1:PORT&token=TOKEN`. There's no
@@ -30,19 +30,29 @@ export interface Boot {
   showAbout?: (tab?: 'about' | 'licence' | 'notices') => void;
   /** Calls `fn` when the shell's menu asks for the settings. */
   onShowSettings?: (fn: () => void) => void;
+  /** Gako's running version and its latest release on GitHub (null if there's none). */
+  latestRelease?: () => Promise<{ current: string; latest: Release | null }>;
+}
+
+export interface Release {
+  /** Without the tag's "v". */
+  version: string;
+  /** The release's page. */
+  url: string;
 }
 
 declare global {
   interface Window {
     __GAKO_BOOT__?: Boot;
-    __GAKO_SHELL__?: { pickFolder?: Boot['pickFolder']; showAbout?: Boot['showAbout']; onShowSettings?: Boot['onShowSettings'] };
+    __GAKO_SHELL__?: { pickFolder?: Boot['pickFolder']; showAbout?: Boot['showAbout']; onShowSettings?: Boot['onShowSettings']; latestRelease?: Boot['latestRelease'] };
   }
 }
 
 export function boot(): Boot {
   if (window.__GAKO_BOOT__) {
     const shell = window.__GAKO_SHELL__;
-    return { ...window.__GAKO_BOOT__, pickFolder: shell?.pickFolder, showAbout: shell?.showAbout, onShowSettings: shell?.onShowSettings };
+    return { ...window.__GAKO_BOOT__, pickFolder: shell?.pickFolder, showAbout: shell?.showAbout, onShowSettings: shell?.onShowSettings,
+      latestRelease: shell?.latestRelease };
   }
   const q = new URLSearchParams(location.search);
   const url = q.get('core');

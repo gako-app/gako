@@ -16,7 +16,7 @@
 // are bundled.
 
 import {
-  ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, Code, Columns2, Copy, CornerDownRight, createElement,
+  ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, CircleArrowUp, Code, Columns2, Copy, CornerDownRight, createElement,
   ExternalLink, Eye, File, FileArchive, Files, FileBraces, FileCode, FileCog, FileDiff, FileImage, FileLock, FilePen, FileTerminal, FileText,
   FileType, Folder, FolderGit2, FolderOpen, SquareTerminal, GitBranch, Globe, History, type IconNode, Info,
   LoaderCircle, Proportions, PanelLeftClose, PanelRightClose, PanelRightOpen, Plus, RefreshCw,
@@ -57,6 +57,7 @@ const ICONS = {
   info: Info,
   warning: TriangleAlert,
   settings: Settings,
+  update: CircleArrowUp,
   remove: X,
   copy: Copy,
   done: Check,

@@ -6,6 +6,12 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Gako says in the status bar when a newer release is out, and clicking it opens the release page.
+  It asks GitHub ten seconds after starting and every six hours; the `updates` setting turns this
+  off. Nothing is downloaded or installed.
+
 ## [0.23.0] — 2026-10-22
 
 Markdown files show rendered, with their changes marked, and terminals speak the kitty keyboard
