@@ -19,8 +19,12 @@
 // what ⌘W and Ctrl+Tab act on. Entries can be dragged into a new order (reorder.ts), and a middle
 // click closes one as its × does.
 //
-// A terminal runs a program (the shell, or a configured agent such as `claude`) in the base folder
-// or one of its repos. Hidden terminals release their WebGL context (TerminalTab does that). An
+// A terminal runs a program (the shell, or a configured agent such as `claude`) in the base folder,
+// one of its repos, or a folder picked with "Other folder…" in the + menu (the last few picked are
+// offered again). Terminals running outside the workspace (the base folder and its repos; picked
+// so, or left from a base folder opened before) are listed apart, under "Other folders", each
+// naming its folder. Which list an entry is in follows from its folder and the workspace open, so
+// opening the earlier base folder again brings them back up. Hidden terminals release their WebGL context (TerminalTab does that). An
 // exited one keeps its output until it's closed or restarted.
 //
 // States: working, waiting for you, quiet, exited or failed (a non-zero exit code). An agent that
@@ -31,10 +35,10 @@
 
 import { type Renderer, TerminalTab } from '../terminal';
 import type { CoreEvent, Transport } from '../transport';
-import { fill, h } from './dom';
+import { basename, fill, h, within } from './dom';
 import type { Settings } from './model';
 import { readTitle, titleHasState, titleTopic } from './agentstate';
-import { icon, iconButton } from './icons';
+import { chevron, icon, iconButton } from './icons';
 import { Reorder } from './reorder';
 
 export interface Program {
@@ -49,11 +53,20 @@ export interface Folder {
   /** For a repository under the base folder, the base folder's name: the + menu shows the
    * repository indented beneath it, and everywhere else it's named in full ("projectX/A"). */
   base?: string;
+  /** Picked with "Other folder…" (or from the ones picked before): its terminals are reopened
+   * whatever base folder is open, not with one base folder's session. */
+  custom?: boolean;
 }
 
 /** A folder's name in full: "projectX/A" for a repository under the base folder "projectX". */
 function folderName(f: Folder): string {
   return f.base ? `${f.base}/${f.name}` : f.name;
+}
+
+/** A terminal's program and folder, as sessions keep them. */
+export interface Saved {
+  program: Program;
+  folder: Folder;
 }
 
 type State = 'working' | 'waiting' | 'quiet' | 'exited' | 'failed';
@@ -82,11 +95,23 @@ const WORKING_MS = 2000;
  * flagging when it ends; shorter ones are redraws, or the echo of what was typed. */
 const BUSY_MIN_MS = 1500;
 const COLLAPSED = 'gako.agentsCollapsed';
+const OTHERS_FOLDED = 'gako.otherFoldersFolded';
+/** The folders last picked with "Other folder…", newest first. */
+const RECENT = 'gako.recentFolders';
+const RECENT_MAX = 5;
 
 export class Terminals {
   readonly el = h('aside', { class: 'agents' });
   private list = h('div', { class: 'agent-list' });
-  private reorder = new Reorder(this.list, 'y', () => this.render());
+  /** The terminals in the base folder, and those elsewhere (under "Other folders"); each is
+   * reordered within itself. */
+  private mainGroup = h('div', { class: 'agent-group' });
+  private otherGroup = h('div', { class: 'agent-group' });
+  private reorder = new Reorder(this.mainGroup, 'y', () => this.render());
+  private otherReorder = new Reorder(this.otherGroup, 'y', () => this.render());
+  private othersFolded = false;
+  private recent: string[] = [];
+  /** In the bar's order, which isn't the order of the lists shown: see ordered(). */
   private tabs: Tab[] = [];
   /** The terminal shown: in front of the documents (single pane; null while they're in front), or
    * in the terminal pane (dual pane). */
@@ -123,6 +148,8 @@ export class Terminals {
     private onError: (message: string) => void,
     /** A terminal came to the front (true) or the documents did (false). */
     private onFront: (terminal: boolean) => void,
+    /** The shell's native folder picker, for "Other folder…" (none in a plain browser). */
+    private pickFolder?: (defaultPath?: string) => Promise<string | null>,
   ) {
     this.host = body;
     this.paneBody.append(this.paneEmpty);
@@ -133,7 +160,12 @@ export class Terminals {
     this.el.append(
       h('header', { class: 'agents-header' }, h('span', { class: 'agents-title' }, 'Agents'), h('span', { class: 'spacer' }), this.addButton, this.collapseButton),
       this.list);
-    try { this.collapsed = localStorage.getItem(COLLAPSED) === '1'; } catch { /* storage unavailable */ }
+    try {
+      this.collapsed = localStorage.getItem(COLLAPSED) === '1';
+      this.othersFolded = localStorage.getItem(OTHERS_FOLDED) === '1';
+      const recent = JSON.parse(localStorage.getItem(RECENT) ?? '[]');
+      if (Array.isArray(recent)) this.recent = recent.filter((p) => typeof p === 'string').slice(0, RECENT_MAX);
+    } catch { /* storage unavailable */ }
     this.setCollapsed(this.collapsed);
     t.onEvent((ev: CoreEvent) => {
       if (ev.t !== 'exit') return;
@@ -187,21 +219,47 @@ export class Terminals {
     }
   }
 
-  /** The terminals open (exited ones aren't kept), and which one is in front (-1: none). */
-  snapshot(): { terms: { program: Program; folder: Folder }[]; active: number } {
-    const open = this.tabs.filter((t) => !t.term.exit);
+  /** The base folder's terminals open (exited ones aren't kept), in the bar's order, and which one
+   * is in front (-1: none). Those in other folders aren't the base folder's to reopen: see others(). */
+  snapshot(): { terms: Saved[]; active: number } {
+    const open = this.ordered().filter((t) => !t.term.exit && !t.folder.custom && this.inBase(t));
     return { terms: open.map((t) => ({ program: t.program, folder: t.folder })), active: this.active ? open.indexOf(this.active) : -1 };
   }
 
+  /** The terminals open in folders picked with "Other folder…", reopened whatever base folder is. */
+  others(): Saved[] {
+    return this.ordered().filter((t) => !t.term.exit && t.folder.custom).map((t) => ({ program: t.program, folder: t.folder }));
+  }
+
   /** Starts the same programs again in the same folders, as new sessions; then shows the one that
-   * was in front, or gives the main area back to the documents. */
-  async restore(terms: { program: Program; folder: Folder }[], active: number): Promise<void> {
+   * was in front, or gives the main area back to the documents. -1 for `active` keeps what was
+   * shown before. */
+  async restore(terms: Saved[], active: number): Promise<void> {
+    const was = this.active;
     const restored: (Tab | undefined)[] = [];
     for (const { program, folder } of terms) {
       await this.open(program, folder);
       restored.push(this.tabs.at(-1));
     }
-    this.select(restored[active] ?? null);
+    this.select(active < 0 && was && this.tabs.includes(was) ? was : restored[active] ?? null);
+  }
+
+  /** Another base folder was opened, or its repositories changed: terminals outside it move under
+   * "Other folders", and those back in it move up. */
+  workspaceChanged(): void {
+    this.render();
+  }
+
+  /** In the base folder or one of its repositories (which `extraFolders` can put elsewhere). With
+   * no folder open yet, every terminal counts as in it. */
+  private inBase(tab: Tab): boolean {
+    const roots = this.folders().map((f) => f.path);
+    return !roots.length || roots.some((root) => within(tab.folder.path, root));
+  }
+
+  /** The terminals in the order shown: the base folder's, then the others. */
+  private ordered(): Tab[] {
+    return [...this.tabs.filter((t) => this.inBase(t)), ...this.tabs.filter((t) => !this.inBase(t))];
   }
 
 
@@ -281,6 +339,7 @@ export class Terminals {
       return;
     }
     this.log('termOpened', { program: program.name, folder: folder.path, pid: term.pid });
+    if (folder.custom) this.remember(folder.path);
     this.render();
     this.onChange?.();
   }
@@ -292,9 +351,10 @@ export class Terminals {
 
   /** Shows the next (1) or previous (-1) terminal, wrapping round (Ctrl+Tab). */
   cycle(delta: number): void {
-    if (!this.tabs.length) return;
-    const i = this.active ? this.tabs.indexOf(this.active) : -1;
-    this.select(this.tabs[(i + delta + this.tabs.length) % this.tabs.length]);
+    const tabs = this.ordered();
+    if (!tabs.length) return;
+    const i = this.active ? tabs.indexOf(this.active) : -1;
+    this.select(tabs[(i + delta + tabs.length) % tabs.length]);
   }
 
   /** Shows a terminal and gives it the keyboard; null gives the keyboard back to the documents
@@ -329,11 +389,13 @@ export class Terminals {
 
   private close(tab: Tab, force = false): void {
     if (!force && !tab.term.exit && !confirm(`${tab.program.name} is still running in ${folderName(tab.folder)}. Close it?`)) return;
-    const i = this.tabs.indexOf(tab);
-    this.tabs.splice(i, 1);
+    // The neighbour shown next is the one below it in the bar, or above.
+    const shown = this.ordered();
+    const i = shown.indexOf(tab);
+    const next = shown[i + 1] ?? shown[i - 1] ?? null;
+    this.tabs.splice(this.tabs.indexOf(tab), 1);
     tab.term.close();
     if (this.last === tab) this.last = null;
-    const next = this.tabs[i] ?? this.tabs[i - 1] ?? null;
     if (this.active === tab && this.dual) {
       // The pane shows the neighbour, or nothing; the keyboard stays where it was.
       this.active = next;
@@ -468,11 +530,26 @@ export class Terminals {
         h('button', { onclick: (e: Event) => this.menu(e.currentTarget as HTMLElement) }, icon('plus'), 'Start an agent')));
       return;
     }
-    if (!this.reorder.canDraw()) return;
-    this.list.replaceChildren(...this.tabs.map((tab) => this.entry(tab)));
+    if (!this.reorder.canDraw() || !this.otherReorder.canDraw()) return;
+    const main = this.tabs.filter((t) => this.inBase(t));
+    const others = this.tabs.filter((t) => !this.inBase(t));
+    this.mainGroup.replaceChildren(...main.map((tab) => this.entry(tab, true)));
+    this.otherGroup.replaceChildren(...others.map((tab) => this.entry(tab, false)));
+    this.list.replaceChildren(this.mainGroup, others.length ? h('div', { class: `agent-others ${this.othersFolded ? 'folded' : ''}` },
+      h('button', { class: 'group-toggle', onclick: () => this.foldOthers(!this.othersFolded) },
+        chevron(!this.othersFolded), 'Other folders', h('span', { class: 'count' }, String(others.length))),
+      this.otherGroup) : '');
   }
 
-  private entry(tab: Tab): HTMLElement {
+  private foldOthers(folded: boolean): void {
+    this.othersFolded = folded;
+    try { localStorage.setItem(OTHERS_FOLDED, folded ? '1' : '0'); } catch { /* storage unavailable */ }
+    this.render();
+  }
+
+  /** `inBase`: the entry is under the base folder; one elsewhere names its folder beside the program. */
+  private entry(tab: Tab, inBase: boolean): HTMLElement {
+    const topic = titleTopic(tab.term.title);
     const el = h('div', {
       class: `agent ${tab === this.active ? 'active' : ''} ${tab.unseen ? 'unseen' : ''}`,
       'data-tip': `${tab.program.name} in ${tab.folder.path}: ${this.stateText(tab)}${tab.term.title ? `\n${tab.term.title}` : ''}`,
@@ -483,23 +560,42 @@ export class Terminals {
     this.collapsed
       ? h('span', { class: 'agent-initials' }, initials(tab.program.name))
       : h('span', { class: 'agent-text' },
-        h('span', { class: 'agent-name' }, tab.program.name),
-        h('span', { class: 'agent-detail' }, `${titleTopic(tab.term.title) || folderName(tab.folder)} · ${this.stateText(tab)}`)),
+        inBase
+          ? h('span', { class: 'agent-name' }, tab.program.name)
+          : h('span', { class: 'agent-name' }, tab.program.name, h('span', { class: 'agent-folder' }, icon('folder'), folderName(tab.folder))),
+        h('span', { class: 'agent-detail' }, inBase
+          ? `${topic || folderName(tab.folder)} · ${this.stateText(tab)}`
+          : topic ? `${topic} · ${this.stateText(tab)}` : this.stateText(tab))),
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
     !this.collapsed && tab.term.exit ? iconButton('restart', `Restart ${tab.program.name}`, () => this.restart(tab), { class: 'restart' }) : null,
     this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, icon('close')));
-    this.reorder.attach(el, (to) => this.move(tab, to));
+    (inBase ? this.reorder : this.otherReorder).attach(el, (to) => this.move(tab, to));
     return el;
   }
 
-  /** Moves an entry to `to` in the bar (it was dragged there). */
+  /** Moves an entry to `to` within its list (it was dragged there). */
   private move(tab: Tab, to: number): void {
     const i = this.tabs.indexOf(tab);
     if (i < 0) return;
+    const inBase = this.inBase(tab);
+    const rest = this.tabs.filter((t) => t !== tab && this.inBase(t) === inBase);
     this.tabs.splice(i, 1);
-    this.tabs.splice(to, 0, tab);
+    // Before the entry it now precedes in its list, or after the list's last.
+    const at = to < rest.length ? this.tabs.indexOf(rest[to]) : rest.length ? this.tabs.indexOf(rest[rest.length - 1]) + 1 : this.tabs.length;
+    this.tabs.splice(at, 0, tab);
     this.render();
     this.onChange?.();
+  }
+
+  /** Puts a picked folder first among the recent ones. */
+  private remember(path: string): void {
+    this.recent = [path, ...this.recent.filter((p) => p !== path)].slice(0, RECENT_MAX);
+    try { localStorage.setItem(RECENT, JSON.stringify(this.recent)); } catch { /* storage unavailable */ }
+  }
+
+  private forget(path: string): void {
+    this.recent = this.recent.filter((p) => p !== path);
+    try { localStorage.setItem(RECENT, JSON.stringify(this.recent)); } catch { /* storage unavailable */ }
   }
 
   private menu(anchor: HTMLElement): void {
@@ -508,17 +604,37 @@ export class Terminals {
       return;
     }
     const folders = this.folders();
-    let folder = folders[0];
+    const custom = (path: string): Folder => ({ path, name: basename(path), custom: true });
+    let folder: Folder | undefined = folders[0] ?? (this.recent.length ? custom(this.recent[0]) : undefined);
     const folderList = h('div', { class: 'menu-list' });
-    const drawFolders = () => folderList.replaceChildren(...folders.map((f) =>
-      h('button', { class: `menu-item ${f === folder ? 'selected' : ''}`, title: f.path, onclick: () => { folder = f; drawFolders(); } },
-        f.base ? icon('nested') : null, f.name)));
+    const item = (f: Folder, ...content: (Node | string | null)[]) =>
+      h('button', { class: `menu-item ${f.custom ? 'recent' : ''} ${f.path === folder?.path && !!f.custom === !!folder?.custom ? 'selected' : ''}`, title: f.path, onclick: () => { folder = f; drawFolders(); } }, ...content);
+    const drawFolders = () => folderList.replaceChildren(
+      ...folders.map((f) => item(f, f.base ? icon('nested') : null, f.name)),
+      // The folders picked before, under a label of their own (a line would read as a new section),
+      // then the picker.
+      this.recent.length ? h('div', { class: 'menu-subtitle' }, 'Recent') : '',
+      ...this.recent.map((path) => item(custom(path), icon('folder'), h('span', { class: 'menu-name' }, basename(path)),
+        h('span', { class: 'menu-remove', 'data-tip': 'Remove from this list', onclick: (e: Event) => {
+          e.stopPropagation();
+          this.forget(path);
+          if (folder?.custom && folder.path === path) folder = folders[0] ?? (this.recent.length ? custom(this.recent[0]) : undefined);
+          drawFolders();
+        } }, icon('close')))),
+      this.pickFolder ? h('button', { class: 'menu-item', onclick: async () => {
+        const path = await this.pickFolder?.(folder?.path).catch(() => null);
+        if (!path) return;
+        this.remember(path);
+        folder = custom(path);
+        drawFolders();
+      } }, 'Other folder…') : '');
     drawFolders();
     this.menuEl = h('div', { class: 'menu' },
       h('div', { class: 'menu-title' }, 'Run'),
       h('div', { class: 'menu-list' }, this.programs.map((p) => h('button', {
-        class: 'menu-item', onclick: () => { this.closeMenu(); this.open(p, folder); },
+        class: 'menu-item', onclick: () => { if (!folder) return; this.closeMenu(); this.open(p, folder); },
       }, p.name))),
+      h('div', { class: 'menu-separator' }),
       h('div', { class: 'menu-title' }, 'In'),
       folderList);
     document.body.append(this.menuEl);

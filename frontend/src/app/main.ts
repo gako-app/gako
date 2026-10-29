@@ -32,7 +32,7 @@ import { Navigator } from './navigate';
 import type { FileContent } from './model';
 import { Editors } from './editors';
 import { type DocSpec, DocTabs } from './doctabs';
-import type { Folder as TermFolder, Program } from './terminals';
+import type { Saved as SavedTerm } from './terminals';
 import { Layout } from './layout';
 import { Panes } from './panes';
 import { installTooltips } from './tooltip';
@@ -48,6 +48,8 @@ const LAST_BASE = 'gako.lastBase';
 const REPO_SETTINGS: (keyof Settings)[] = ['scanDepth', 'scanIgnore', 'extraFolders', 'maxGitProcesses', 'debounceMs', 'untrackedLimit', 'gitTimeoutSecs'];
 /** The open tabs and terminals, per base folder: `gako.session:<base>`. */
 const SESSION = 'gako.session:';
+/** The terminals in folders picked with "Other folder…": reopened whatever base folder is open. */
+const OTHER_TERMS = 'gako.otherTerminals';
 
 /** What reopens a tab after a restart. */
 type Persist =
@@ -60,7 +62,7 @@ type Persist =
 interface Session {
   docs: { persist: Persist; pinned: boolean }[];
   active: number;
-  terms: { program: Program; folder: TermFolder }[];
+  terms: SavedTerm[];
   activeTerm: number;
 }
 
@@ -178,7 +180,7 @@ class App {
       empty: () => this.showWelcome(),
     });
     this.terminals = new Terminals(t, this.body, this.review, () => this.folders(), this.log, (m) => this.toast(m),
-      (terminal) => this.docs.setFront(!terminal));
+      (terminal) => this.docs.setFront(!terminal), pickFolder);
     this.body.append(this.review);
     // The documents (their tabs, with the single/dual pane switch, over what's shown), and the
     // terminal pane beside them in the dual layout. Using either side gives it the keyboard's
@@ -337,6 +339,7 @@ class App {
       }
       this.indexing = !this.indexed;
       this.repos = opened.repos.map((r) => ({ ...r }));
+      this.terminals.workspaceChanged();
       for (const s of opened.statuses) this.onStatus(s.repo, 'status' in s ? s.status : undefined, 'error' in s ? s.error : undefined);
       this.sidebar.repos = this.repos;
       this.sidebar.render();
@@ -360,6 +363,7 @@ class App {
       await this.loadAgents(opened.settings);
       if (session) await this.restoreSession(session, cover);
       else cover?.();
+      if (!this.othersRestored) await this.restoreOthers();
     } catch (e) {
       cover?.();
       this.sidebar.phase = null;
@@ -410,6 +414,7 @@ class App {
     const old = new Map(this.repos.map((r) => [r.root, r]));
     this.repos = infos.map((i) => ({ ...i, status: old.get(i.root)?.status, error: old.get(i.root)?.error }));
     this.sidebar.repos = this.repos;
+    this.terminals.workspaceChanged();
     this.queueRender();
   }
 
@@ -690,6 +695,8 @@ class App {
   private onScanned: (() => void) | null = null;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private restoring = false;
+  /** The terminals in other folders came back (once, with the first folder opened). */
+  private othersRestored = false;
 
   /** Saves the open tabs and terminals for this base folder, soon (changes come in bursts). */
   private saveSession(now = false): void {
@@ -700,7 +707,10 @@ class App {
       const docs = this.docs.snapshot();
       const terms = this.terminals.snapshot();
       const session: Session = { docs: docs.docs as Session['docs'], active: docs.active, terms: terms.terms, activeTerm: terms.active };
-      try { localStorage.setItem(SESSION + this.opened!.base, JSON.stringify(session)); } catch { /* storage unavailable */ }
+      try {
+        localStorage.setItem(SESSION + this.opened!.base, JSON.stringify(session));
+        if (this.othersRestored) localStorage.setItem(OTHER_TERMS, JSON.stringify(this.terminals.others()));
+      } catch { /* storage unavailable */ }
     };
     if (now) save();
     else this.saveTimer = setTimeout(save, 400);
@@ -745,6 +755,25 @@ class App {
     } finally {
       this.restoring = false;
     }
+    this.saveSession();
+  }
+
+  /** Reopens the terminals that were open in folders picked with "Other folder…", behind what's
+   * shown. */
+  private async restoreOthers(): Promise<void> {
+    let terms: SavedTerm[] = [];
+    try { terms = JSON.parse(localStorage.getItem(OTHER_TERMS) ?? '[]') ?? []; } catch { /* storage unavailable */ }
+    if (terms.length) {
+      this.restoring = true;
+      const thaw = freeze(this.body);
+      try {
+        await this.terminals.restore(terms.map((t) => ({ ...t, folder: { ...t.folder, custom: true } })), -1);
+      } finally {
+        thaw();
+        this.restoring = false;
+      }
+    }
+    this.othersRestored = true;
     this.saveSession();
   }
 

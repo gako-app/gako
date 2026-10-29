@@ -11,6 +11,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 - Gako says in the status bar when a newer release is out, and clicking it opens the release page.
   It asks GitHub ten seconds after starting and every six hours; the `updates` setting turns this
   off. Nothing is downloaded or installed.
+- Agents and shells can run in any folder: **Other folder…** in the + menu picks one, and the last
+  five picked are offered again. They're reopened at launch whatever base folder is open.
+- Terminals outside the base folder are listed apart, under **Other folders** at the bottom of the
+  agent bar, each naming its folder. Terminals left running when another base folder is opened
+  move there, and move back up when their base folder is opened again.
 
 ## [0.23.0] — 2026-10-22
 

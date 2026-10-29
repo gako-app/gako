@@ -242,7 +242,7 @@ body.waiting, body.waiting * { cursor: progress !important; }
 .agents.collapsed .agents-title, .agents.collapsed .agents-header .spacer { display: none; }
 /* Collapsed, the bar's toggle comes first, above +. */
 .agents.collapsed .agents-header .collapse { order: -1; }
-.agent-list { flex: 1; overflow: auto; padding: 6px 0; }
+.agent-list { flex: 1; overflow: auto; padding: 6px 0; display: flex; flex-direction: column; }
 /* No agents yet: an icon, a line on what goes here, and the button that starts one. */
 .agents-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 28px 16px; text-align: center; }
 .agents-empty > .svg-icon { width: 28px; height: 28px; stroke-width: 1.4; color: var(--faint); margin-bottom: 4px; }
@@ -257,6 +257,25 @@ body.waiting, body.waiting * { cursor: progress !important; }
 .agent-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .agent-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .agent-detail { font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A terminal outside the base folder names its folder beside the program. */
+.agent-folder { margin-left: 6px; font-size: 11px; color: var(--dim); }
+.agent-folder .svg-icon { width: 11px; height: 11px; margin-right: 3px; vertical-align: -1px; }
+.agent.unseen .agent-folder { font-weight: 400; }
+/* "Other folders": the terminals outside the base folder, at the bottom of the bar; folded from
+   its header. With the bar collapsed, a line sets them apart instead. */
+.agent-others { margin-top: auto; padding-top: 8px; }
+.agent-others .group-toggle { margin-bottom: 2px; }
+.agents:not(.collapsed) .agent-others.folded .agent-group { display: none; }
+.agents.collapsed .agent-others .group-toggle { display: none; }
+.agents.collapsed .agent-others { margin: auto 8px 0; padding-top: 6px; border-top: 1px solid var(--border-strong); }
+.agents.collapsed .agent-others .agent { margin: 0 -4px 2px; }
+/* A recent folder: a long name is cut short with an ellipsis, keeping its × on the same line. */
+.menu-item.recent { display: flex; align-items: center; max-width: 280px; }
+.menu-item.recent .menu-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-item .menu-remove { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 16px; height: 16px; margin-left: 8px; border-radius: 4px; visibility: hidden; }
+.menu-item:hover .menu-remove { visibility: visible; }
+.menu-item .menu-remove .svg-icon { margin: 0; color: inherit; }
+.menu-item .menu-remove:hover { background: rgb(255 255 255 / 0.2); }
 .agent.unseen .agent-name { font-weight: 700; color: #fff; }
 .agent.unseen .agent-detail { color: #75beff; }
 .unseen-mark { width: 7px; height: 7px; border-radius: 50%; background: #3794ff; flex: none; }
@@ -301,6 +320,8 @@ body.waiting, body.waiting * { cursor: progress !important; }
 .menu-item.check.selected::before { visibility: visible; }
 .menu-item .svg-icon { width: 12px; height: 12px; margin: 0 4px 0 6px; vertical-align: -1px; color: var(--dim); }
 .menu-separator { height: 1px; margin: 4px 6px; background: var(--border-strong); }
+/* A group within a section (the recent folders in the + menu's "In"): a quieter label, no line. */
+.menu-subtitle { padding: 6px 10px 2px; font-size: 10px; color: var(--faint); }
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: rgb(255 255 255 / 0.05); }
 .segmented > button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 22px; padding: 0; border: none; border-radius: 5px; background: none; color: var(--dim); }
 .segmented > button:hover:not(:disabled) { background: var(--ghost-hover); color: var(--text); }

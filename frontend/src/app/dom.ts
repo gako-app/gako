@@ -114,6 +114,16 @@ export function basename(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path;
 }
 
+/** Whether `path` is `root` or inside it. Case is ignored on macOS and Windows, whose file systems
+ * ignore it by default. */
+export function within(path: string, root: string): boolean {
+  const fold = navigator.platform.startsWith('Mac') || navigator.platform.startsWith('Win');
+  const norm = (p: string) => (fold ? p.toLowerCase() : p).replace(/[\\/]+$/, '');
+  const p = norm(path);
+  const r = norm(root);
+  return p === r || p.startsWith(r + '/') || p.startsWith(r + '\\');
+}
+
 export function dirname(path: string): string {
   const i = path.lastIndexOf('/');
   return i < 0 ? '' : path.slice(0, i);

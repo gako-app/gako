@@ -13,7 +13,10 @@ The **+** button in the agent bar picks a program and a folder:
   [settings.md](settings.md).
 - **The folder:** the base folder or one of its repositories. The base folder comes first and is
   chosen by default; the repositories follow, indented beneath it with a ↳ mark, so one named like
-  the base folder can't be mistaken for it.
+  the base folder can't be mistaken for it. **Other folder…** at the end picks any folder with the
+  system's folder picker, for a tool or a side task that lives elsewhere. The last five folders
+  picked so are listed above it, to pick again in one click; the × beside one removes it from the
+  list.
 
 A terminal runs its program in a pseudo-terminal (ConPTY on Windows), with your login shell's
 environment on macOS and Linux (see [architecture.md](architecture.md#platform-specifics)). The
@@ -37,6 +40,15 @@ tab in front. Off macOS, Ctrl+W does too, except inside a terminal, where it sta
 (delete a word); there Ctrl+Shift+W or Ctrl+F4 closes it, as in Windows Terminal and GNOME
 Terminal. A terminal can't tell Ctrl+Shift+W from Ctrl+W, so no program loses a key to it.
 Ctrl+Tab steps through terminals when one is in front.
+
+### Other folders
+
+Terminals running outside the base folder and its repositories (`extraFolders` included) are
+listed apart, at the bottom of the bar under **Other folders**: those started in a folder picked
+with **Other folder…**, and those left running from a base folder opened before. Each names its folder beside the program (the tooltip has its full
+path), and the header folds the list away. Which list a terminal is in follows from its folder, so
+opening the earlier base folder again brings its terminals back up. Entries are dragged within
+their own list. With the bar collapsed, a line sets them apart.
 
 ### States
 
@@ -95,6 +107,8 @@ titles, notifications, bells and bursts of output in a recording.
   as when closing a terminal.
 - **Reopening:** Gako remembers, per base folder, the terminals that were open and reopens them:
   the same program in the same folder, as a new session. Agents' conversations aren't resumed.
+  Terminals in folders picked with **Other folder…** belong to no base folder: they're remembered
+  apart and reopened at launch whatever base folder is open.
 
 ## When the connection to the core is lost
 
