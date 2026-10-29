@@ -107,8 +107,9 @@ titles, notifications, bells and bursts of output in a recording.
   as when closing a terminal.
 - **Reopening:** Gako remembers, per base folder, the terminals that were open and reopens them:
   the same program in the same folder, as a new session. Agents' conversations aren't resumed.
-  Terminals in folders picked with **Other folder…** belong to no base folder: they're remembered
-  apart and reopened at launch whatever base folder is open.
+  Opening another base folder saves the one open first, so its terminals come back with it and
+  not with the next one. Terminals in folders picked with **Other folder…** belong to no base
+  folder: they're remembered apart and reopened at launch whatever base folder is open.
 
 ## When the connection to the core is lost
 

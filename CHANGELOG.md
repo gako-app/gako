@@ -17,6 +17,11 @@ All notable changes to Gako are listed here, newest first. The format follows
   agent bar, each naming its folder. Terminals left running when another base folder is opened
   move there, and move back up when their base folder is opened again.
 
+### Fixed
+
+- Opening another base folder no longer saves the earlier folder's terminals into the new one's
+  session, which reopened them with it the next time.
+
 ## [0.23.0] — 2026-10-22
 
 Markdown files show rendered, with their changes marked, and terminals speak the kitty keyboard

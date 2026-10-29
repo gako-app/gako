@@ -324,6 +324,9 @@ class App {
         this.renderStatusbar();
       }
       const opened = await this.git.open(base);
+      // What's open is saved for the folder open until now, before its terminals move under
+      // "Other folders" (and so out of its session).
+      if (!again) this.saveSession(true);
       this.opened = opened;
       this.settingsError = null;
       try { localStorage.setItem(LAST_BASE, opened.base); } catch { /* storage unavailable */ }
