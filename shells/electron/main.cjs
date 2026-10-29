@@ -197,7 +197,7 @@ function showAbout(tab) {
   }
   aboutWin = new BrowserWindow({
     width: 780,
-    height: 660,
+    height: 690,
     minWidth: 560,
     minHeight: 420,
     title: 'About Gako',
