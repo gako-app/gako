@@ -21,6 +21,8 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 - Opening another base folder no longer saves the earlier folder's terminals into the new one's
   session, which reopened them with it the next time.
+- Nor its open tabs: a folder's session keeps only the tabs of files and repositories in it (the
+  settings tab goes with any).
 
 ## [0.23.0] — 2026-10-22
 

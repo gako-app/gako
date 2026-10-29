@@ -17,7 +17,7 @@ import './style.css';
 import { type Boot, boot } from '../boot';
 import { connect, type Transport } from '../transport';
 import { DiffPanel } from './diff';
-import { basename, delay, fill, freeze, h } from './dom';
+import { basename, delay, fill, freeze, h, within } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
 import type { DiffTarget, Repo, RepoInfo, Settings, Status } from './model';
@@ -58,6 +58,15 @@ type Persist =
   | { history: string }
   | { settings: true }
   | { commit: { root: string; target: DiffTarget } };
+
+/** The file or repository a tab shows (null: the settings, which belong to no folder). */
+function persistPath(p: Persist): string | null {
+  if ('diff' in p) return p.diff.split('\x1f')[0];
+  if ('file' in p) return p.file;
+  if ('history' in p) return p.history;
+  if ('commit' in p) return p.commit.root;
+  return null;
+}
 
 interface Session {
   docs: { persist: Persist; pinned: boolean }[];
@@ -325,7 +334,7 @@ class App {
       }
       const opened = await this.git.open(base);
       // What's open is saved for the folder open until now, before its terminals move under
-      // "Other folders" (and so out of its session).
+      // "Other folders" and its tabs stop being saved with it (they're not the new folder's).
       if (!again) this.saveSession(true);
       this.opened = opened;
       this.settingsError = null;
@@ -707,9 +716,16 @@ class App {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     const save = () => {
-      const docs = this.docs.snapshot();
+      // Only this workspace's tabs: those left open from a base folder opened before are its own.
+      const all = this.docs.snapshot();
+      const roots = this.folders().map((f) => f.path);
+      const docs = all.docs.filter((d) => {
+        const path = persistPath(d.persist as Persist);
+        return path === null || roots.some((root) => within(path, root));
+      });
+      const active = all.active < 0 ? -1 : docs.indexOf(all.docs[all.active]);
       const terms = this.terminals.snapshot();
-      const session: Session = { docs: docs.docs as Session['docs'], active: docs.active, terms: terms.terms, activeTerm: terms.active };
+      const session: Session = { docs: docs as Session['docs'], active, terms: terms.terms, activeTerm: terms.active };
       try {
         localStorage.setItem(SESSION + this.opened!.base, JSON.stringify(session));
         if (this.othersRestored) localStorage.setItem(OTHER_TERMS, JSON.stringify(this.terminals.others()));
