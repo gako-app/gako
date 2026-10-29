@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.24.0] — 2026-10-29
+
+Agents and shells can run in folders outside the base folder, listed apart in the agent bar, and
+Gako says when a newer release is out.
+
 ### Added
 
 - Gako says in the status bar when a newer release is out, and clicking it opens the release page.
@@ -285,7 +290,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/gako-app/gako/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/gako-app/gako/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/gako-app/gako/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/gako-app/gako/compare/v0.21.0...v0.22.0
