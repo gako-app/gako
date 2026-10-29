@@ -19,8 +19,8 @@ the way of your editor.
   in a group of their own. Fetch, pull, push, switch branch or revert a file without leaving the
   list.
 - **Agents in real terminals.** Start Claude Code, Codex, OpenCode, Pi or any other program in any
-  repository. The agent bar shows which agents are working, which have finished while you were
-  away, and which are waiting for your approval.
+  repository, or in a folder elsewhere for a side task. The agent bar shows which agents are
+  working, which have finished while you were away, and which are waiting for your approval.
 - **Review without an editor's weight.** Read-only diffs and files with syntax highlighting,
   Markdown rendered with its changes marked, each repository's history, search scoped to the
   repositories you choose, and go to definition across all of them.
