@@ -6,6 +6,10 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.25.0] — 2026-10-30
+
+Agents come back on their conversations when Gako reopens their terminals.
+
 ### Added
 
 - Agents resume their conversations. When Gako reopens an agent's terminal (a base folder's
@@ -312,7 +316,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/gako-app/gako/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/gako-app/gako/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/gako-app/gako/compare/v0.22.1...v0.23.0
 [0.22.1]: https://github.com/gako-app/gako/compare/v0.22.0...v0.22.1
