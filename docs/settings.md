@@ -48,7 +48,6 @@ per-folder settings files.
   "scanIgnore": ["node_modules", "vendor"],
   "agents": [
     { "name": "Claude Code", "command": ["claude"] },
-    { "name": "Claude Code (Opus)", "command": ["claude", "--model", "opus"] },
     { "name": "Codex", "command": ["codex"] },
     { "name": "Aider", "command": ["aider"] }
   ],
