@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- A terminal's automatic replies to a program's questions (its modes, its keyboard and colour
+  scheme, its size) no longer count as typing, which could end an agent's "waiting for you" early.
+
 ## [0.24.0] — 2026-10-29
 
 Agents and shells can run in folders outside the base folder, listed apart in the agent bar, and

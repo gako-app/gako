@@ -76,8 +76,9 @@ const encoder = new TextEncoder();
 const platform = platformOf(navigator.platform);
 
 /** What xterm.js sends on its own rather than from the keyboard: focus reports, mouse reports, and
- * replies to the program's queries (device attributes, cursor position, OSC colours). */
-const TERMINAL_REPORT = /^\x1b(\[[IO]|\[\?[\d;]*c|\[>[\d;]*c|\[\d+;\d+R|\[<[\d;]+[Mm]|\[M|\]|P)/;
+ * replies to the program's queries (device attributes, cursor position, status such as the colour
+ * scheme, modes, the kitty keyboard flags, window sizes, OSC colours). */
+const TERMINAL_REPORT = /^\x1b(\[[IO]|\[\?[\d;]*[cnu]|\[[\d;]*n|\[>[\d;]*c|\[\??[\d;]*\$y|\[\d+;\d+R|\[[\d;]+t|\[<[\d;]+[Mm]|\[M|\]|P)/;
 
 export class TerminalTab {
   readonly el: HTMLDivElement;
