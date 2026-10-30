@@ -572,6 +572,8 @@ textarea.setting-input { resize: vertical; font-family: ui-monospace, Menlo, Con
 .settings-banner-detail { margin-top: 4px; color: var(--dim); font: 12px ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
 .agents-list { display: flex; flex-direction: column; gap: 6px; max-width: 680px; }
 .agents-list:empty { display: none; }
+/* "Add agent", set off from the last agent's row. */
+.agents-list + .setting-line { margin-top: 10px; }
 .agent-row { display: flex; align-items: center; gap: 6px; }
 .agent-row .agent-name { flex: none; width: 150px; }
 .agent-found { flex: none; width: 62px; font-size: 11px; color: var(--dim); }

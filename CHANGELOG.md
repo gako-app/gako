@@ -6,6 +6,10 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The settings screen's **Add agent** button is set apart from the last agent.
+
 ### Fixed
 
 - A terminal's automatic replies to a program's questions (its modes, its keyboard and colour
