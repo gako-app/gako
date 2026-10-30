@@ -455,9 +455,11 @@ async fn request(
             let mut req: OpenRequest = serde_json::from_value(params)?;
             // Spawning reads the login shell's environment; wait for it here, off the workers.
             crate::shellenv::ready().await;
-            if current.lock().unwrap().settings.agent_hooks {
-                req.cmd = req.cmd.map(crate::agents::adjust);
-            }
+            let (hooks, resume) = {
+                let s = &current.lock().unwrap().settings;
+                (s.agent_hooks, s.agent_resume)
+            };
+            req.cmd = req.cmd.map(|c| crate::agents::adjust(c, hooks, resume));
             let id = state.next_term.fetch_add(1, Ordering::Relaxed);
             let term = Terminal::spawn(id, req, &state.root, state.flow, tx.clone())?;
             term.set_owner(conn_id);
@@ -492,19 +494,30 @@ async fn request(
             Ok(serde_json::to_value(t.stats())?)
         }
         "agents" => {
-            // The configured agents, and whether each is on the PATH.
+            // The configured agents, whether each is on the PATH, and how its sessions are started
+            // and resumed (`sessions`, null if they aren't); and what Gako knows of the programs
+            // it can resume (`known`, by program name, for the settings screen).
             let agents = current.lock().unwrap().settings.agents.clone();
             let agents: Vec<Value> = tokio::task::spawn_blocking(move || {
                 agents
                     .iter()
                     .map(|a| {
                         let found = a.command.first().and_then(|p| crate::shellenv::which(p));
-                        json!({"name": a.name, "command": a.command, "path": found})
+                        json!({
+                            "name": a.name,
+                            "command": a.command,
+                            "path": found,
+                            "sessions": crate::agents::sessions(a),
+                        })
                     })
                     .collect()
             })
             .await?;
-            Ok(json!({"shell": crate::pty::default_shell_name(), "agents": agents}))
+            let known: serde_json::Map<String, Value> = crate::agents::known()
+                .into_iter()
+                .map(|(name, s)| (name.to_string(), json!(s)))
+                .collect();
+            Ok(json!({"shell": crate::pty::default_shell_name(), "agents": agents, "known": known}))
         }
         "editors" => {
             // The editors "open in editor" can use, and the one to use unless the user picks.

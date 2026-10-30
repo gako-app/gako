@@ -6,6 +6,17 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Agents resume their conversations. When Gako reopens an agent's terminal (a base folder's
+  session, the terminals in other folders at launch, or Restart on an agent that exited), Claude
+  Code, Codex, OpenCode and Pi come back on the conversation they had, in the same folder. One you
+  never typed in comes back new, and one that can't resume is started again on a new conversation.
+  Gako learns Codex's conversation through a `notify` program of its own, which runs yours after
+  it. The `agentResume` setting turns this off.
+- Other agents can say how they resume: `session` and `resume` in an entry of the `agents` setting,
+  also on the settings screen, on a line beneath each agent.
+
 ### Changed
 
 - The settings screen's **Add agent** button is set apart from the last agent.

@@ -32,7 +32,7 @@ import { Navigator } from './navigate';
 import type { FileContent } from './model';
 import { Editors } from './editors';
 import { type DocSpec, DocTabs } from './doctabs';
-import type { Saved as SavedTerm } from './terminals';
+import type { Saved as SavedTerm, Sessions } from './terminals';
 import { Layout } from './layout';
 import { Panes } from './panes';
 import { installTooltips } from './tooltip';
@@ -394,7 +394,7 @@ class App {
 
   /** The agents offered for new terminals: the settings' list, and which of them are installed. */
   private async loadAgents(settings: Settings): Promise<void> {
-    const agents = await this.t.request<{ shell: string; agents: { name: string; command: string[]; path: string | null }[] }>('agents');
+    const agents = await this.t.request<{ shell: string; agents: { name: string; command: string[]; path: string | null; sessions: Sessions | null }[] }>('agents');
     await this.terminals.configure(settings, agents.shell, agents.agents);
   }
 

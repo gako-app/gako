@@ -19,6 +19,11 @@
 // what ⌘W and Ctrl+Tab act on. Entries can be dragged into a new order (reorder.ts), and a middle
 // click closes one as its × does.
 //
+// An agent that Gako knows how to resume (see agents.rs in the core) starts on a session with an ID
+// Gako picks, or tells Gako the one it picked (Codex). Once the user has typed in it, reopening its
+// terminal (a session restored, or Restart) resumes that session; one that ends at once, untouched,
+// couldn't, and is started again on a new session.
+//
 // A terminal runs a program (the shell, or a configured agent such as `claude`) in the base folder,
 // one of its repos, or a folder picked with "Other folder…" in the + menu (the last few picked are
 // offered again). Terminals running outside the workspace (the base folder and its repos; picked
@@ -45,6 +50,26 @@ export interface Program {
   name: string;
   /** Missing for the default shell. */
   cmd?: string[];
+  /** How its sessions are started and resumed; missing for a program Gako doesn't resume. */
+  sessions?: Sessions;
+}
+
+/** As the core's `agents` request gives them (agents.rs): `{id}` in the arguments stands for the
+ * session's ID. */
+export interface Sessions {
+  /** Starts the program on a session with the ID Gako picks; null: the program picks it. */
+  session: string[] | null;
+  /** Resumes it; null: `session` does. */
+  resume: string[] | null;
+  /** The program picks the ID and says which (Codex). */
+  learnsId: boolean;
+}
+
+/** An agent's session, and whether there's anything in it to resume: the user typed in its
+ * terminal. */
+export interface SessionRef {
+  id: string;
+  used: boolean;
 }
 
 export interface Folder {
@@ -63,10 +88,11 @@ function folderName(f: Folder): string {
   return f.base ? `${f.base}/${f.name}` : f.name;
 }
 
-/** A terminal's program and folder, as sessions keep them. */
+/** A terminal's program, folder and agent session, as sessions keep them. */
 export interface Saved {
   program: Program;
   folder: Folder;
+  session?: SessionRef;
 }
 
 type State = 'working' | 'waiting' | 'quiet' | 'exited' | 'failed';
@@ -87,6 +113,11 @@ interface Tab {
   shownTitle: string;
   /** When the last notification taken into account arrived. */
   noticeAt: number;
+  /** The agent's session, if it's one Gako resumes and its ID is known. */
+  session: SessionRef | null;
+  /** Started by resuming its session, and when the program started. */
+  resumed: boolean;
+  startedAt: number;
 }
 
 /** Output within this long counts as working. */
@@ -94,6 +125,9 @@ const WORKING_MS = 2000;
 /** A stretch of output lasting this long after the user's last keystroke counts as work worth
  * flagging when it ends; shorter ones are redraws, or the echo of what was typed. */
 const BUSY_MIN_MS = 1500;
+/** An agent that fails this soon after it started resuming its session, untouched, couldn't
+ * resume it. */
+const RESUME_FAILED_MS = 10_000;
 const COLLAPSED = 'gako.agentsCollapsed';
 const OTHERS_FOLDED = 'gako.otherFoldersFolded';
 /** The folders last picked with "Other folder…", newest first. */
@@ -172,6 +206,7 @@ export class Terminals {
       const tab = this.tabs.find((x) => x.term.id === ev.term);
       if (!tab) return;
       tab.term.onExit(ev);
+      if (this.resumeFailed(tab)) return;
       this.showBanner(tab);
       this.tick();
     });
@@ -203,10 +238,12 @@ export class Terminals {
   }
 
   /** Called once the workspace is open: the settings, and which agents are installed. */
-  async configure(settings: Settings, shell: string, agents: { name: string; command: string[]; path: string | null }[]): Promise<void> {
+  async configure(settings: Settings, shell: string, agents: { name: string; command: string[]; path: string | null; sessions: Sessions | null }[]): Promise<void> {
     this.applySettings(settings);
     const shellName = shell.split(/[\\/]/).pop() ?? 'Shell';
-    this.programs = [{ name: `Shell (${shellName})` }, ...agents.filter((a) => a.path).map((a) => ({ name: a.name, cmd: a.command }))];
+    this.programs = [{ name: `Shell (${shellName})` }, ...agents.filter((a) => a.path).map((a): Program => ({
+      name: a.name, cmd: a.command, ...(a.sessions ? { sessions: a.sessions } : {}),
+    }))];
   }
 
   /** New settings: open terminals take the font and copy on select now; scrollback, the renderer and the combining
@@ -223,22 +260,26 @@ export class Terminals {
    * is in front (-1: none). Those in other folders aren't the base folder's to reopen: see others(). */
   snapshot(): { terms: Saved[]; active: number } {
     const open = this.ordered().filter((t) => !t.term.exit && !t.folder.custom && this.inBase(t));
-    return { terms: open.map((t) => ({ program: t.program, folder: t.folder })), active: this.active ? open.indexOf(this.active) : -1 };
+    return { terms: open.map((t) => this.saved(t)), active: this.active ? open.indexOf(this.active) : -1 };
   }
 
   /** The terminals open in folders picked with "Other folder…", reopened whatever base folder is. */
   others(): Saved[] {
-    return this.ordered().filter((t) => !t.term.exit && t.folder.custom).map((t) => ({ program: t.program, folder: t.folder }));
+    return this.ordered().filter((t) => !t.term.exit && t.folder.custom).map((t) => this.saved(t));
   }
 
-  /** Starts the same programs again in the same folders, as new sessions; then shows the one that
-   * was in front, or gives the main area back to the documents. -1 for `active` keeps what was
-   * shown before. */
+  private saved(t: Tab): Saved {
+    return { program: t.program, folder: t.folder, ...(t.session ? { session: t.session } : {}) };
+  }
+
+  /** Starts the same programs again in the same folders, resuming agents' sessions; then shows the
+   * one that was in front, or gives the main area back to the documents. -1 for `active` keeps
+   * what was shown before. */
   async restore(terms: Saved[], active: number): Promise<void> {
     const was = this.active;
     const restored: (Tab | undefined)[] = [];
-    for (const { program, folder } of terms) {
-      await this.open(program, folder);
+    for (const { program, folder, session } of terms) {
+      await this.open(this.current(program), folder, undefined, session ?? null);
       restored.push(this.tabs.at(-1));
     }
     this.select(active < 0 && was && this.tabs.includes(was) ? was : restored[active] ?? null);
@@ -310,9 +351,30 @@ export class Terminals {
     this.onChange?.();
   }
 
-  /** Starts `program` in `folder`, in a new entry at the end of the bar or at `at`. */
-  async open(program: Program, folder: Folder, at = this.tabs.length): Promise<void> {
+  /** The program as the settings have it now, if they still do: how it resumes may have changed. */
+  private current(program: Program): Program {
+    return this.programs.find((p) => p.name === program.name && JSON.stringify(p.cmd) === JSON.stringify(program.cmd)) ?? program;
+  }
+
+  /** The arguments that start `program` on its session: resuming `session` if there's something in
+   * it, otherwise on a new one. */
+  private sessionArgs(program: Program, session: SessionRef | null): { args: string[]; session: SessionRef | null; resumed: boolean } {
+    const known = program.sessions;
+    if (!program.cmd || !known || this.settings?.agentResume === false) return { args: [], session: null, resumed: false };
+    const fill = (args: string[], id: string) => args.map((a) => a.replaceAll('{id}', id));
+    const resume = known.resume ?? known.session;
+    if (session?.used && resume) return { args: fill(resume, session.id), session: { id: session.id, used: true }, resumed: true };
+    // A program that picks its own ID says which once it has one.
+    if (!known.session) return { args: [], session: null, resumed: false };
+    const id = crypto.randomUUID();
+    return { args: fill(known.session, id), session: { id, used: false }, resumed: false };
+  }
+
+  /** Starts `program` in `folder`, in a new entry at the end of the bar or at `at`, on `session` if
+   * it's an agent's to resume. */
+  async open(program: Program, folder: Folder, at = this.tabs.length, session: SessionRef | null = null): Promise<void> {
     const s = this.settings;
+    const start = this.sessionArgs(program, session);
     const term = new TerminalTab(this.t, this.log, this.host, {
       title: program.name,
       scrollback: s?.terminalScrollback ?? 10_000,
@@ -322,17 +384,21 @@ export class Terminals {
       fontLigatures: s?.terminalFontLigatures ?? false,
       maxCombining: s?.terminalMaxCombining ?? 4,
       copyOnSelect: s?.terminalCopyOnSelect ?? false,
-      cmd: program.cmd,
+      cmd: program.cmd && [...program.cmd, ...start.args],
       cwd: folder.path,
     });
     const banner = h('div', { class: 'term-banner', hidden: true });
     term.el.append(banner);
-    const tab: Tab = { term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false, titled: false, shownTitle: '', noticeAt: 0 };
+    const tab: Tab = {
+      term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false, titled: false, shownTitle: '', noticeAt: 0,
+      session: start.session, resumed: start.resumed, startedAt: performance.now(),
+    };
     this.tabs.splice(at, 0, tab);
     // Shown before it starts, so the program starts at the size of the window.
     this.select(tab);
     try {
       await term.start();
+      tab.startedAt = performance.now();
     } catch (e) {
       this.onError(`Couldn't start ${program.name}: ${(e as Error).message ?? e}`);
       this.close(tab, true);
@@ -406,11 +472,27 @@ export class Terminals {
     this.onChange?.();
   }
 
-  /** Starts an exited program again, as a new session, in its place in the bar. */
+  /** Starts an exited program again in its place in the bar, resuming its session. */
   private restart(tab: Tab): void {
     const at = this.tabs.indexOf(tab);
     this.close(tab, true);
-    this.open(tab.program, tab.folder, at);
+    this.open(this.current(tab.program), tab.folder, at, tab.session);
+  }
+
+  /** An agent that failed at once after resuming its session, before anyone typed in it, couldn't
+   * resume it (there was nothing in it, or it's gone): it's started again on a new session, in its
+   * place, keeping in front what was. */
+  private resumeFailed(tab: Tab): boolean {
+    if (!tab.resumed || !tab.term.exit?.code || tab.term.lastInputAt > 0 || performance.now() - tab.startedAt > RESUME_FAILED_MS) return false;
+    const at = this.tabs.indexOf(tab);
+    const was = this.active === tab ? null : this.active;
+    const shown = this.active === tab;
+    this.close(tab, true);
+    this.onError(`${tab.program.name} couldn't resume its conversation in ${folderName(tab.folder)}, so it started a new one.`);
+    this.open(this.current(tab.program), tab.folder, at).then(() => {
+      if (!shown) this.select(was);
+    });
+    return true;
   }
 
   private showBanner(tab: Tab): void {
@@ -452,6 +534,17 @@ export class Terminals {
     const now = performance.now();
     let changed = false;
     for (const tab of this.tabs) {
+      // There's something to resume once the user has typed; an agent that picks its own session
+      // says which after its first turn.
+      const learned = tab.term.sessionId;
+      if (learned && tab.program.sessions?.learnsId && tab.session?.id !== learned) {
+        tab.session = { id: learned, used: true };
+        this.onChange?.();
+      }
+      if (tab.session && !tab.session.used && tab.term.lastInputAt > 0) {
+        tab.session.used = true;
+        this.onChange?.();
+      }
       const state = this.stateOf(tab, now);
       // A notification is the program asking for the user, whatever its state.
       const notice = tab.term.notice;

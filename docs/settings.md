@@ -76,8 +76,9 @@ The defaults suit 10–30 repositories, one or two levels deep. For a larger lay
 
 | Key | Default | What it does |
 |---|---|---|
-| `agents` | Claude Code, Codex, OpenCode, Pi | The programs offered when you start a terminal, besides your shell: a list of `{ "name": …, "command": [program, arguments…] }`. Each is offered only if its program is found. The list replaces the default one, so include the defaults you want to keep. |
+| `agents` | Claude Code, Codex, OpenCode, Pi | The programs offered when you start a terminal, besides your shell: a list of `{ "name": …, "command": [program, arguments…] }`. Each is offered only if its program is found. The list replaces the default one, so include the defaults you want to keep. An agent can also say how it resumes its conversations (below). |
 | `agentHooks` | `true` | Start Claude Code with Gako's hook, so the agent bar can tell when it's waiting for approval. See [terminals.md](terminals.md#how-gako-knows). |
+| `agentResume` | `true` | Reopen each agent on its conversation when Gako reopens its terminal, and when you restart it. See [terminals.md](terminals.md#resuming-agents). |
 | `terminalScrollback` | `10000` | Rows kept per terminal. Each row costs memory at the terminal's full width. |
 | `terminalRenderer` | `"webgl"` | `"webgl"`, or `"dom"` for slower drawing that uses less memory. |
 | `terminalFontSize` | `12` on macOS, `14` elsewhere | In pixels. |
@@ -85,6 +86,30 @@ The defaults suit 10–30 repositories, one or two levels deep. For a larger lay
 | `terminalFontLigatures` | `false` | Draw the font's ligatures, such as `=>` and `!=` as one sign. See [terminals.md](terminals.md#ligatures). |
 | `terminalCopyOnSelect` | `false` | Copy a terminal's text to the clipboard as soon as it's selected with the mouse. See [terminals.md](terminals.md#copy-and-paste). |
 | `terminalMaxCombining` | `4` | Combining marks allowed on one character; a longer run is dropped whole. `0` turns the limit off. See [terminals.md](terminals.md#long-runs-of-combining-marks). |
+
+### How an agent resumes
+
+Gako knows how Claude Code, Codex, OpenCode and Pi start and resume their conversations, by their
+program, whatever the rest of the command. For another agent, or to change what Gako does for one,
+an entry in `agents` takes two more keys, where `{id}` stands for the conversation's ID (a UUID
+Gako picks):
+
+- `session`: the arguments that start the agent on a conversation with that ID. If there's no
+  `resume`, Gako passes them to resume it too, so they must create the conversation when it doesn't
+  exist yet, as OpenCode's `--session` and Pi's `--session-id` do. `false` turns resuming off for
+  that agent.
+- `resume`: the arguments that resume it, when they aren't `session`'s.
+
+```json
+"agents": [
+  { "name": "Claude Code", "command": ["claude"] },
+  { "name": "My agent", "command": ["myagent"], "session": ["--session-id", "{id}"], "resume": ["--resume", "{id}"] },
+  { "name": "Pi, from scratch each time", "command": ["pi"], "session": false }
+]
+```
+
+The arguments go after the agent's command. The settings screen shows them on a line beneath each
+agent, with what Gako does when they're left empty.
 
 ## Files and diffs
 

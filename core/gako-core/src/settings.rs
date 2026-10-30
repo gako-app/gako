@@ -71,14 +71,32 @@ pub struct Settings {
     pub editor: Option<crate::editors::EditorSetting>,
     /// Start Claude Code with a hook that reports when it waits for approval (see agents.rs).
     pub agent_hooks: bool,
+    /// Start agents on sessions Gako can resume, and resume them when their terminals reopen
+    /// (see agents.rs).
+    pub agent_resume: bool,
     /// `notify`: say in the status bar when a newer release is out; `off`: never ask.
     pub updates: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct Agent {
     pub name: String,
     pub command: Vec<String>,
+    /// The arguments that start the agent on a session Gako names (`{id}` stands for it), or
+    /// `false` for an agent Gako shouldn't resume. Unset: what Gako knows for the agent's program.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<SessionSetting>,
+    /// The arguments that resume that session, when they aren't `session`'s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub enum SessionSetting {
+    Args(Vec<String>),
+    /// `false` turns resuming off for the agent; `true` is the same as leaving it out.
+    Flag(bool),
 }
 
 impl Default for Settings {
@@ -96,18 +114,22 @@ impl Default for Settings {
                 Agent {
                     name: "Claude Code".into(),
                     command: vec!["claude".into()],
+                    ..Default::default()
                 },
                 Agent {
                     name: "Codex".into(),
                     command: vec!["codex".into()],
+                    ..Default::default()
                 },
                 Agent {
                     name: "OpenCode".into(),
                     command: vec!["opencode".into()],
+                    ..Default::default()
                 },
                 Agent {
                     name: "Pi".into(),
                     command: vec!["pi".into()],
+                    ..Default::default()
                 },
             ],
             terminal_scrollback: 10_000,
@@ -126,6 +148,7 @@ impl Default for Settings {
             file_font_ligatures: false,
             editor: None,
             agent_hooks: true,
+            agent_resume: true,
             updates: "notify".into(),
         }
     }

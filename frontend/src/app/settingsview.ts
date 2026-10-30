@@ -34,7 +34,9 @@ interface Info {
   knownEditors: { id: string; name: string }[];
 }
 
-type Agent = { name: string; command: string[] };
+type Agent = { name: string; command: string[]; session?: string[] | boolean; resume?: string[] };
+/** How an agent's sessions start and resume, as the core knows them for a program (agents.rs). */
+type KnownSessions = { session: string[] | null; resume: string[] | null };
 
 export interface SettingsHooks {
   pickFolder?: (defaultPath?: string) => Promise<string | null>;
@@ -73,6 +75,8 @@ export class SettingsView {
   /** Installed editors' ids, and whether each agent's program was found, in order. */
   private installedEditors = new Set<string>();
   private agentsFound: boolean[] = [];
+  /** What Gako knows of the sessions of the programs it can resume, by program name. */
+  private knownSessions: Record<string, KnownSessions> = {};
   private ticket = 0;
 
   constructor(private t: Transport, private hooks: SettingsHooks) {
@@ -106,12 +110,13 @@ export class SettingsView {
     const [info, editors, agents] = await Promise.all([
       this.t.request<Info>('settingsGet'),
       this.t.request<{ editors: { id: string }[] }>('editors').catch(() => ({ editors: [] })),
-      this.t.request<{ agents: { path: string | null }[] }>('agents').catch(() => ({ agents: [] })),
+      this.t.request<{ agents: { path: string | null }[]; known?: Record<string, KnownSessions> }>('agents').catch(() => ({ agents: [], known: {} })),
     ]);
     if (ticket !== this.ticket) return;
     this.info = info;
     this.installedEditors = new Set(editors.editors.map((e) => e.id));
     this.agentsFound = agents.agents.map((a) => a.path !== null);
+    this.knownSessions = agents.known ?? {};
   }
 
   private renderHeader(): void {
@@ -223,16 +228,35 @@ export class SettingsView {
     }
   }
 
-  /** The agents: a name and a command line each, in the order they're offered. A list with an
-   * incomplete row isn't saved until it's complete. */
+  /** The agents: a name and a command line each, in the order they're offered, and beneath them
+   * how each one's sessions start and resume (empty: what Gako knows for the program, shown as the
+   * fields' placeholders). A list with an incomplete row isn't saved until it's complete. */
   private agentsControl(save: (value: unknown) => void): { el: HTMLElement; set(value: unknown): void } {
-    let rows: { name: string; line: string }[] = [];
+    /** `off`: the file says `"session": false`, kept while the field stays empty. */
+    let rows: { name: string; line: string; session: string; resume: string; off: boolean }[] = [];
     const list = h('div', { class: 'agents-list' });
     const note = h('div', { class: 'setting-help', hidden: true }, 'Give each agent a name and a command to save the list.');
     const commit = () => {
       const complete = rows.every((r) => r.name.trim() && splitCommand(r.line).length);
       note.hidden = complete;
-      if (complete) save(rows.map((r): Agent => ({ name: r.name.trim(), command: splitCommand(r.line) })));
+      if (!complete) return;
+      save(rows.map((r): Agent => {
+        const agent: Agent = { name: r.name.trim(), command: splitCommand(r.line) };
+        const session = splitCommand(r.session);
+        if (session.length) agent.session = session;
+        else if (r.off) agent.session = false;
+        const resume = splitCommand(r.resume);
+        if (resume.length) agent.resume = resume;
+        return agent;
+      }));
+    };
+    /** The placeholders: what Gako does for the row's program when the fields are empty. */
+    const placeholders = (r: { line: string; off: boolean }): [string, string] => {
+      const program = (splitCommand(r.line)[0] ?? '').split(/[\\/]/).pop()!.replace(/\.(exe|cmd|bat)$/i, '').toLowerCase();
+      const known = this.knownSessions[program];
+      if (r.off) return ['Not resumed ("session": false)', ''];
+      if (!known) return ['Not resumed', 'Same as Session'];
+      return [known.session ? joinCommand(known.session) : 'Learned from the agent', known.resume ? joinCommand(known.resume) : 'Same as Session'];
     };
     const move = (i: number, to: number) => {
       rows.splice(to, 0, ...rows.splice(i, 1));
@@ -243,12 +267,19 @@ export class SettingsView {
       fill(list, rows.map((r, i) => {
         const name = h('input', { type: 'text', class: 'setting-input agent-name', value: r.name, placeholder: 'Name', spellcheck: false });
         const line = h('input', { type: 'text', class: 'setting-input', value: r.line, placeholder: 'Command and arguments', spellcheck: false });
+        const [sessionHint, resumeHint] = placeholders(r);
+        const session = h('input', { type: 'text', class: 'setting-input', value: r.session, placeholder: sessionHint, spellcheck: false, 'aria-label': `${r.name || 'Agent'}: session` });
+        const resume = h('input', { type: 'text', class: 'setting-input', value: r.resume, placeholder: resumeHint, spellcheck: false, 'aria-label': `${r.name || 'Agent'}: resume` });
+        const hint = () => {
+          [session.placeholder, resume.placeholder] = placeholders(r);
+        };
         name.addEventListener('input', () => { r.name = name.value; });
-        line.addEventListener('input', () => { r.line = line.value; });
-        name.addEventListener('change', commit);
-        line.addEventListener('change', commit);
+        line.addEventListener('input', () => { r.line = line.value; hint(); });
+        session.addEventListener('input', () => { r.session = session.value; });
+        resume.addEventListener('input', () => { r.resume = resume.value; });
+        for (const input of [name, line, session, resume]) input.addEventListener('change', commit);
         const found = this.agentsFound[i];
-        return h('div', { class: 'agent-row' },
+        return h('div', { class: 'agent-item' }, h('div', { class: 'agent-row' },
           name, line,
           h('span', { class: `agent-found ${found ? 'yes' : 'no'}`, 'data-tip': found ? 'Installed' : 'Not found: it isn\'t offered' }, found ? 'Found' : 'Not found'),
           iconButton('prev', 'Move up', () => move(i, i - 1), { disabled: i === 0 }),
@@ -257,19 +288,29 @@ export class SettingsView {
             rows.splice(i, 1);
             draw();
             commit();
-          }));
+          })),
+        h('div', { class: 'agent-sessions' },
+          h('span', { class: 'agent-sessions-label' }, 'Session'),
+          h('div', { class: 'agent-sessions-fields' }, session, h('span', { class: 'agent-sessions-label' }, 'Resume'), resume)));
       }));
     };
     const add = h('button', { type: 'button', onclick: () => {
-      rows.push({ name: '', line: '' });
+      rows.push({ name: '', line: '', session: '', resume: '', off: false });
       draw();
       (list.lastElementChild?.querySelector('input') as HTMLInputElement | null)?.focus();
       note.hidden = false;
     } }, 'Add agent');
     return {
-      el: h('div', {}, list, h('div', { class: 'setting-line' }, add), note),
+      el: h('div', {}, list, h('div', { class: 'setting-line' }, add), note,
+        h('div', { class: 'setting-help' }, '{id} stands for the session\'s ID. Left empty, Session and Resume do what Gako knows for Claude Code, Codex, OpenCode and Pi; other agents aren\'t resumed.')),
       set: (v) => {
-        rows = ((v as Agent[] | null) ?? []).map((a) => ({ name: a.name, line: joinCommand(a.command) }));
+        rows = ((v as Agent[] | null) ?? []).map((a) => ({
+          name: a.name,
+          line: joinCommand(a.command),
+          session: Array.isArray(a.session) ? joinCommand(a.session) : '',
+          resume: a.resume ? joinCommand(a.resume) : '',
+          off: a.session === false,
+        }));
         note.hidden = true;
         draw();
       },

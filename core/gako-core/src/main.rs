@@ -42,9 +42,11 @@ use crate::pty::FlowConfig;
 use crate::server::State;
 
 fn main() -> Result<()> {
-    // `gako-core notify`: run by an agent's hook, not as the core (see agents.rs).
-    if std::env::args().nth(1).as_deref() == Some("notify") {
-        return agents::notify_main();
+    // `gako-core notify` and `codex-notify`: run by an agent's hook, not as the core (see agents.rs).
+    match std::env::args().nth(1).as_deref() {
+        Some("notify") => return agents::notify_main(),
+        Some("codex-notify") => return agents::codex_notify_main(),
+        _ => {}
     }
     let generated_token = std::env::var("GAKO_TOKEN").is_err();
     let token = match std::env::var("GAKO_TOKEN") {

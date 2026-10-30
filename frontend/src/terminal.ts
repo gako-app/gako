@@ -97,6 +97,9 @@ export class TerminalTab {
   title = '';
   /** The last desktop notification the program sent (OSC 9, 99 or 777), and when. */
   notice: { text: string; at: number } | null = null;
+  /** The session the agent says it's on, for an agent that picks its own (Codex; see agents.rs in
+   * the core, which has it say so with OSC 6973). */
+  sessionId: string | null = null;
   private notifications = new Notifications();
   exit: Exit | null = null;
   contextLosses = 0;
@@ -147,6 +150,11 @@ export class TerminalTab {
         return true;
       });
     }
+    this.term.parser.registerOscHandler(6973, (data) => {
+      const id = /^session=([\w-]{1,100})$/.exec(data)?.[1];
+      if (id) this.sessionId = id;
+      return true;
+    });
     this.copyOnSelect = !!opts.copyOnSelect;
     this.term.attachCustomKeyEventHandler((e) => {
       // Left alone, not prevented: the menu or the app's own handler takes it from here.

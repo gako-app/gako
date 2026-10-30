@@ -73,6 +73,8 @@ export const SECTIONS: Section[] = [
         help: 'The programs offered when you start a terminal, besides your shell. Each is offered only if its program is found.' },
       { key: 'agentHooks', title: 'Agent hooks', type: 'bool',
         help: "Start Claude Code with Gako's hook, so the agent bar can tell when it's waiting for approval." },
+      { key: 'agentResume', title: 'Resume agents', type: 'bool',
+        help: 'Reopen each agent on its conversation when Gako reopens its terminal, and when you restart it.' },
       { key: 'terminalScrollback', title: 'Scrollback', type: 'number', min: 0, applies: 'new terminals',
         help: "Rows kept per terminal. Each row costs memory at the terminal's full width." },
       { key: 'terminalRenderer', title: 'Renderer', type: 'choice', applies: 'new terminals',

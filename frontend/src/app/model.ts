@@ -137,7 +137,7 @@ export interface Settings {
   debounceMs: number;
   untrackedLimit: number;
   gitTimeoutSecs: number;
-  agents: { name: string; command: string[] }[];
+  agents: { name: string; command: string[]; session?: string[] | boolean; resume?: string[] }[];
   terminalScrollback: number;
   terminalRenderer: string;
   terminalFontSize: number;
@@ -148,6 +148,7 @@ export interface Settings {
   /** A known editor's id, or a command line (see editors.ts). */
   editor: unknown;
   agentHooks: boolean;
+  agentResume: boolean;
   fileFontSize: number;
   fileFontFamily: string;
   fileFontLigatures: boolean;

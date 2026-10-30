@@ -570,8 +570,16 @@ textarea.setting-input { resize: vertical; font-family: ui-monospace, Menlo, Con
 .settings-banner { display: flex; gap: 10px; max-width: 760px; margin: 12px 0 0; padding: 10px 12px; border: 1px solid rgb(199 46 15 / 0.4); border-radius: var(--radius); background: rgb(199 46 15 / 0.1); }
 .settings-banner .svg-icon { flex: none; width: 16px; height: 16px; color: #f48771; }
 .settings-banner-detail { margin-top: 4px; color: var(--dim); font: 12px ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
-.agents-list { display: flex; flex-direction: column; gap: 6px; max-width: 680px; }
+.agents-list { display: flex; flex-direction: column; gap: 12px; max-width: 680px; }
 .agents-list:empty { display: none; }
+.agent-item { display: flex; flex-direction: column; gap: 4px; }
+/* An agent's sessions, on a smaller line beneath it, lined up with its name and command. */
+.agent-sessions { display: flex; align-items: center; gap: 6px; font-size: 12px; padding-right: 160px; }
+.agent-sessions .setting-input { padding: 3px 8px; font-size: 12px; min-width: 0; }
+.agent-sessions-label { flex: none; color: var(--dim); }
+.agent-sessions > .agent-sessions-label { width: 150px; box-sizing: border-box; padding-right: 8px; text-align: right; }
+.agent-sessions-fields { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.agent-sessions-fields .setting-input { flex: 1; }
 /* "Add agent", set off from the last agent's row. */
 .agents-list + .setting-line { margin-top: 10px; }
 .agent-row { display: flex; align-items: center; gap: 6px; }

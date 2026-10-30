@@ -98,7 +98,8 @@ titles, notifications, bells and bursts of output in a recording.
 ## Closing, quitting and reopening
 
 - **Closing a terminal** whose program is still running asks first. A terminal whose program has
-  exited stays open, with its output, until you close it, and its agent can be restarted in place.
+  exited stays open, with its output, until you close it, and its agent can be restarted in place,
+  on the same conversation (see [Resuming agents](#resuming-agents)).
 - **Ending a program** works as a terminal closing does: the program gets SIGHUP. Some programs
   ignore it, Claude Code among them, or leave children behind, so on macOS and Linux the program's
   whole process group then gets SIGTERM and, if that doesn't end it, SIGKILL. On Windows the program
@@ -106,10 +107,40 @@ titles, notifications, bells and bursts of output in a recording.
 - **Quitting Gako** with agents running asks first, and names them. Return quits and Esc cancels,
   as when closing a terminal.
 - **Reopening:** Gako remembers, per base folder, the terminals that were open and reopens them:
-  the same program in the same folder, as a new session. Agents' conversations aren't resumed.
-  Opening another base folder saves the one open first, so its terminals come back with it and
+  the same program in the same folder, and each agent on its conversation (see below). Opening
+  another base folder saves the one open first, so its terminals come back with it and
   not with the next one. Terminals in folders picked with **Other folder…** belong to no base
   folder: they're remembered apart and reopened at launch whatever base folder is open.
+
+### Resuming agents
+
+Gako starts each agent on a conversation (a session) it can find again, and resumes it when it
+reopens the agent's terminal: when a base folder's session comes back, at launch for those in
+**Other folders**, and when you restart an agent that exited. A shell has nothing to resume, and
+comes back as a new one in its folder.
+
+| Agent | Starts with | Resumes with |
+|---|---|---|
+| Claude Code | `--session-id <id>` | `--resume <id>` |
+| Codex | (Codex picks the ID) | `codex resume <id>` |
+| OpenCode | `--session ses_<id>` | the same |
+| Pi | `--session-id <id>` | the same |
+
+Gako picks the ID, a UUID, and keeps it with the terminal. Codex picks its own, so Gako learns it:
+it starts Codex with a `notify` program of its own (`-c notify=…`), which Codex runs after every
+turn with the conversation's ID, and which runs your own `notify` program from Codex's
+`config.toml` in turn, if you have one. On Windows, Gako can't learn it yet (the same limitation as
+[Claude Code's hook](#how-gako-knows)), so a Codex agent there comes back as a new conversation.
+
+There's something to resume once you've typed in the agent's terminal; one you never typed in comes
+back on a new conversation. An agent that fails (ends with an error) within ten seconds of
+resuming, before you type, couldn't resume (the conversation was never saved, or it's gone): Gako
+starts it again on a new conversation and says so.
+
+An agent is recognised by its program, so your own variants (`["claude", "--verbose"]`) resume too,
+unless the command already picks a session itself (`--continue`, `--resume`…). Another agent can
+say how it resumes, in the `agents` setting, and `agentResume` turns resuming off; see
+[settings.md](settings.md#agents-and-terminals).
 
 ## When the connection to the core is lost
 
