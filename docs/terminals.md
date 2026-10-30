@@ -129,8 +129,12 @@ comes back as a new one in its folder.
 Gako picks the ID, a UUID, and keeps it with the terminal. Codex picks its own, so Gako learns it:
 it starts Codex with a `notify` program of its own (`-c notify=…`), which Codex runs after every
 turn with the conversation's ID, and which runs your own `notify` program from Codex's
-`config.toml` in turn, if you have one. On Windows, Gako can't learn it yet (the same limitation as
-[Claude Code's hook](#how-gako-knows)), so a Codex agent there comes back as a new conversation.
+`config.toml` in turn, if you have one. Switching conversation inside the agent (Claude Code's
+`/resume` or `/clear`, or Codex's own) is followed too: Claude Code runs a SessionStart hook of
+Gako's whenever its conversation starts or changes, and Codex says which after every turn. On
+Windows, Gako can't learn the ID from the agent yet (the same limitation as
+[Claude Code's hook](#how-gako-knows)), so a Codex agent there comes back as a new conversation,
+and Claude Code on the one Gako started it on.
 
 There's something to resume once you've typed in the agent's terminal; one you never typed in comes
 back on a new conversation. An agent that fails (ends with an error) within ten seconds of

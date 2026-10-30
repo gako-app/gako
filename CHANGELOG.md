@@ -13,7 +13,8 @@ All notable changes to Gako are listed here, newest first. The format follows
   Code, Codex, OpenCode and Pi come back on the conversation they had, in the same folder. One you
   never typed in comes back new, and one that can't resume is started again on a new conversation.
   Gako learns Codex's conversation through a `notify` program of its own, which runs yours after
-  it. The `agentResume` setting turns this off.
+  it, and follows a switch inside the agent (Claude Code's `/resume` or `/clear`) through a
+  SessionStart hook. The `agentResume` setting turns this off.
 - Other agents can say how they resume: `session` and `resume` in an entry of the `agents` setting,
   also on the settings screen, on a line beneath each agent.
 

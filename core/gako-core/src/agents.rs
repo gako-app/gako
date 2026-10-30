@@ -25,11 +25,13 @@
 //! Resuming: Gako starts an agent on a session whose ID it picks, and passes the ID again to resume
 //! it when the terminal reopens (the frontend does that; see docs/terminals.md). Claude Code, Pi
 //! and OpenCode take an ID to start with, and an agent in the settings can say how it does
-//! (`session`, `resume`). Codex picks its own, so Gako learns it: Codex runs a `notify` program
-//! after every turn, with the thread's ID, and Gako passes one (`-c notify=…`), `gako-core
-//! codex-notify`, which hands the ID to the terminal in a sequence of Gako's own (OSC 6973) and
-//! then runs the user's own `notify` program, if their Codex settings name one. The
-//! `agentResume` setting turns this off.
+//! (`session`, `resume`). An agent can switch to another session inside the terminal (Claude
+//! Code's /resume and /clear), and Codex picks its own ID, so for those two Gako follows the
+//! session the agent says it's on, handed to the terminal in a sequence of Gako's own (OSC 6973):
+//! Claude Code runs a SessionStart hook, `gako-core claude-session`, whenever a session starts
+//! or changes; Codex runs a `notify` program after every turn, with the thread's ID, and Gako
+//! passes one (`-c notify=…`), `gako-core codex-notify`, which then runs the user's own `notify`
+//! program, if their Codex settings name one. The `agentResume` setting turns this off.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -49,8 +51,8 @@ pub struct Sessions {
     pub session: Option<Vec<String>>,
     /// Resumes the session. None: `session` does.
     pub resume: Option<Vec<String>>,
-    /// The agent picks the ID and Gako learns it (Codex, see the module's notes).
-    pub learns_id: bool,
+    /// The agent says which session it's on, and Gako follows it (see the module's notes).
+    pub follows: bool,
 }
 
 fn args(a: &[&str]) -> Option<Vec<String>> {
@@ -67,11 +69,11 @@ fn program_name(cmd: &[String]) -> Option<String> {
 
 /// What Gako knows of the sessions of the agent `cmd` runs, whatever the settings say.
 pub fn builtin(cmd: &[String]) -> Option<Sessions> {
-    let (session, resume, learns_id) = match program_name(cmd)?.as_str() {
+    let (session, resume, follows) = match program_name(cmd)?.as_str() {
         "claude" => (
             args(&["--session-id", "{id}"]),
             args(&["--resume", "{id}"]),
-            false,
+            true,
         ),
         // Both create a session that doesn't exist yet. OpenCode's IDs start with "ses".
         "pi" => (args(&["--session-id", "{id}"]), None, false),
@@ -82,7 +84,7 @@ pub fn builtin(cmd: &[String]) -> Option<Sessions> {
     Some(Sessions {
         session,
         resume,
-        learns_id,
+        follows,
     })
 }
 
@@ -103,7 +105,7 @@ pub fn sessions(agent: &Agent) -> Option<Sessions> {
         Some(SessionSetting::Args(session)) => Sessions {
             session: Some(session.clone()),
             resume: agent.resume.clone(),
-            learns_id: false,
+            follows: false,
         },
         _ => {
             let mut known = builtin(&agent.command)?;
@@ -135,17 +137,17 @@ pub fn sessions(agent: &Agent) -> Option<Sessions> {
     Some(found)
 }
 
-/// The command to run for `cmd`: with Gako's hook added for Claude Code (`hooks`), and with its
-/// `notify` program for Codex, to learn the session's ID (`resume`).
+/// The command to run for `cmd`: Claude Code with Gako's hooks, for approvals (`hooks`) and to
+/// follow its session (`resume`), and Codex with its `notify` program, to follow its session.
 pub fn adjust(cmd: Vec<String>, hooks: bool, resume: bool) -> Vec<String> {
     match program_name(&cmd).as_deref() {
-        Some("claude") if hooks => claude_hook(cmd),
+        Some("claude") if hooks || resume => claude_hooks(cmd, hooks, resume),
         Some("codex") if resume => codex_notify(cmd, codex_user_notify()),
         _ => cmd,
     }
 }
 
-fn claude_hook(cmd: Vec<String>) -> Vec<String> {
+fn claude_hooks(cmd: Vec<String>, notify: bool, session: bool) -> Vec<String> {
     // A command that brings its own --settings is left alone.
     if cmd
         .iter()
@@ -157,9 +159,15 @@ fn claude_hook(cmd: Vec<String>) -> Vec<String> {
         return cmd;
     };
     let program = cmd[0].clone();
-    let settings = json!({
-        "hooks": {"Notification": [{"hooks": [{"type": "command", "command": format!("{} notify", quote(&exe))}]}]}
-    });
+    let hook = |sub: &str| json!([{"hooks": [{"type": "command", "command": format!("{} {sub}", quote(&exe))}]}]);
+    let mut hooks = serde_json::Map::new();
+    if notify {
+        hooks.insert("Notification".into(), hook("notify"));
+    }
+    if session {
+        hooks.insert("SessionStart".into(), hook("claude-session"));
+    }
+    let settings = json!({ "hooks": hooks });
     let mut out = vec![program, "--settings".into(), settings.to_string()];
     out.extend(cmd.into_iter().skip(1));
     out
@@ -253,6 +261,18 @@ fn conversation(event: &serde_json::Value) -> Option<&str> {
     event["thread-id"].as_str().filter(|id| session_id(id))
 }
 
+/// `gako-core claude-session`: run by Claude Code's SessionStart hook, with the hook's JSON on
+/// stdin, whenever a session starts or changes (/resume, /clear); hands its ID to the terminal.
+pub fn claude_session_main() -> Result<()> {
+    let mut input = String::new();
+    std::io::stdin().read_to_string(&mut input)?;
+    let event: serde_json::Value = serde_json::from_str(&input).unwrap_or_default();
+    if let Some(id) = event["session_id"].as_str().filter(|id| session_id(id)) {
+        write_tty(&format!("\x1b]6973;session={id}\x07"));
+    }
+    Ok(())
+}
+
 /// An ID safe to put in a terminal sequence.
 fn session_id(id: &str) -> bool {
     !id.is_empty()
@@ -333,8 +353,25 @@ mod tests {
             adjust(v(&["/usr/local/bin/claude"]), true, true)[1],
             "--settings"
         );
-        // Not with the hooks turned off.
-        assert_eq!(adjust(v(&["claude"]), false, true), v(&["claude"]));
+        assert!(
+            settings["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+                .as_str()
+                .unwrap()
+                .ends_with(" claude-session")
+        );
+        // Each hook only with its setting on, and none with both off.
+        let hooks =
+            |cmd: Vec<String>| -> serde_json::Value { serde_json::from_str(&cmd[2]).unwrap() };
+        let notify = hooks(adjust(v(&["claude"]), true, false));
+        assert!(
+            notify["hooks"]["SessionStart"].is_null() && !notify["hooks"]["Notification"].is_null()
+        );
+        let session = hooks(adjust(v(&["claude"]), false, true));
+        assert!(
+            session["hooks"]["Notification"].is_null()
+                && !session["hooks"]["SessionStart"].is_null()
+        );
+        assert_eq!(adjust(v(&["claude"]), false, false), v(&["claude"]));
     }
 
     #[test]
@@ -408,7 +445,7 @@ mod tests {
         assert_eq!(opencode.session, Some(v(&["--session", "ses_{id}"])));
         assert_eq!(opencode.resume, None);
         let codex = sessions(&agent(&["codex"])).unwrap();
-        assert!(codex.learns_id && codex.session.is_none());
+        assert!(codex.follows && codex.session.is_none());
         assert_eq!(sessions(&agent(&["aider"])), None);
         assert_eq!(known().len(), 4);
     }
