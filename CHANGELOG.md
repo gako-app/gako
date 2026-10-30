@@ -26,6 +26,7 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 - A terminal's automatic replies to a program's questions (its modes, its keyboard and colour
   scheme, its size) no longer count as typing, which could end an agent's "waiting for you" early.
+- The About window is tall enough to show its About tab whole.
 
 ## [0.24.0] — 2026-10-29
 
