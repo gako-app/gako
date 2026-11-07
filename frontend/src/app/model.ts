@@ -168,6 +168,10 @@ export interface Settings {
   fileFontFamily: string;
   fileFontLigatures: boolean;
   blame: boolean;
+  /** "system", "iso", "day-month-year" or "month-day-year" (see dates.ts). */
+  dateFormat: string;
+  /** "system", "24-hour" or "12-hour". */
+  timeFormat: string;
   /** "notify" or "off". */
   updates: string;
 }

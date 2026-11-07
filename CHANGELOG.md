@@ -12,10 +12,17 @@ All notable changes to Gako are listed here, newest first. The format follows
   the line under the cursor and when, as VS Code does, with the commit's subject in its tooltip. A
   click opens the repository's history on that commit. There are no annotations in the editor, and
   the `blame` setting turns it off.
+- `dateFormat` and `timeFormat` settings: dates and times as your system writes them (the default),
+  or in a fixed format (ISO, day-month-year or month-day-year; 24 or 12 hours).
 
 ### Changed
 
 - The status bar's repository and symbol counts are shorter ("27 repositories", "12,345 symbols").
+
+### Fixed
+
+- Dates and times follow your system's region, not only its language: English with a Portuguese
+  region no longer gets American dates and a 12-hour clock.
 
 ## [0.25.0] — 2026-10-30
 

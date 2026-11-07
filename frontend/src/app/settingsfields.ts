@@ -106,6 +106,17 @@ export const SECTIONS: Section[] = [
     ],
   },
   {
+    title: 'Dates and times',
+    fields: [
+      { key: 'dateFormat', title: 'Dates', type: 'choice',
+        options: [['system', "Your system's format"], ['iso', '2026-11-07'], ['day-month-year', '07/11/2026'], ['month-day-year', '11/07/2026']],
+        help: "How dates are written, in the history and the blame. Your system's format follows your region." },
+      { key: 'timeFormat', title: 'Times', type: 'choice',
+        options: [['system', "Your system's format"], ['24-hour', '14:05'], ['12-hour', '2:05 PM']],
+        help: 'How times are written.' },
+    ],
+  },
+  {
     title: 'Editor',
     fields: [
       { key: 'editor', title: 'Open in', type: 'editor',

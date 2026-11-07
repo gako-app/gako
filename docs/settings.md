@@ -24,7 +24,9 @@ Every key is optional; a key you leave out keeps its default.
 Gako watches the file, so a change applies as soon as you save it:
 
 - **At once:** the fonts, in the files, diffs and terminals already open; `terminalCopyOnSelect`; the agents offered for
-  new terminals; the editor; `agentHooks`, for agents started from then on; `updates`; `blame`.
+  new terminals; the editor; `agentHooks`, for agents started from then on; `updates`; `blame`;
+  `dateFormat` and `timeFormat`, in what's drawn from then on (a commit already shown in the
+  history keeps its date as it was written until it's shown again).
 - **By opening the folder again**, which Gako does for you, keeping what's open: the repository
   settings (`scanDepth`, `scanIgnore`, `extraFolders`, `maxGitProcesses`, `debounceMs`,
   `untrackedLimit`, `gitTimeoutSecs`).
@@ -121,6 +123,22 @@ The font of the file viewer and the diff view, set apart from the terminals'.
 | `fileFontFamily` | `"Menlo, Consolas, 'DejaVu Sans Mono', monospace"` | A CSS font list. |
 | `fileFontLigatures` | `false` | Draw the font's ligatures, such as `=>` and `!=` as one sign. Only fonts made with them have any: Fira Code, JetBrains Mono, Cascadia Code. |
 | `blame` | `true` | Show in the status bar who last changed the line under the cursor, and when, in the viewer and in diffs. `false`: no blame, and no `git blame` run. |
+
+## Dates and times
+
+How dates and times are written: in a commit's details in the history, and in the blame's
+tooltip. Relative times ("3 days ago") are always in English.
+
+| Key | Default | What it does |
+|---|---|---|
+| `dateFormat` | `"system"` | `"system"`: as your system writes dates, for its region (see below). `"iso"`: 2026-11-07. `"day-month-year"`: 07/11/2026. `"month-day-year"`: 11/07/2026. |
+| `timeFormat` | `"system"` | `"system"`: as your system writes times. `"24-hour"`: 14:05. `"12-hour"`: 2:05 PM. |
+
+The system's format comes from its region, not only its language: English with the region set to
+Portugal writes "7 Nov 2026, 14:05". Gako asks the shell, since the window itself knows only the
+language. On macOS the region is the one in System Settings → General → Language & Region, and a
+clock forced to 24 or 12 hours there is followed too; on Windows it's the regional format, and on
+Linux the locale Electron reads from the environment.
 
 ## Editor
 

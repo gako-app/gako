@@ -16,6 +16,7 @@
 // Clicking a file in a commit opens its diff against the commit's first parent.
 
 import { basename, dirname, fill, h, relativeTime } from './dom';
+import { formatDateTime } from './dates';
 import type { Git } from './git';
 import type { Commit, CommitDetails, DiffTarget, Repo } from './model';
 
@@ -122,7 +123,7 @@ export class HistoryPanel {
       h('div', { class: 'subject big' }, subject),
       body.join('\n').trim() ? h('pre', { class: 'body' }, body.join('\n').trim()) : null,
       h('div', { class: 'meta dim' },
-        `${d.hash.slice(0, 10)} · ${d.author} <${d.email}> · ${new Date(d.time * 1000).toLocaleString()}`,
+        `${d.hash.slice(0, 10)} · ${d.author} <${d.email}> · ${formatDateTime(d.time)}`,
         d.committer !== d.author ? ` · committed by ${d.committer}` : '',
         d.parents.length > 1 ? ` · merge of ${d.parents.map((p) => p.slice(0, 7)).join(', ')} (files against the first parent)` : ''),
       h('div', { class: 'group' }, `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed`),

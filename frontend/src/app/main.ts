@@ -21,6 +21,7 @@ import { basename, delay, fill, freeze, h, relativeTime, within } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
 import { type BlameSource, BlameTracker } from './blame';
+import { configureDates, formatDateTime, setSystemDates } from './dates';
 import type { DiffTarget, Repo, RepoInfo, Settings, Status } from './model';
 import { type Item, Sidebar } from './sidebar';
 import { type Folder, Terminals } from './terminals';
@@ -680,8 +681,9 @@ class App {
     this.blame?.at(at?.source ?? null, at?.line ?? null);
   }
 
-  /** The settings that change how things are shown, not what: whether the blame shows. */
+  /** The settings that change how things are shown, not what: dates, and whether the blame shows. */
   private applyDisplay(settings: Settings): void {
+    configureDates(settings);
     if (this.blame) this.blame.enabled = settings.blame !== false;
     this.renderStatusbar();
   }
@@ -963,7 +965,7 @@ class App {
     if (!b) return null;
     const c = b.commit;
     if (b.uncommitted) return h('span', { class: 'status-item', 'data-tip': 'This line has changes not committed yet' }, icon('commit'), 'Not committed yet');
-    const date = new Date(c.time * 1000).toLocaleString();
+    const date = formatDateTime(c.time);
     return h('button', {
       class: 'status-button blame',
       'data-tip': `${c.subject}\n${c.hash.slice(0, 7)} · ${c.author} <${c.email}> · ${date}\nClick to show the commit in the history.`,
@@ -1089,6 +1091,7 @@ async function main(): Promise<void> {
   // macOS draws its own slim scrollbars; elsewhere the styles draw them (style.css).
   document.documentElement.classList.toggle('mac', navigator.platform.startsWith('Mac'));
   const b = boot();
+  setSystemDates(b.dates);
   const t = await connect(b);
   const hello = await t.request<{ env: Record<string, string> }>('hello');
   const app = new App(t, hello.env, b.pickFolder, b.showAbout, b.latestRelease);

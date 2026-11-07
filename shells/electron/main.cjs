@@ -21,7 +21,7 @@
 // Run from the repository (`npm run app`), it uses the built core and frontend there; packaged
 // (`npm run package`, scripts/package.mjs), it finds them in the app's resources.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, net, screen, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, net, screen, shell, systemPreferences } = require('electron');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -87,6 +87,29 @@ protocol.registerSchemesAsPrivileged([
 function baseFromArgs() {
   const args = process.argv.slice(app.isPackaged ? 1 : 2);
   return args.find((a) => !a.startsWith('-') && fs.existsSync(a) && fs.statSync(a).isDirectory());
+}
+
+// How the system writes dates and times, for the frontend's "system" formats. Pages get only the
+// app's language (en-US, say), so they'd write dates the American way whatever the region. The
+// system's locale has the region: macOS names it apart when it differs from the language's
+// ("en-US@rg=ptzzzz": English, as written in Portugal), which becomes en-PT. macOS also lets the
+// clock be forced to 24 or 12 hours, whatever the region.
+function systemDates() {
+  let locale = null;
+  try {
+    const sys = app.getSystemLocale() || '';
+    const [tag, extra = ''] = sys.split('@');
+    const parts = tag.split('.')[0].replace(/_/g, '-').split('-').filter(Boolean);
+    const region = /(?:^|;)rg=([a-z]{2})/i.exec(extra)?.[1];
+    if (region) parts.splice(1, parts.length - 1, ...parts.slice(1).filter((p) => p.length === 4), region.toUpperCase());
+    locale = parts.join('-') || null;
+  } catch { /* the page's own language, then */ }
+  let hourCycle = null;
+  if (process.platform === 'darwin') {
+    if (systemPreferences.getUserDefault('AppleICUForce24HourTime', 'boolean')) hourCycle = 'h23';
+    else if (systemPreferences.getUserDefault('AppleICUForce12HourTime', 'boolean')) hourCycle = 'h12';
+  }
+  return { locale, hourCycle };
 }
 
 function startCore() {
@@ -310,7 +333,7 @@ app.whenReady().then(async () => {
   const started = await startCore();
   core = started.core;
   ipcMain.on('gako:boot', (e) => {
-    e.returnValue = started.boot;
+    e.returnValue = { ...started.boot, dates: systemDates() };
   });
   // The native folder picker, for "Open folder…": the path chosen, or null if cancelled.
   ipcMain.handle('gako:pickFolder', async (e, defaultPath) => {

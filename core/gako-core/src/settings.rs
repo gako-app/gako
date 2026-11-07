@@ -67,6 +67,11 @@ pub struct Settings {
     pub file_font_ligatures: bool,
     /// Show in the status bar who last changed the line under the cursor, in files and diffs.
     pub blame: bool,
+    /// How dates are written: `system` (the system's regional format), `iso` (2026-11-07),
+    /// `day-month-year` (07/11/2026) or `month-day-year` (11/07/2026).
+    pub date_format: String,
+    /// How times are written: `system`, `24-hour` or `12-hour`.
+    pub time_format: String,
     /// The editor files open in: a known editor's id (`"vscode"`, `"zed"`…), or a command with
     /// `{file}`, `{line}` and `{column}` placeholders. Unset: the first known editor installed. See
     /// docs/settings.md and editors.rs.
@@ -149,6 +154,8 @@ impl Default for Settings {
             file_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
             file_font_ligatures: false,
             blame: true,
+            date_format: "system".into(),
+            time_format: "system".into(),
             editor: None,
             agent_hooks: true,
             agent_resume: true,

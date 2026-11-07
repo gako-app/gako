@@ -32,6 +32,14 @@ export interface Boot {
   onShowSettings?: (fn: () => void) => void;
   /** Gako's running version and its latest release on GitHub (null if there's none). */
   latestRelease?: () => Promise<{ current: string; latest: Release | null }>;
+  /** How the system writes dates, when the shell knows better than the page's language: its locale
+   * with the region's format (en-PT), and a clock forced to 24 or 12 hours. */
+  dates?: SystemDates;
+}
+
+export interface SystemDates {
+  locale: string | null;
+  hourCycle: 'h23' | 'h12' | null;
 }
 
 export interface Release {
