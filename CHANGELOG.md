@@ -6,6 +6,11 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Short of room, the status bar shortens the folder's path first, then the blame, and no longer
+  cuts off the repository and symbol counts.
+
 ## [0.26.0] — 2026-11-07
 
 The status bar shows who last changed the line you're on, and dates follow your region.

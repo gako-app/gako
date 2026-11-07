@@ -372,7 +372,9 @@ body.waiting, body.waiting * { cursor: progress !important; }
 .statusbar .dim { color: var(--faint); }
 .status-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
 .status-text { overflow: hidden; text-overflow: ellipsis; }
-.status-item:first-child { flex: 0 1 auto; }
+/* Short of room, the folder's path gives way first, then the blame; the counts keep theirs. */
+.status-item { flex: none; }
+.status-item:first-child { flex: 0 1000 auto; }
 .statusbar .svg-icon { width: 13px; height: 13px; stroke-width: 2; }
 .status-item.spinning .svg-icon { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
