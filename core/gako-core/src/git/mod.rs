@@ -171,13 +171,21 @@ impl Git {
     /// `git <args>` in `dir` for a request from the user, returning stdout. Fails on a non-zero
     /// exit, with git's stderr.
     pub async fn run(&self, dir: &Path, args: &[&str]) -> Result<Vec<u8>> {
-        Ok(self.run_with(&self.interactive, dir, args).await?.0)
+        Ok(self.run_with(&self.interactive, dir, args, None).await?.0)
+    }
+
+    /// Like `run`, with `input` on git's stdin.
+    pub async fn run_input(&self, dir: &Path, args: &[&str], input: Vec<u8>) -> Result<Vec<u8>> {
+        Ok(self
+            .run_with(&self.interactive, dir, args, Some(input))
+            .await?
+            .0)
     }
 
     /// Like `run`, for the background status scans; also returns how long the process itself
     /// took, without the wait for a permit.
     async fn run_background(&self, dir: &Path, args: &[&str]) -> Result<(Vec<u8>, Duration)> {
-        self.run_with(&self.permits, dir, args).await
+        self.run_with(&self.permits, dir, args, None).await
     }
 
     async fn run_with(
@@ -185,6 +193,7 @@ impl Git {
         pool: &Semaphore,
         dir: &Path,
         args: &[&str],
+        input: Option<Vec<u8>>,
     ) -> Result<(Vec<u8>, Duration)> {
         crate::shellenv::ready().await;
         let _permit = pool.acquire().await?;
@@ -202,13 +211,25 @@ impl Git {
             )
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0")
-            .stdin(Stdio::null())
+            .stdin(if input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         #[cfg(windows)]
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
-        let child = cmd.spawn().context("starting git")?;
+        let mut child = cmd.spawn().context("starting git")?;
+        if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+            // Written alongside the reading of the output, so a large input can't fill the pipe
+            // while git waits for its output to be read; closed when done.
+            tokio::spawn(async move {
+                use tokio::io::AsyncWriteExt;
+                let _ = stdin.write_all(&input).await;
+            });
+        }
         let out = output_within(child, args, self.timeout).await?;
         if !out.status.success() {
             bail!(
@@ -694,6 +715,125 @@ pub async fn switch(git: &Git, repo: &Path, branch: &str, remote: bool) -> Resul
         git.run(repo, &["switch", "--no-guess", branch]).await?;
     }
     Ok(())
+}
+
+/// A commit that last changed some of a file's lines, as `git blame` names it.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlameCommit {
+    /// All zeros for lines not committed yet.
+    pub hash: String,
+    pub author: String,
+    pub email: String,
+    /// Seconds since the epoch.
+    pub time: i64,
+    pub subject: String,
+}
+
+/// Who last changed each line of a file: the commits, and for each line (from the first) the index
+/// of its commit in them.
+#[derive(Debug, Serialize)]
+pub struct Blame {
+    pub commits: Vec<BlameCommit>,
+    pub lines: Vec<u32>,
+}
+
+/// `git blame` of the file at a revision. In the working tree and the index, lines not committed
+/// yet are marked as such (all-zero hash); `None` when git has no history for the file there
+/// (untracked, new in the index, or no commits yet).
+pub async fn blame(git: &Git, repo: &Path, rev: Rev<'_>, path: &str) -> Result<Option<Blame>> {
+    if let Rev::Commit(c) = rev
+        && c.starts_with('-')
+    {
+        bail!("not a revision: {c}");
+    }
+    let run = match rev {
+        Rev::WorkTree => git.run(repo, &["blame", "--porcelain", "--", path]).await,
+        Rev::Commit(c) => {
+            git.run(repo, &["blame", "--porcelain", c, "--", path])
+                .await
+        }
+        // The staged text, blamed against HEAD.
+        Rev::Index => match git.run(repo, &["show", &format!(":{path}")]).await {
+            Ok(staged) => {
+                git.run_input(
+                    repo,
+                    &["blame", "--porcelain", "--contents", "-", "--", path],
+                    staged,
+                )
+                .await
+            }
+            Err(e) => Err(e),
+        },
+    };
+    let out = match run {
+        Ok(o) => o,
+        Err(e) => {
+            let m = e.to_string();
+            if is_missing(&e) || m.contains("no such path") || m.contains("no such ref") {
+                return Ok(None);
+            }
+            return Err(e);
+        }
+    };
+    Ok(Some(
+        tokio::task::spawn_blocking(move || parse_blame(&out)).await?,
+    ))
+}
+
+/// Parses `git blame --porcelain`: each line is a header (`<hash> <orig line> <final line>
+/// [<count>]`), the commit's details the first time it appears (`author …`, `summary …`), and the
+/// line itself after a tab.
+fn parse_blame(out: &[u8]) -> Blame {
+    let mut commits: Vec<BlameCommit> = Vec::new();
+    let mut index = std::collections::HashMap::<String, u32>::new();
+    let mut lines: Vec<u32> = Vec::new();
+    let mut current: Option<u32> = None;
+    for raw in out.split(|&b| b == b'\n') {
+        if raw.first() == Some(&b'\t') {
+            continue;
+        }
+        let line = String::from_utf8_lossy(raw);
+        let mut words = line.splitn(2, ' ');
+        let first = words.next().unwrap_or("");
+        let rest = words.next().unwrap_or("");
+        if first.len() >= 40 && first.bytes().all(|b| b.is_ascii_hexdigit()) {
+            let at = *index.entry(first.to_string()).or_insert_with(|| {
+                commits.push(BlameCommit {
+                    hash: first.to_string(),
+                    author: String::new(),
+                    email: String::new(),
+                    time: 0,
+                    subject: String::new(),
+                });
+                commits.len() as u32 - 1
+            });
+            current = Some(at);
+            let fin: usize = rest
+                .split(' ')
+                .nth(1)
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            if fin > 0 {
+                if lines.len() < fin {
+                    lines.resize(fin, at);
+                }
+                lines[fin - 1] = at;
+            }
+            continue;
+        }
+        let Some(c) = current.map(|i| &mut commits[i as usize]) else {
+            continue;
+        };
+        match first {
+            "author" => c.author = rest.into(),
+            "author-mail" => c.email = rest.trim_matches(['<', '>']).into(),
+            "author-time" => c.time = rest.parse().unwrap_or(0),
+            "summary" => c.subject = rest.into(),
+            _ => {}
+        }
+    }
+    Blame { commits, lines }
 }
 
 #[cfg(test)]

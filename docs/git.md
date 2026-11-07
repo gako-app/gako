@@ -126,6 +126,18 @@ Each repository's history button opens its commit log, loading more as it scroll
 commit shows its message, author, date and changed files, each opening the commit's diff for that
 file.
 
+## Blame
+
+The status bar's blame for the cursor's line comes from `git blame --porcelain` of the file at the
+revision shown: the working tree in the viewer, and in a diff the revision of the side the cursor
+is in (the working tree, the index, HEAD or a commit). In the working tree and the index, lines not
+committed yet are told apart; the index's text is passed to `git blame --contents -`, so staged
+lines are blamed against HEAD. A file's blame runs when the cursor first lands in it, and again
+when its text or its repository's status changes (a commit, say); moving the cursor only looks the
+line up. An untracked or newly added file, a repository with no commits, an image, a PDF, a binary
+file, rendered Markdown or the empty side of a diff shows no blame. The `blame` setting turns it
+off.
+
 ## Keeping in sync
 
 - **Fetch** (`git fetch --prune`) refreshes a repository's view of its remote. **Fetch all** does

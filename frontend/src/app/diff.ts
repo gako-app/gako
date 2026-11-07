@@ -81,6 +81,14 @@ export class DiffPanel {
   target: DiffTarget | null = null;
   private loading = 0;
   private layout: Layout = 'auto';
+  /** The side the cursor was last in; the right one at first. */
+  private cursorSide: 'left' | 'right' = 'right';
+  /** The sides that hold text (not missing, binary, an image or a PDF). */
+  private textSides = { left: false, right: false };
+  /** The side and line the cursor is on, while there's text there; null otherwise. */
+  onCursor: (repo: string | null, side: Side | null, line: number | null) => void = () => {};
+  /** The text of a side changed, or another diff was loaded. */
+  onText: (repo: string, side: Side) => void = () => {};
 
   constructor(private git: Git, private editors: Editors, private openFile: (spot: Spot) => void) {
     try {
@@ -100,6 +108,33 @@ export class DiffPanel {
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
     });
+    for (const which of ['left', 'right'] as const) {
+      const ed = which === 'left' ? this.editor.getOriginalEditor() : this.editor.getModifiedEditor();
+      const moved = () => {
+        if (!ed.hasTextFocus()) return;
+        this.cursorSide = which;
+        this.reportCursor();
+      };
+      ed.onDidChangeCursorPosition(moved);
+      ed.onDidFocusEditorText(moved);
+    }
+  }
+
+  /** Tells `onCursor` where the cursor is: on the side it was last in, if that has text, else
+   * the right side. */
+  private reportCursor(): void {
+    const t = this.target;
+    let which = this.cursorSide;
+    if (t && !this.textSides[which]) which = 'right';
+    const side = t && !this.host.hidden && this.textSides[which] ? t[which] : null;
+    const ed = which === 'left' ? this.editor.getOriginalEditor() : this.editor.getModifiedEditor();
+    const line = side ? ed.getPosition()?.lineNumber ?? null : null;
+    this.onCursor(t && side ? t.repo : null, side, line);
+  }
+
+  private textChanged(t: DiffTarget): void {
+    if (t.left) this.onText(t.repo, t.left);
+    if (t.right) this.onText(t.repo, t.right);
   }
 
   /** Applies the settings' file font, to both sides. */
@@ -139,16 +174,24 @@ export class DiffPanel {
     // to it costs nothing.
     const current = this.editor.getModel();
     if (shown && current && !type && !left?.binary && !right?.binary && !left?.truncated && !right?.truncated && this.host.hidden === false) {
-      setText(current.original, left?.text ?? '');
-      setText(current.modified, right?.text ?? '');
+      if (current.original.getValue() !== (left?.text ?? '') || current.modified.getValue() !== (right?.text ?? '')) {
+        setText(current.original, left?.text ?? '');
+        setText(current.modified, right?.text ?? '');
+        this.textChanged(target);
+      }
       this.notice.hidden = true;
       if (!keepView) restoreView(this.editor.getModifiedEditor(), saved);
       this.setStale(false);
+      this.reportCursor();
       return;
     }
     const thaw = same ? freeze(this.el) : null;
     try {
+      this.textSides = { left: !type && !!left && !left.binary, right: !type && !!right && !right.binary };
+      if (!same) this.cursorSide = 'right';
+      this.textChanged(target);
       await this.draw(ticket, target, left, right, type, same, saved);
+      if (ticket === this.loading) this.reportCursor();
     } finally {
       thaw?.();
     }
@@ -304,5 +347,6 @@ export class DiffPanel {
     previous?.modified.dispose();
     this.header.replaceChildren(h('div', { class: 'dim' }, message));
     this.notice.hidden = true;
+    this.reportCursor();
   }
 }

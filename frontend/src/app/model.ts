@@ -61,6 +61,21 @@ export interface Commit {
   subject: string;
 }
 
+/** A commit that last changed some of a file's lines; its hash is all zeros for lines not committed yet. */
+export interface BlameCommit {
+  hash: string;
+  author: string;
+  email: string;
+  time: number;
+  subject: string;
+}
+
+/** Who last changed each line of a file: `lines[n]` is the index in `commits` of line n + 1's commit. */
+export interface Blame {
+  commits: BlameCommit[];
+  lines: number[];
+}
+
 export interface CommitDetails extends Omit<Commit, 'subject'> {
   committer: string;
   message: string;
@@ -152,6 +167,7 @@ export interface Settings {
   fileFontSize: number;
   fileFontFamily: string;
   fileFontLigatures: boolean;
+  blame: boolean;
   /** "notify" or "off". */
   updates: string;
 }

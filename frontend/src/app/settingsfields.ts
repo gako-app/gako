@@ -101,6 +101,8 @@ export const SECTIONS: Section[] = [
         help: 'A CSS font list: the first one installed is used.' },
       { key: 'fileFontLigatures', title: 'Font ligatures', type: 'bool',
         help: "Draw the font's ligatures, such as => and != as one sign, if it has any." },
+      { key: 'blame', title: 'Blame', type: 'bool',
+        help: 'Show in the status bar who last changed the line under the cursor, and when.' },
     ],
   },
   {

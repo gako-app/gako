@@ -413,3 +413,75 @@ async fn a_timeout_reads_as_an_explanation() {
     assert!(friendly(&e).starts_with("The remote didn't answer"));
     assert_eq!(friendly(&anyhow::anyhow!("boom")), "boom");
 }
+
+#[tokio::test]
+async fn blame_marks_each_line_with_its_commit() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = crate::files::canonical(&t.path()).unwrap();
+    init(&dir);
+    let g = git();
+    // No commits yet: nothing to blame.
+    std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+    assert!(
+        blame(&g, &dir, Rev::WorkTree, "a.txt")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    sh_git(&dir, &["add", "a.txt"]);
+    sh_git(&dir, &["commit", "-q", "-m", "First"]);
+    std::fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").unwrap();
+    sh_git(&dir, &["commit", "-q", "-am", "Second"]);
+    std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\n").unwrap();
+
+    let b = blame(&g, &dir, Rev::WorkTree, "a.txt")
+        .await
+        .unwrap()
+        .unwrap();
+    let subjects: Vec<&str> = b
+        .lines
+        .iter()
+        .map(|&i| b.commits[i as usize].subject.as_str())
+        .collect();
+    assert_eq!(subjects[0], "First");
+    assert_eq!(subjects[2], "Second");
+    let uncommitted = &b.commits[b.lines[1] as usize];
+    assert!(uncommitted.hash.bytes().all(|c| c == b'0'));
+    let first = &b.commits[b.lines[0] as usize];
+    assert_eq!(first.hash.len(), 40);
+    assert!(!first.author.is_empty() && first.time > 0);
+    assert!(!first.email.contains('<'));
+
+    // Staged: the index's lines against HEAD; the line staged is uncommitted there too, and at
+    // HEAD it's the first commit's.
+    sh_git(&dir, &["add", "a.txt"]);
+    std::fs::write(dir.join("a.txt"), "one\nTWO\nthree\nfour\n").unwrap();
+    let staged = blame(&g, &dir, Rev::Index, "a.txt").await.unwrap().unwrap();
+    assert_eq!(staged.lines.len(), 3);
+    assert!(
+        staged.commits[staged.lines[1] as usize]
+            .hash
+            .bytes()
+            .all(|c| c == b'0')
+    );
+    let head = blame(&g, &dir, Rev::Commit("HEAD"), "a.txt")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(head.commits[head.lines[1] as usize].subject, "First");
+    assert!(
+        blame(&g, &dir, Rev::Commit("--output=x"), "a.txt")
+            .await
+            .is_err()
+    );
+
+    // Untracked: nothing to blame either.
+    std::fs::write(dir.join("new.txt"), "x\n").unwrap();
+    assert!(
+        blame(&g, &dir, Rev::WorkTree, "new.txt")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

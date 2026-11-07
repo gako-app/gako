@@ -65,6 +65,8 @@ pub struct Settings {
     pub file_font_family: String,
     /// Draw the font's ligatures (`=>`, `!=`…) in the file viewer and the diff view.
     pub file_font_ligatures: bool,
+    /// Show in the status bar who last changed the line under the cursor, in files and diffs.
+    pub blame: bool,
     /// The editor files open in: a known editor's id (`"vscode"`, `"zed"`…), or a command with
     /// `{file}`, `{line}` and `{column}` placeholders. Unset: the first known editor installed. See
     /// docs/settings.md and editors.rs.
@@ -146,6 +148,7 @@ impl Default for Settings {
             file_font_size: 12.0,
             file_font_family: "Menlo, Consolas, 'DejaVu Sans Mono', monospace".into(),
             file_font_ligatures: false,
+            blame: true,
             editor: None,
             agent_hooks: true,
             agent_resume: true,

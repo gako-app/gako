@@ -15,7 +15,7 @@
 // Typed requests to the core's workspace and Git side.
 
 import type { Transport } from '../transport';
-import type { Commit, CommitDetails, FileContent, RepoInfo, Settings, Status } from './model';
+import type { Blame, Commit, CommitDetails, FileContent, RepoInfo, Settings, Status } from './model';
 
 export interface Opened {
   base: string;
@@ -38,6 +38,12 @@ export class Git {
 
   log(repo: string, skip: number, limit: number): Promise<Commit[]> {
     return this.t.request('gitLog', { repo, skip, limit });
+  }
+
+  /** Who last changed each line of a file at a revision ('worktree', 'index' or a commit); null
+   * when it has no history there (untracked, new, or no commits yet). */
+  blame(repo: string, rev: string, path: string): Promise<Blame | null> {
+    return this.t.request('gitBlame', { repo, rev, path });
   }
 
   details(repo: string, hash: string): Promise<CommitDetails> {

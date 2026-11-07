@@ -6,6 +6,17 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Blame in the status bar: in the file viewer and in diffs, the status bar shows who last changed
+  the line under the cursor and when, as VS Code does, with the commit's subject in its tooltip. A
+  click opens the repository's history on that commit. There are no annotations in the editor, and
+  the `blame` setting turns it off.
+
+### Changed
+
+- The status bar's repository and symbol counts are shorter ("27 repositories", "12,345 symbols").
+
 ## [0.25.0] — 2026-10-30
 
 Agents come back on their conversations when Gako reopens their terminals.

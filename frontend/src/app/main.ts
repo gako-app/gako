@@ -17,9 +17,10 @@ import './style.css';
 import { type Boot, boot } from '../boot';
 import { connect, type Transport } from '../transport';
 import { DiffPanel } from './diff';
-import { basename, delay, fill, freeze, h, within } from './dom';
+import { basename, delay, fill, freeze, h, relativeTime, within } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
+import { type BlameSource, BlameTracker } from './blame';
 import type { DiffTarget, Repo, RepoInfo, Settings, Status } from './model';
 import { type Item, Sidebar } from './sidebar';
 import { type Folder, Terminals } from './terminals';
@@ -93,6 +94,9 @@ class App {
   private mode: 'welcome' | 'diff' | 'history' | 'file' | 'settings' = 'welcome';
   private explorer: Explorer;
   private viewer: Viewer;
+  private blame: BlameTracker;
+  /** Where the cursor is in the viewer and in the diff view, as each last said. */
+  private cursor: Record<'file' | 'diff', { source: BlameSource | null; line: number } | null> = { file: null, diff: null };
   private settingsView: SettingsView;
   private search: SearchView;
   private goto: GoToFile;
@@ -182,6 +186,25 @@ class App {
     });
     this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
     this.viewer.attachNavigation(this.nav);
+    this.blame = new BlameTracker(this.git, () => this.renderStatusbar());
+    // The file in the viewer, as it is in the working tree.
+    const inWorktree = (path: string): BlameSource | null => {
+      const r = this.repoOf(path);
+      return r && path !== r.root ? { repo: r.root, rev: 'worktree', path: path.slice(r.root.length + 1).replaceAll('\\', '/') } : null;
+    };
+    this.viewer.onCursor = (path, line) => {
+      this.cursor.file = path && line ? { source: inWorktree(path), line } : null;
+      this.pointBlame();
+    };
+    this.viewer.onText = (path) => {
+      const source = inWorktree(path);
+      if (source) this.blame.forget(source);
+    };
+    this.diff.onCursor = (repo, side, line) => {
+      this.cursor.diff = repo && side && line ? { source: { repo, rev: side.rev, path: side.path }, line } : null;
+      this.pointBlame();
+    };
+    this.diff.onText = (repo, side) => this.blame.forget({ repo, rev: side.rev, path: side.path });
     this.diff.attachNavigation(this.nav, (repo, path) => this.join(repo, path));
     this.docs = new DocTabs({
       save: (kind) => (kind === 'diff' ? this.diff.saveView() : kind === 'file' ? this.viewer.saveView() : null),
@@ -230,7 +253,7 @@ class App {
       else if (ev.t === 'indexReady') {
         this.indexed = true;
         this.indexing = false;
-        this.indexInfo = `${ev.symbols.toLocaleString()} symbols indexed`;
+        this.indexInfo = `${ev.symbols.toLocaleString()} symbols`;
         this.log('indexReady', { files: ev.files, symbols: ev.symbols, ms: ev.ms });
         this.renderStatusbar();
       } else if (ev.t === 'scanDone') {
@@ -241,7 +264,7 @@ class App {
         this.sidebar.render();
         // From asking for the workspace to every repo's status: discovery and the first scan.
         const sinceOpen = performance.now() - this.openedAt;
-        this.scanInfo = `${ev.repos.toLocaleString()} repositor${ev.repos === 1 ? 'y' : 'ies'} scanned (${Math.round(sinceOpen).toLocaleString()} ms)`;
+        this.scanInfo = `${ev.repos.toLocaleString()} repositor${ev.repos === 1 ? 'y' : 'ies'} (${Math.round(sinceOpen).toLocaleString()} ms)`;
         this.log('scanDone', { ms: ev.ms, sinceOpenMs: sinceOpen, repos: ev.repos });
         this.renderStatusbar();
       }
@@ -345,6 +368,7 @@ class App {
       this.search.base = opened.base;
       this.viewer.configure(opened.settings);
       this.diff.configure(opened.settings);
+      this.applyDisplay(opened.settings);
       if (!this.scanFinished) {
         this.scanInfo = 'Scanning…';
         this.sidebar.phase = 'scanning';
@@ -404,7 +428,10 @@ class App {
     this.settingsError = error ?? null;
     this.renderStatusbar();
     this.settingsView.refresh().catch(() => { /* shown again when its tab is */ });
-    if (settings) this.updates?.configure(settings.updates);
+    if (settings) {
+      this.updates?.configure(settings.updates);
+      this.applyDisplay(settings);
+    }
     const opened = this.opened;
     // With no folder open, opening one reads the file.
     if (!settings || !opened) return;
@@ -460,6 +487,8 @@ class App {
       // A commit (or an agent's edit) changes what the open file's markers compare against.
       const open = this.viewer.path;
       if (this.mode === 'file' && open && changed.some((root) => this.repoOf(open)?.root === root)) this.viewer.refreshMarkers();
+      // A commit changes who last changed the lines.
+      for (const root of changed) this.blame.forgetRepo(root);
     });
   }
 
@@ -641,6 +670,20 @@ class App {
     const view = mode === 'diff' ? this.diff.el : mode === 'history' ? this.history.el : mode === 'file' ? this.viewer.el
       : mode === 'settings' ? this.settingsView.el : this.welcome();
     this.showView(view);
+    // The blame follows the cursor of the view in front, if it has one.
+    this.pointBlame();
+    this.renderStatusbar();
+  }
+
+  private pointBlame(): void {
+    const at = this.mode === 'file' || this.mode === 'diff' ? this.cursor[this.mode] : null;
+    this.blame?.at(at?.source ?? null, at?.line ?? null);
+  }
+
+  /** The settings that change how things are shown, not what: whether the blame shows. */
+  private applyDisplay(settings: Settings): void {
+    if (this.blame) this.blame.enabled = settings.blame !== false;
+    this.renderStatusbar();
   }
 
   /** Brings `view` to the front of the main area. The panels stay in place once added, stacked, with
@@ -902,6 +945,7 @@ class App {
           h('span', { class: 'status-text' }, this.indexing ? 'Indexing symbols…' : this.indexInfo))
         : null,
       h('span', { class: 'spacer' }),
+      this.blameItem(),
       this.updates?.available ? h('button', { class: 'status-button', 'data-tip': 'Open the release page', onclick: () => window.open(this.updates?.available?.url, '_blank') },
         icon('update'), `Update available (${this.updates.available.version})`) : null,
       this.settingsError ? h('button', { class: 'status-button warning', 'data-tip': this.settingsError, onclick: () => this.showSettings() },
@@ -910,6 +954,30 @@ class App {
       h('button', { class: 'status-button icon-only', 'data-tip': `Settings (${navigator.platform.startsWith('Mac') ? '⌘' : 'Ctrl+'},)`, 'aria-label': 'Settings', onclick: () => this.showSettings() }, icon('settings')),
       this.showAbout ? h('button', { class: 'status-button icon-only', 'data-tip': 'About Gako', 'aria-label': 'About Gako', onclick: () => this.showAbout?.() }, icon('info')) : null,
     );
+  }
+
+  /** Who last changed the line under the viewer's cursor, as VS Code shows it; a click shows the
+   * commit in its repo's history. */
+  private blameItem(): HTMLElement | null {
+    const b = this.mode === 'file' || this.mode === 'diff' ? this.blame?.current : null;
+    if (!b) return null;
+    const c = b.commit;
+    if (b.uncommitted) return h('span', { class: 'status-item', 'data-tip': 'This line has changes not committed yet' }, icon('commit'), 'Not committed yet');
+    const date = new Date(c.time * 1000).toLocaleString();
+    return h('button', {
+      class: 'status-button blame',
+      'data-tip': `${c.subject}\n${c.hash.slice(0, 7)} · ${c.author} <${c.email}> · ${date}\nClick to show the commit in the history.`,
+      onclick: () => this.showBlameCommit(b.repo, c.hash),
+    }, icon('commit'), h('span', { class: 'status-text' }, `${c.author}, ${relativeTime(c.time)}`));
+  }
+
+  private showBlameCommit(root: string, hash: string): void {
+    const r = this.repos.find((x) => x.root === root);
+    if (!r) return;
+    // The file's tab stays, rather than give its place to the history as a preview tab would.
+    this.docs.pinActive();
+    this.history.revealNext(hash);
+    this.showHistory(r);
   }
 
   private lostBanner: HTMLElement | null = null;

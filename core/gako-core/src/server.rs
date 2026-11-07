@@ -758,6 +758,18 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
                 git::log(g, &repo.root, skip, limit).await?,
             )?)
         }
+        "gitBlame" => {
+            let path: String = param(&params, "path")?;
+            let rev: String = param(&params, "rev")?;
+            let rev = match rev.as_str() {
+                "worktree" => git::Rev::WorkTree,
+                "index" => git::Rev::Index,
+                c => git::Rev::Commit(c),
+            };
+            Ok(serde_json::to_value(
+                git::blame(g, &repo.root, rev, &path).await?,
+            )?)
+        }
         "gitCommitDetails" => {
             let hash: String = param(&params, "hash")?;
             Ok(serde_json::to_value(

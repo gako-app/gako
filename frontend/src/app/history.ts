@@ -31,6 +31,8 @@ export class HistoryPanel {
   private done = false;
   private loading = false;
   private selected: string | null = null;
+  /** A commit to show once the history is shown (from the status bar's blame). */
+  private reveal: string | null = null;
 
   constructor(
     private git: Git,
@@ -56,6 +58,19 @@ export class HistoryPanel {
     this.header.replaceChildren(h('div', { class: 'diff-title' }, h('span', { class: 'diff-name' }, this.repoName(repo)),
       h('span', { class: 'dim' }, ' history')));
     if (this.loaded === 0) await this.more();
+    const hash = this.reveal;
+    this.reveal = null;
+    if (hash && this.repo === repo) {
+      const row = this.commits.querySelector<HTMLElement>(`.commit[data-hash="${hash}"]`);
+      row?.scrollIntoView({ block: 'center' });
+      await this.select(hash, row);
+    }
+  }
+
+  /** Selects `hash` when the history is next shown. A commit further down than the rows loaded
+   * shows its details without a row selected. */
+  revealNext(hash: string): void {
+    this.reveal = hash;
   }
 
   /** Reloads from the top, after a commit. */
@@ -89,11 +104,11 @@ export class HistoryPanel {
     return el;
   }
 
-  private async select(hash: string, el: HTMLElement): Promise<void> {
+  private async select(hash: string, el: HTMLElement | null): Promise<void> {
     if (!this.repo) return;
     this.selected = hash;
     for (const s of this.commits.querySelectorAll('.commit.selected')) s.classList.remove('selected');
-    el.classList.add('selected');
+    el?.classList.add('selected');
     const repo = this.repo;
     const d = await this.git.details(repo.root, hash);
     if (repo !== this.repo || this.selected !== hash) return;

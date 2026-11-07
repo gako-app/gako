@@ -378,6 +378,7 @@ body.waiting, body.waiting * { cursor: progress !important; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .status-button { display: inline-flex; align-items: center; gap: 5px; flex: none; height: 22px; padding: 0 8px; border: none; border-radius: 5px; background: none; color: var(--dim); font-size: 12px; line-height: 1; }
 .status-button:hover:not(:disabled) { background: var(--ghost-hover); color: var(--bright); }
+.status-button.blame { flex: 0 1 auto; min-width: 0; }
 .status-button.icon-only { padding: 0 5px; margin-left: -18px; }
 /* VS Code's error colour for status bar items. */
 .status-button.warning { background: #c72e0f; color: #fff; }

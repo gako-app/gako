@@ -24,7 +24,7 @@ Every key is optional; a key you leave out keeps its default.
 Gako watches the file, so a change applies as soon as you save it:
 
 - **At once:** the fonts, in the files, diffs and terminals already open; `terminalCopyOnSelect`; the agents offered for
-  new terminals; the editor; `agentHooks`, for agents started from then on; `updates`.
+  new terminals; the editor; `agentHooks`, for agents started from then on; `updates`; `blame`.
 - **By opening the folder again**, which Gako does for you, keeping what's open: the repository
   settings (`scanDepth`, `scanIgnore`, `extraFolders`, `maxGitProcesses`, `debounceMs`,
   `untrackedLimit`, `gitTimeoutSecs`).
@@ -120,6 +120,7 @@ The font of the file viewer and the diff view, set apart from the terminals'.
 | `fileFontSize` | `12` | In pixels. |
 | `fileFontFamily` | `"Menlo, Consolas, 'DejaVu Sans Mono', monospace"` | A CSS font list. |
 | `fileFontLigatures` | `false` | Draw the font's ligatures, such as `=>` and `!=` as one sign. Only fonts made with them have any: Fira Code, JetBrains Mono, Cascadia Code. |
+| `blame` | `true` | Show in the status bar who last changed the line under the cursor, and when, in the viewer and in diffs. `false`: no blame, and no `git blame` run. |
 
 ## Editor
 

@@ -57,6 +57,12 @@ export class Viewer {
   private ticket = 0;
   private decorations: monaco.editor.IEditorDecorationsCollection | null = null;
   private markers: ChangeMarkers;
+  /** Whether the editor holds the file's text (not an image, a PDF or a binary file). */
+  private hasText = false;
+  /** The line the cursor is on, while the file's text shows (not rendered Markdown); null otherwise. */
+  onCursor: (path: string | null, line: number | null) => void = () => {};
+  /** The text of the file shown changed, or another file's was loaded. */
+  onText: (path: string) => void = () => {};
 
   constructor(
     private read: (path: string, raw?: boolean) => Promise<FileContent>,
@@ -83,6 +89,7 @@ export class Viewer {
       lineDecorationsWidth: 12,
     });
     this.markers = new ChangeMarkers(this.editor);
+    this.editor.onDidChangeCursorPosition(() => this.reportCursor());
     this.md = new MarkdownView({
       read: (path) => this.read(path, true),
       open: (path, id) => {
@@ -116,6 +123,7 @@ export class Viewer {
       this.editor.layout();
       this.editor.setScrollTop(this.editor.getTopForLineNumber(line));
       this.renderActions();
+      this.reportCursor();
     } else {
       // Rendered again: the text may have changed since the file was last shown rendered.
       this.source.delete(path);
@@ -128,6 +136,7 @@ export class Viewer {
         this.md.mark(this.markers.changes());
         this.md.scrollToLine(line);
         this.renderActions();
+        this.reportCursor();
       });
     }
   }
@@ -180,16 +189,23 @@ export class Viewer {
     // are worked out again.
     const model = this.editor.getModel();
     if (shown && model && !type && !content.binary && !content.truncated && !this.host.hidden) {
-      setText(model, content.text);
+      if (model.getValue() !== content.text) {
+        setText(model, content.text);
+        this.onText(path);
+      }
       this.notice.hidden = true;
       await Promise.race([this.markers.show(before), delay(150)]);
       if (!keepView) restoreView(this.editor, saved?.editor);
       this.setStale(false);
+      this.reportCursor();
       return;
     }
     const thaw = same ? freeze(this.el) : null;
     try {
+      this.hasText = !type && !content.binary;
+      this.onText(path);
       await this.draw(ticket, path, content, before, type, same, reveal, saved);
+      if (ticket === this.ticket) this.reportCursor();
       if (ticket === this.ticket && this.anchor?.path === path) {
         if (this.previewing) this.md.reveal(this.anchor.id);
         this.anchor = null;
@@ -282,6 +298,12 @@ export class Viewer {
       markdown && !this.previewing ? iconButton('preview', 'Show preview', () => this.setSource(false), { class: 'framed' }) : null,
       diff ? iconButton('diff', 'Show diff', diff, { class: 'framed' }) : null,
       this.editors.button(() => (!path ? null : this.previewing ? { path, line: this.md.topLine(), column: 1 } : spotIn(this.editor, path))));
+  }
+
+  /** Tells `onCursor` where the cursor is. */
+  private reportCursor(): void {
+    const line = this.path && this.hasText && !this.host.hidden ? this.editor.getPosition()?.lineNumber ?? null : null;
+    this.onCursor(line ? this.path : null, line);
   }
 
   saveView(): unknown {
