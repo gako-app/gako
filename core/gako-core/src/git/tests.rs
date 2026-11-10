@@ -188,10 +188,17 @@ async fn a_files_history_follows_renames() {
     sh_git(&dir, &["commit", "-q", "-am", "edit"]);
     std::fs::write(dir.join("other.txt"), "y\n").unwrap();
     sh_git(&dir, &["commit", "-q", "-am", "elsewhere"]);
-    sh_git(&dir, &["mv", "a.txt", ":b c.txt"]);
+    // A name git would take for pathspec magic (`:`) or a pattern, if not passed literally; Windows
+    // allows no `:` in a file's name.
+    let name = if cfg!(windows) {
+        "[b] c.txt"
+    } else {
+        ":b c.txt"
+    };
+    sh_git(&dir, &["mv", "a.txt", name]);
     sh_git(&dir, &["commit", "-q", "-m", "rename"]);
     let g = git();
-    let commits = log(&g, &dir, Some(":b c.txt"), 0, 10).await.unwrap();
+    let commits = log(&g, &dir, Some(name), 0, 10).await.unwrap();
     let seen: Vec<_> = commits
         .iter()
         .map(|c| {
@@ -207,14 +214,14 @@ async fn a_files_history_follows_renames() {
     assert_eq!(
         seen,
         [
-            ("rename", 'R', ":b c.txt", Some("a.txt")),
+            ("rename", 'R', name, Some("a.txt")),
             ("edit", 'M', "a.txt", None),
             ("add", 'A', "a.txt", None),
         ]
     );
     // Pages after the first: git's --skip miscounts with --follow ("elsewhere" is in the walk).
     for (skip, subjects) in [(1, vec!["edit"]), (2, vec!["add"]), (3, vec![])] {
-        let page = log(&g, &dir, Some(":b c.txt"), skip, 1).await.unwrap();
+        let page = log(&g, &dir, Some(name), skip, 1).await.unwrap();
         assert_eq!(
             page.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
             subjects
