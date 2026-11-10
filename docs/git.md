@@ -136,6 +136,14 @@ yet has no history to show, and one renamed but not committed yet shows its old 
 opened from a repository's history, the history button shows the file's history under the name it
 had in that commit.
 
+**Compare with the current file** shows the file as a commit left it against the working tree, to
+see what changed since. It's a button on the "This file" row of a commit in a file's history, and
+on a diff opened from there, and is offered only there, where the file's name now is known (a
+commit's diff from a repository's history may show the file under a name it no longer has). The
+right side follows the working tree as it changes; "Open file" and "Open in editor" work on it,
+and "Back" returns to the file's history. A commit that deleted the file has nothing to compare,
+and a file deleted in the working tree is said to be, not compared.
+
 Git counts `--skip` before `--follow` leaves commits out, so for a file's history Gako asks for
 the pages before too (`--max-count`) and drops them itself: a later page costs a little more than
 the first.

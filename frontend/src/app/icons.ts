@@ -18,7 +18,7 @@
 import {
   ArrowDown, ArrowUp, Braces, Bug, Check, ChevronDown, ChevronRight, ChevronUp, CircleArrowUp, Code, Columns2, Copy, CornerDownRight, createElement,
   ExternalLink, Eye, File, FileArchive, Files, FileBraces, FileCode, FileCog, FileDiff, FileImage, FileLock, FilePen, FileTerminal, FileText,
-  FileType, Folder, FolderGit2, FolderOpen, SquareTerminal, GitBranch, GitCommitHorizontal, Globe, History, type IconNode, Info,
+  FileType, Folder, FolderGit2, FolderOpen, SquareTerminal, GitBranch, GitCommitHorizontal, GitCompare, Globe, History, type IconNode, Info,
   LoaderCircle, Proportions, PanelLeftClose, PanelRightClose, PanelRightOpen, Plus, RefreshCw,
   RotateCcw, Rows2, Search, Settings, SquareSplitHorizontal, TriangleAlert, Undo2, X,
 } from 'lucide';
@@ -32,6 +32,7 @@ const ICONS = {
   restart: RotateCcw,
   panes: SquareSplitHorizontal,
   history: History,
+  compare: GitCompare,
   refresh: RefreshCw,
   push: ArrowUp,
   pull: ArrowDown,

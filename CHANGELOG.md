@@ -11,6 +11,8 @@ All notable changes to Gako are listed here, newest first. The format follows
 - A file's history: the commits that changed a file, following it back through renames, from the
   history button in the viewer and in diffs, or **Show history** in the Files view's context menu.
   Picking a commit lists the file first; a double click opens its diff in that commit.
+- **Compare with the current file**, in a file's history: the file as a commit left it against the
+  working tree, to see what changed since.
 
 ### Changed
 

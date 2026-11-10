@@ -16,7 +16,7 @@ import './style.css';
 
 import { type Boot, boot } from '../boot';
 import { connect, type Transport } from '../transport';
-import { DiffPanel } from './diff';
+import { type DiffActions, DiffPanel } from './diff';
 import { basename, delay, fill, freeze, h, relativeTime, within } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
@@ -187,7 +187,8 @@ class App {
       pickFolder,
       editorSaved: () => this.editors.forget().catch((e) => this.toast(String(e.message ?? e))),
     });
-    this.history = new HistoryPanel(this.git, (target, repo, path) => this.openCommitDiff(target, repo, path), (r) => this.name(r));
+    this.history = new HistoryPanel(this.git, (target, repo, path) => this.openCommitDiff(target, repo, path), (r) => this.name(r),
+      (repo, hash, then, path) => this.compareWithCurrent(repo, hash, then, path));
     this.viewer.attachNavigation(this.nav);
     this.blame = new BlameTracker(this.git, () => this.renderStatusbar());
     // The file in the viewer, as it is in the working tree.
@@ -499,6 +500,14 @@ class App {
   private refreshOpenDiff(changedRepos: string[]): void {
     const target = this.diff.target;
     const key = this.docs.active?.key;
+    // A commit against the working tree follows the working tree.
+    if (this.mode === 'diff' && target?.kind === 'compare' && key?.startsWith('compare:') && changedRepos.includes(target.repo)) {
+      const r = this.repos.find((x) => x.root === target.repo);
+      const p = this.docs.active?.persist as Persist | undefined;
+      const from = p && 'commit' in p ? p.commit.history ?? null : null;
+      if (r) this.diff.show(target, this.commitActions(target, r, from), true);
+      return;
+    }
     if (this.mode !== 'diff' || !target || target.kind === 'commit' || !key?.startsWith('diff:') || !changedRepos.includes(target.repo)) return;
     this.showItem(key.slice(5), undefined, true);
   }
@@ -595,22 +604,54 @@ class App {
     this.docs.open(this.commitSpec(target, repo, from));
   }
 
+  /** A file's diff in a commit, or (kind `compare`) as a commit left it against the working tree. */
   private commitSpec(target: DiffTarget, repo: Repo, from: string | null): DocSpec {
+    const compare = target.kind === 'compare';
     return {
-      key: `commit:${repo.root}\x1f${target.hash}\x1f${target.path}`,
+      key: `${compare ? 'compare' : 'commit'}:${repo.root}\x1f${target.hash}\x1f${target.path}`,
       kind: 'diff',
       title: basename(target.path),
       detail: '',
-      tooltip: `${this.name(repo)}/${target.path} in commit ${target.hash?.slice(0, 7)}`,
-      show: (saved, front) => this.present('diff', () => this.diff.show(target, {
-        repoName: this.name(repo),
-        back: () => this.showHistory(repo, from),
-        // The file's history from HEAD, under the name it had in this commit; opened from a file's
-        // history, "Back" goes there instead.
-        history: from ? undefined : () => this.showHistory(repo, target.path),
-      }, false, saved), front),
+      tooltip: compare
+        ? `${this.name(repo)}/${target.path} as commit ${target.hash?.slice(0, 7)} left it, against the working tree`
+        : `${this.name(repo)}/${target.path} in commit ${target.hash?.slice(0, 7)}`,
+      show: (saved, front) => this.present('diff', () => this.diff.show(target, this.commitActions(target, repo, from), false, saved), front),
       persist: { commit: { root: repo.root, target, ...(from ? { history: from } : {}) } } satisfies Persist,
     };
+  }
+
+  private commitActions(target: DiffTarget, repo: Repo, from: string | null): DiffActions {
+    const compare = target.kind === 'compare';
+    return {
+      repoName: this.name(repo),
+      back: () => this.showHistory(repo, from),
+      // The file's history from HEAD, under the name it had in this commit; opened from a file's
+      // history, "Back" goes there instead.
+      history: from ? undefined : () => this.showHistory(repo, target.path),
+      // Opened from a file's history, where the file's name now is known; not for its deletion.
+      compare: !compare && from && target.right && target.hash
+        ? () => this.compareWithCurrent(repo, target.hash!, target.right!.path, from)
+        : undefined,
+      // The working tree's file, on the right of a compare.
+      file: compare ? this.join(repo.root, target.path) : undefined,
+    };
+  }
+
+  /** Opens the file whose history is `path` as commit `hash` left it (at `then`, its path there),
+   * against the working tree. */
+  private compareWithCurrent(r: Repo, hash: string, then: string, path: string): void {
+    // A file renamed and not committed yet has its history under its old name.
+    const e = r.status?.entries.find((x) => x.path === path || (x.index === 'renamed' && x.origPath === path));
+    const now = e?.index === 'renamed' && e.origPath === path ? e.path : path;
+    if (e?.worktree === 'deleted' || e?.index === 'deleted') {
+      this.toast(`${basename(path)} is deleted in the working tree.`);
+      return;
+    }
+    this.openCommitDiff({
+      repo: r.root, kind: 'compare', path: now, hash,
+      left: { rev: hash, path: then },
+      right: { rev: 'worktree', path: now },
+    }, r, path);
   }
 
   /** The repo's history, or with `path` (relative to the repo) the history of that file. */

@@ -46,6 +46,7 @@ const KIND_LABEL: Record<DiffTarget['kind'], string> = {
   staged: 'HEAD ↔ index (staged)',
   conflict: 'HEAD ↔ working tree (conflict)',
   commit: 'Commit',
+  compare: 'Commit ↔ working tree',
 };
 
 /** Where a side comes from: the working tree, the index, a commit, or nowhere. */
@@ -66,6 +67,8 @@ export interface DiffActions {
   revert?: () => void;
   /** Shows the history of the file shown. */
   history?: () => void;
+  /** Compares the file as this commit left it with the working tree. */
+  compare?: () => void;
   /** The working-tree file shown on the right, which can be opened in the viewer or an editor. */
   file?: string;
   repoName: string;
@@ -270,7 +273,8 @@ export class DiffPanel {
 
   private renderHeader(t: DiffTarget, a: DiffActions): void {
     const renamed = t.left && t.right && t.left.path !== t.right.path ? `${t.left.path} → ` : '';
-    const what = t.kind === 'commit' ? `Commit ${t.hash?.slice(0, 7)}` : KIND_LABEL[t.kind];
+    const what = t.kind === 'commit' ? `Commit ${t.hash?.slice(0, 7)}`
+      : t.kind === 'compare' ? `${t.hash?.slice(0, 7)} ↔ working tree` : KIND_LABEL[t.kind];
     fill(this.header,
       a.back ? h('button', { class: 'link', onclick: a.back }, '← Back') : null,
       h('div', { class: 'diff-title' },
@@ -282,6 +286,7 @@ export class DiffPanel {
         a.file ? iconButton('file', 'Open file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
         a.file ? this.editors.button(() => this.spot(a.file!)) : null,
         a.history ? iconButton('history', 'Show the file\'s history', a.history, { class: 'framed' }) : null,
+        a.compare ? iconButton('compare', 'Compare with the current file', a.compare, { class: 'framed' }) : null,
         a.revert ? iconButton('revert', 'Revert changes', a.revert, { class: 'framed' }) : null,
         diffMedia(t) ? null : this.modeSwitch(),
         iconButton('prev', 'Previous changed file (↑ in the sidebar)', () => a.prev?.(), { class: 'framed', disabled: !a.prev }),

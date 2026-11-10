@@ -106,7 +106,8 @@ export interface Side {
   path: string;
 }
 
-export type DiffKind = 'unstaged' | 'staged' | 'conflict' | 'commit';
+/** `compare`: a file as a commit left it, against the working tree. */
+export type DiffKind = 'unstaged' | 'staged' | 'conflict' | 'commit' | 'compare';
 
 export interface DiffTarget {
   repo: string;
@@ -114,7 +115,7 @@ export interface DiffTarget {
   path: string;
   left: Side | null;
   right: Side | null;
-  /** For commit diffs. */
+  /** For commit and compare diffs. */
   hash?: string;
 }
 
@@ -123,7 +124,7 @@ export const LETTER: Record<Change, string> = {
 };
 
 /** What a diff of this kind compares for this entry. */
-export function diffTarget(repo: string, kind: Exclude<DiffKind, 'commit'>, e: Entry): DiffTarget {
+export function diffTarget(repo: string, kind: Exclude<DiffKind, 'commit' | 'compare'>, e: Entry): DiffTarget {
   const head = (path: string): Side => ({ rev: 'HEAD', path });
   const original = e.origPath ?? e.path;
   switch (kind) {

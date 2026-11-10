@@ -15,11 +15,13 @@
 // A repo's history, or one file's: the commit log (loading more as it scrolls) and the selected
 // commit's details. Clicking a file in a commit opens its diff against the commit's first parent. A
 // file's history lists the commits that changed it, back through its renames; the file comes first
-// in each commit's details, and a double click on a commit opens its diff straight away.
+// in each commit's details, and a double click on a commit opens its diff straight away. The file
+// as a commit left it can be compared with the working tree.
 
 import { basename, dirname, fill, h, relativeTime } from './dom';
 import { formatDateTime } from './dates';
 import type { Git } from './git';
+import { iconButton } from './icons';
 import type { Commit, CommitDetails, CommitFile, DiffTarget, Repo } from './model';
 
 const PAGE = 200;
@@ -46,6 +48,9 @@ export class HistoryPanel {
     /** Opens a file's diff in a commit; `path` is the file whose history it was opened from. */
     private openDiff: (target: DiffTarget, repo: Repo, path: string | null) => void,
     private repoName: (r: Repo) => string,
+    /** Compares a file as commit `hash` left it (at `then`, its path in that commit) with the
+     * working tree; `path` is the file whose history it is. */
+    private compare: (repo: Repo, hash: string, then: string, path: string) => void,
   ) {
     this.el.append(this.header, h('div', { class: 'history-body' }, this.commits, this.details));
     this.commits.addEventListener('scroll', () => {
@@ -161,7 +166,11 @@ export class HistoryPanel {
       class: `file st-${f.status}${f === mine ? ' selected' : ''}`, title: f.origPath ? `${f.origPath} → ${f.path}` : f.path,
       onclick: () => this.openDiff(this.target(repo, d.hash, parent, f), repo, this.path),
     }, h('span', { class: 'letter' }, f.status), h('span', { class: 'fname' }, basename(f.path)),
-    h('span', { class: 'fdir dim' }, dirname(f.path)));
+    h('span', { class: 'fdir dim' }, dirname(f.path)),
+    // The file as this commit left it, against the file now (not for the commit that deleted it).
+    f === mine && this.path && f.status !== 'D'
+      ? iconButton('compare', 'Compare with the current file', () => this.compare(repo, d.hash, f.path, this.path!), { class: 'compare' })
+      : null);
     const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'} changed`;
     fill(this.details,
       h('div', { class: 'subject big' }, subject),
