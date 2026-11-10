@@ -69,6 +69,8 @@ export interface DiffActions {
   history?: () => void;
   /** Compares the file as this commit left it with the working tree. */
   compare?: () => void;
+  /** Shows the whole file as this commit left it, at a line of the right side. */
+  fileAt?: (line: number) => void;
   /** The working-tree file shown on the right, which can be opened in the viewer or an editor. */
   file?: string;
   repoName: string;
@@ -285,6 +287,7 @@ export class DiffPanel {
       h('div', { class: 'diff-actions' },
         a.file ? iconButton('file', 'Open file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
         a.file ? this.editors.button(() => this.spot(a.file!)) : null,
+        a.fileAt ? iconButton('file', 'Show the file as this commit left it, at this line', () => a.fileAt!(this.spot('').line ?? 1), { class: 'framed' }) : null,
         a.history ? iconButton('history', 'Show the file\'s history', a.history, { class: 'framed' }) : null,
         a.compare ? iconButton('compare', 'Compare with the current file', a.compare, { class: 'framed' }) : null,
         a.revert ? iconButton('revert', 'Revert changes', a.revert, { class: 'framed' }) : null,

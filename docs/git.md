@@ -144,6 +144,13 @@ right side follows the working tree as it changes; "Open file" and "Open in edit
 and "Back" returns to the file's history. A commit that deleted the file has nothing to compare,
 and a file deleted in the working tree is said to be, not compared.
 
+**The file as a commit left it** shows the whole file at that commit in the viewer, in a tab of its
+own ("At 22574a3" in its header), with find, the blame (at that commit) and "Back" to the history it
+came from. It's a button on the "This file" row of a commit in a file's history and on any commit's
+diff, where it opens at the line the cursor is on. It has no change markers, nothing reloads it,
+and a Markdown file shows as source, since its images and links would lead to the working tree.
+"Open in editor" isn't offered: an editor would open the working tree's file.
+
 Git counts `--skip` before `--follow` leaves commits out, so for a file's history Gako asks for
 the pages before too (`--max-count`) and drops them itself: a later page costs a little more than
 the first.

@@ -26,7 +26,7 @@ import type { DiffTarget, Repo, RepoInfo, Settings, Status } from './model';
 import { type Item, Sidebar } from './sidebar';
 import { type Folder, Terminals } from './terminals';
 import { Explorer } from './explorer';
-import { Viewer } from './viewer';
+import { type AtCommit, Viewer } from './viewer';
 import { SettingsView } from './settingsview';
 import { type Reveal, SearchView } from './search';
 import { GoToFile } from './gotofile';
@@ -60,7 +60,9 @@ type Persist =
   | { history: string; path?: string }
   | { settings: true }
   /** `history`: the file whose history the diff was opened from, which "Back" returns to. */
-  | { commit: { root: string; target: DiffTarget; history?: string } };
+  | { commit: { root: string; target: DiffTarget; history?: string } }
+  /** A file as a commit left it (`path` in the repo at that commit); `history` as for `commit`. */
+  | { at: { root: string; hash: string; path: string; history?: string } };
 
 /** The file or repository a tab shows (null: the settings, which belong to no folder). */
 function persistPath(p: Persist): string | null {
@@ -68,6 +70,7 @@ function persistPath(p: Persist): string | null {
   if ('file' in p) return p.file;
   if ('history' in p) return p.history;
   if ('commit' in p) return p.commit.root;
+  if ('at' in p) return p.at.root;
   return null;
 }
 
@@ -175,6 +178,11 @@ class App {
     });
     this.viewer = new Viewer(
       (path, raw) => this.t.request<FileContent>('fileRead', { path, raw: !!raw }),
+      async (at, raw) => {
+        const content = await this.git.file(at.repo, at.hash, at.path, raw);
+        if (!content) throw new Error(`${at.path} isn't in commit ${at.hash.slice(0, 7)}.`);
+        return content;
+      },
       this.editors,
       (path) => this.relative(path),
       (path) => this.baseline(path),
@@ -188,7 +196,8 @@ class App {
       editorSaved: () => this.editors.forget().catch((e) => this.toast(String(e.message ?? e))),
     });
     this.history = new HistoryPanel(this.git, (target, repo, path) => this.openCommitDiff(target, repo, path), (r) => this.name(r),
-      (repo, hash, then, path) => this.compareWithCurrent(repo, hash, then, path));
+      (repo, hash, then, path) => this.compareWithCurrent(repo, hash, then, path),
+      (repo, hash, then, path) => this.showFileAt(repo, hash, then, path));
     this.viewer.attachNavigation(this.nav);
     this.blame = new BlameTracker(this.git, () => this.renderStatusbar());
     // The file in the viewer, as it is in the working tree.
@@ -196,12 +205,15 @@ class App {
       const r = this.repoOf(path);
       return r && path !== r.root ? { repo: r.root, rev: 'worktree', path: path.slice(r.root.length + 1).replaceAll('\\', '/') } : null;
     };
-    this.viewer.onCursor = (path, line) => {
-      this.cursor.file = path && line ? { source: inWorktree(path), line } : null;
+    // Or as a commit left it.
+    const sourceOf = (path: string, at: AtCommit | null): BlameSource | null =>
+      at ? { repo: at.repo, rev: at.hash, path: at.path } : inWorktree(path);
+    this.viewer.onCursor = (path, line, at) => {
+      this.cursor.file = path && line ? { source: sourceOf(path, at), line } : null;
       this.pointBlame();
     };
-    this.viewer.onText = (path) => {
-      const source = inWorktree(path);
+    this.viewer.onText = (path, at) => {
+      const source = sourceOf(path, at);
       if (source) this.blame.forget(source);
     };
     this.diff.onCursor = (repo, side, line) => {
@@ -248,7 +260,8 @@ class App {
       else if (ev.t === 'repoTouched') this.refreshOpenDiff([ev.repo]);
       else if (ev.t === 'filesChanged') {
         const open = this.viewer.path;
-        if (this.mode === 'file' && open && ev.dirs.some((d) => open.startsWith(d) && /^[\\/][^\\/]*$/.test(open.slice(d.length)))) {
+        // A file at a commit doesn't change.
+        if (this.mode === 'file' && open && !this.viewer.at && ev.dirs.some((d) => open.startsWith(d) && /^[\\/][^\\/]*$/.test(open.slice(d.length)))) {
           this.viewer.show(open, true).catch(() => this.toast(`${this.relative(open)} can't be read any more.`));
         }
       }
@@ -634,6 +647,37 @@ class App {
         : undefined,
       // The working tree's file, on the right of a compare.
       file: compare ? this.join(repo.root, target.path) : undefined,
+      // The file as the commit left it, whole (not for its deletion).
+      fileAt: !compare && target.right && target.hash
+        ? (line) => this.showFileAt(repo, target.hash!, target.right!.path, from, line)
+        : undefined,
+    };
+  }
+
+  /** Shows a file as commit `hash` left it (`path` in the repo at that commit), at `line`; `from` is
+   * the file whose history it was opened from, which "Back" returns to. */
+  private showFileAt(r: Repo, hash: string, path: string, from: string | null, line?: number): void {
+    this.docs.open(this.fileAtSpec(r, hash, path, from, line));
+  }
+
+  private fileAtSpec(r: Repo, hash: string, path: string, from: string | null, line?: number): DocSpec {
+    const at: AtCommit = {
+      repo: r.root, hash, path,
+      back: () => this.showHistory(r, from),
+      // As from a commit's diff: only where the file's name now is known.
+      compare: from ? () => this.compareWithCurrent(r, hash, path, from) : undefined,
+    };
+    const reveal: Reveal | undefined = line ? { line, columns: [], column: 1 } : undefined;
+    return {
+      key: `at:${r.root}\x1f${hash}\x1f${path}`,
+      kind: 'file',
+      title: basename(path),
+      detail: hash.slice(0, 7),
+      tooltip: `${this.name(r)}/${path} as commit ${hash.slice(0, 7)} left it`,
+      // A line applies when the file is opened, not when its tab is shown again.
+      show: (saved, front) => this.present('file',
+        () => this.viewer.show(this.join(r.root, path), false, saved === undefined ? reveal : undefined, saved ?? undefined, at), front),
+      persist: { at: { root: r.root, hash, path, ...(from ? { history: from } : {}) } } satisfies Persist,
     };
   }
 
@@ -811,6 +855,10 @@ class App {
     if ('history' in p) {
       const r = repo(p.history);
       return r ? this.historySpec(r, p.path ?? null) : null;
+    }
+    if ('at' in p) {
+      const r = repo(p.at.root);
+      return r ? this.fileAtSpec(r, p.at.hash, p.at.path, p.at.history ?? null) : null;
     }
     const r = repo(p.commit.root);
     return r ? this.commitSpec(p.commit.target, r, p.commit.history ?? null) : null;

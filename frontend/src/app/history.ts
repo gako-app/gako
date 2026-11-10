@@ -16,7 +16,7 @@
 // commit's details. Clicking a file in a commit opens its diff against the commit's first parent. A
 // file's history lists the commits that changed it, back through its renames; the file comes first
 // in each commit's details, and a double click on a commit opens its diff straight away. The file
-// as a commit left it can be compared with the working tree.
+// as a commit left it can be shown whole, or compared with the working tree.
 
 import { basename, dirname, fill, h, relativeTime } from './dom';
 import { formatDateTime } from './dates';
@@ -51,6 +51,8 @@ export class HistoryPanel {
     /** Compares a file as commit `hash` left it (at `then`, its path in that commit) with the
      * working tree; `path` is the file whose history it is. */
     private compare: (repo: Repo, hash: string, then: string, path: string) => void,
+    /** Shows a file as commit `hash` left it (at `then`); `path` is the file whose history it is. */
+    private fileAt: (repo: Repo, hash: string, then: string, path: string) => void,
   ) {
     this.el.append(this.header, h('div', { class: 'history-body' }, this.commits, this.details));
     this.commits.addEventListener('scroll', () => {
@@ -167,9 +169,11 @@ export class HistoryPanel {
       onclick: () => this.openDiff(this.target(repo, d.hash, parent, f), repo, this.path),
     }, h('span', { class: 'letter' }, f.status), h('span', { class: 'fname' }, basename(f.path)),
     h('span', { class: 'fdir dim' }, dirname(f.path)),
-    // The file as this commit left it, against the file now (not for the commit that deleted it).
+    // The file as this commit left it, whole and against the file now (not for the commit that
+    // deleted it).
     f === mine && this.path && f.status !== 'D'
-      ? iconButton('compare', 'Compare with the current file', () => this.compare(repo, d.hash, f.path, this.path!), { class: 'compare' })
+      ? [iconButton('file', 'Show the file as this commit left it', () => this.fileAt(repo, d.hash, f.path, this.path!), { class: 'at' }),
+        iconButton('compare', 'Compare with the current file', () => this.compare(repo, d.hash, f.path, this.path!))]
       : null);
     const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'} changed`;
     fill(this.details,

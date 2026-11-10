@@ -36,6 +36,21 @@ interface Saved {
   preview: number | null;
 }
 
+/** A file as a commit left it, shown in place of the working tree's: read-only like any other, with
+ * no change markers, no rendered Markdown and nothing to reload. */
+export interface AtCommit {
+  repo: string;
+  hash: string;
+  /** The file's path in the repo at that commit ('/'-separated). */
+  path: string;
+  /** Back to where it was opened from. */
+  back?: () => void;
+  /** Compares it with the working tree. */
+  compare?: () => void;
+}
+
+const sameAt = (a: AtCommit | null, b: AtCommit | null) => a?.repo === b?.repo && a?.hash === b?.hash && a?.path === b?.path;
+
 export class Viewer {
   readonly el = h('section', { class: 'diff' });
   private header = h('header', { class: 'diff-header' });
@@ -54,18 +69,22 @@ export class Viewer {
   private anchor: { path: string; id: string } | null = null;
   private editor: monaco.editor.IStandaloneCodeEditor;
   path: string | null = null;
+  /** The commit the file shown is at; null for the working tree. */
+  at: AtCommit | null = null;
   private ticket = 0;
   private decorations: monaco.editor.IEditorDecorationsCollection | null = null;
   private markers: ChangeMarkers;
   /** Whether the editor holds the file's text (not an image, a PDF or a binary file). */
   private hasText = false;
   /** The line the cursor is on, while the file's text shows (not rendered Markdown); null otherwise. */
-  onCursor: (path: string | null, line: number | null) => void = () => {};
+  onCursor: (path: string | null, line: number | null, at: AtCommit | null) => void = () => {};
   /** The text of the file shown changed, or another file's was loaded. */
-  onText: (path: string) => void = () => {};
+  onText: (path: string, at: AtCommit | null) => void = () => {};
 
   constructor(
     private read: (path: string, raw?: boolean) => Promise<FileContent>,
+    /** Reads a file as a commit left it. */
+    private readAt: (at: AtCommit, raw: boolean) => Promise<FileContent>,
     private editors: Editors,
     private relative: (path: string) => string,
     /** The file at the last commit ('' if it's new), or null if it has no changes to mark. */
@@ -151,7 +170,7 @@ export class Viewer {
   /** Marks the open file's changes again (its repo's status changed). */
   refreshMarkers(): void {
     const path = this.path;
-    if (!path) return;
+    if (!path || this.at) return;
     this.renderActions();
     if (mediaType(path)) return;
     this.baseline(path).then((before) => { if (this.path === path) this.markers.show(before); }).catch(() => this.markers.clear());
@@ -160,21 +179,25 @@ export class Viewer {
   /** Shows a file: at `reveal` if given, else where `saved` left it (a tab shown again). Resolves
    * once it's drawn as it will stay, change markers included. Another file isn't shown while this one
    * loads; the file it shows already (a refresh, `keepView`, or its tab shown again) is updated in
-   * place. */
-  async show(path: string, keepView = false, reveal?: Reveal, kept?: unknown): Promise<void> {
+   * place. With `at`, the file is shown as that commit left it (`path` is where it would be in the
+   * working tree, for its name and language). */
+  async show(path: string, keepView = false, reveal?: Reveal, kept?: unknown, at: AtCommit | null = null): Promise<void> {
     const ticket = ++this.ticket;
     const saved = kept as Saved | undefined;
     // Opened at a line (a search result, a definition): shown where the line is, in the source.
     if (reveal && isMarkdown(path)) this.source.add(path);
     // The viewer shows this file already, and there's no place in it to go to.
-    const shown = this.path === path && this.editor.getModel() !== null && !reveal;
+    const shown = this.path === path && sameAt(this.at, at) && this.editor.getModel() !== null && !reveal;
     const same = keepView && shown;
     this.path = path;
+    this.at = at;
     if (!shown) {
       const rel = this.relative(path);
       const name = basename(rel);
-      this.header.replaceChildren(
+      fill(this.header,
+        at?.back ? h('button', { class: 'link', onclick: at.back }, '← Back') : null,
         h('div', { class: 'diff-title', 'data-tip': path }, h('span', { class: 'dim' }, rel.slice(0, rel.length - name.length)), h('span', { class: 'diff-name' }, name)),
+        at ? h('div', { class: 'diff-kind dim', 'data-tip': 'The file as this commit left it' }, `At ${at.hash.slice(0, 7)}`) : null,
         this.actions,
       );
       this.renderActions();
@@ -182,8 +205,8 @@ export class Viewer {
     }
     const type = mediaType(path);
     const [content, before] = await Promise.all([
-      this.read(path, !!type),
-      type ? null : this.baseline(path).catch(() => null),
+      at ? this.readAt(at, !!type) : this.read(path, !!type),
+      type || at ? null : this.baseline(path).catch(() => null),
     ]);
     if (ticket !== this.ticket) return;
     // The same file again (something changed in its folder, often another file, or its tab shown
@@ -193,7 +216,7 @@ export class Viewer {
     if (shown && model && !type && !content.binary && !content.truncated && !this.host.hidden) {
       if (model.getValue() !== content.text) {
         setText(model, content.text);
-        this.onText(path);
+        this.onText(path, at);
       }
       this.notice.hidden = true;
       await Promise.race([this.markers.show(before), delay(150)]);
@@ -205,7 +228,7 @@ export class Viewer {
     const thaw = same ? freeze(this.el) : null;
     try {
       this.hasText = !type && !content.binary;
-      this.onText(path);
+      this.onText(path, at);
       await this.draw(ticket, path, content, before, type, same, reveal, saved);
       if (ticket === this.ticket) this.reportCursor();
       if (ticket === this.ticket && this.anchor?.path === path) {
@@ -228,7 +251,8 @@ export class Viewer {
     type: ReturnType<typeof mediaType>, same: boolean, reveal?: Reveal, saved?: Saved): Promise<void> {
     this.media?.dispose();
     this.media = null;
-    const preview = !type && !content.binary && isMarkdown(path) && !this.source.has(path);
+    // At a commit, Markdown shows as source: its images and links would lead to the working tree.
+    const preview = !type && !content.binary && isMarkdown(path) && !this.source.has(path) && !this.at;
     const scroll = same && this.previewing ? this.md.scroll : saved?.preview ?? null;
     this.host.hidden = !!type || preview;
     this.mediaHost.hidden = !type;
@@ -293,6 +317,12 @@ export class Viewer {
    * editor (at the top of the rendered view, when it's shown). */
   private renderActions(): void {
     const path = this.path;
+    const at = this.at;
+    if (at) {
+      // The commit's file: nothing to diff, and an editor would open the working tree's.
+      fill(this.actions, at.compare ? iconButton('compare', 'Compare with the current file', at.compare, { class: 'framed' }) : null);
+      return;
+    }
     const diff = path ? this.diffOf(path) : null;
     const history = path ? this.historyOf(path) : null;
     const markdown = !!path && isMarkdown(path) && (this.previewing || !this.host.hidden);
@@ -307,7 +337,7 @@ export class Viewer {
   /** Tells `onCursor` where the cursor is. */
   private reportCursor(): void {
     const line = this.path && this.hasText && !this.host.hidden ? this.editor.getPosition()?.lineNumber ?? null : null;
-    this.onCursor(line ? this.path : null, line);
+    this.onCursor(line ? this.path : null, line, this.at);
   }
 
   saveView(): unknown {

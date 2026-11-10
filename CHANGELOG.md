@@ -13,6 +13,7 @@ All notable changes to Gako are listed here, newest first. The format follows
   Picking a commit lists the file first; a double click opens its diff in that commit.
 - **Compare with the current file**, in a file's history: the file as a commit left it against the
   working tree, to see what changed since.
+- The whole file as a commit left it, in the viewer, from a file's history or a commit's diff.
 
 ### Changed
 

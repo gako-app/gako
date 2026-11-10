@@ -53,6 +53,8 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
 - **Open in editor** opens the file at the cursor's line, or at the top of the view.
 - **The history button** lists the commits that changed the file, back through its renames. See
   [git.md](git.md#history).
+- **A file as a commit left it** opens in the viewer too, from a file's history or a commit's diff,
+  marked "At" and the commit in its header. See [git.md](git.md#history).
 - **Find** (⌘F, Ctrl+F) searches the file in front, or either side of a diff, with Monaco's find
   widget. Pressed outside the editor (in the sidebar, say), it opens on the file in front, or on a
   diff's side after the change (before it, for a deleted file). The widget has match case, whole

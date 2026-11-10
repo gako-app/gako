@@ -354,7 +354,7 @@ body.waiting, body.waiting * { cursor: progress !important; }
 .commit-details .body { white-space: pre-wrap; font: 12px Menlo, Consolas, monospace; color: var(--text); margin: 6px 0 10px; }
 .commit-details .group { padding-left: 0; margin-top: 12px; }
 .commit-details .file { margin: 0 -8px; padding-left: 8px; }
-.commit-details .file .compare { margin-left: auto; }
+.commit-details .file .at { margin-left: auto; }
 
 .welcome { margin: auto; max-width: 520px; padding: 40px; display: flex; flex-direction: column; gap: 10px; }
 .welcome h1 { font-weight: 600; font-size: 24px; letter-spacing: -0.01em; color: var(--bright); margin: 0 0 4px; }
