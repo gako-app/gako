@@ -754,8 +754,9 @@ async fn git_request(ws: &Arc<Workspace>, method: &str, params: Value) -> Result
         "gitLog" => {
             let skip = params["skip"].as_u64().unwrap_or(0) as usize;
             let limit = params["limit"].as_u64().unwrap_or(200) as usize;
+            let path: Option<String> = param(&params, "path").unwrap_or(None);
             Ok(serde_json::to_value(
-                git::log(g, &repo.root, skip, limit).await?,
+                git::log(g, &repo.root, path.as_deref(), skip, limit).await?,
             )?)
         }
         "gitBlame" => {

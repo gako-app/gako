@@ -59,6 +59,8 @@ export interface Commit {
   email: string;
   time: number;
   subject: string;
+  /** In a file's history: how the commit changed the file, and its path then. */
+  file?: CommitFile;
 }
 
 /** A commit that last changed some of a file's lines; its hash is all zeros for lines not committed yet. */
@@ -70,16 +72,23 @@ export interface BlameCommit {
   subject: string;
 }
 
+/** A file a commit changed; a rename or a copy has the path it came from. */
+export interface CommitFile {
+  status: string;
+  path: string;
+  origPath?: string;
+}
+
 /** Who last changed each line of a file: `lines[n]` is the index in `commits` of line n + 1's commit. */
 export interface Blame {
   commits: BlameCommit[];
   lines: number[];
 }
 
-export interface CommitDetails extends Omit<Commit, 'subject'> {
+export interface CommitDetails extends Omit<Commit, 'subject' | 'file'> {
   committer: string;
   message: string;
-  files: { status: string; path: string; origPath?: string }[];
+  files: CommitFile[];
 }
 
 export interface FileContent {

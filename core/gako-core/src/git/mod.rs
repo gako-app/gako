@@ -404,48 +404,97 @@ pub struct Commit {
     /// Seconds since the epoch.
     pub time: i64,
     pub subject: String,
+    /// In a file's history: how the commit changed the file, and its path then (it may have been
+    /// renamed since).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<CommitFile>,
 }
 
 const SEP: char = '\x1f';
 const END: char = '\x1e';
 
-/// The commit log from HEAD, newest first; empty on an unborn branch.
-pub async fn log(git: &Git, repo: &Path, skip: usize, limit: usize) -> Result<Vec<Commit>> {
+/// The commit log from HEAD, newest first; empty on an unborn branch. With a path, only the
+/// commits that changed that file, following it back through renames (`git log --follow`).
+pub async fn log(
+    git: &Git,
+    repo: &Path,
+    path: Option<&str>,
+    skip: usize,
+    limit: usize,
+) -> Result<Vec<Commit>> {
     let format = format!("--format=%H{SEP}%P{SEP}%an{SEP}%ae{SEP}%at{SEP}%s{END}");
-    let out = match git
-        .run(
-            repo,
-            &[
-                "log",
-                &format,
-                &format!("--skip={skip}"),
-                &format!("--max-count={limit}"),
-                "HEAD",
-                "--",
-            ],
-        )
-        .await
-    {
+    // --skip counts the commits --follow leaves out too, so a later page of a file's history
+    // would come back short or empty: there the commits skipped are read and dropped here.
+    let (git_skip, drop) = if path.is_some() { (0, skip) } else { (skip, 0) };
+    let skip_arg = format!("--skip={git_skip}");
+    let limit = format!("--max-count={}", drop + limit);
+    let mut args = vec!["log", &format, &skip_arg, &limit];
+    if path.is_some() {
+        // -z: paths as they are, not quoted; --follow finds the file under its earlier names.
+        args.extend(["--follow", "--name-status", "-z"]);
+    }
+    // Literal: a name like `:x` or `*.rs` is that file, not a pattern.
+    let pathspec = path.map(|p| format!(":(literal){p}"));
+    args.extend(["HEAD", "--"]);
+    args.extend(pathspec.as_deref());
+    let out = match git.run(repo, &args).await {
         Ok(o) => o,
         Err(e) if is_missing(&e) || e.to_string().contains("does not have any commits") => {
             return Ok(Vec::new());
         }
         Err(e) => return Err(e),
     };
-    Ok(String::from_utf8_lossy(&out)
-        .split(END)
-        .filter_map(|rec| {
-            let f: Vec<&str> = rec.trim_start_matches('\n').split(SEP).collect();
-            (f.len() == 6).then(|| Commit {
-                hash: f[0].into(),
-                parents: f[1].split_whitespace().map(String::from).collect(),
-                author: f[2].into(),
-                email: f[3].into(),
-                time: f[4].parse().unwrap_or(0),
-                subject: f[5].into(),
-            })
-        })
-        .collect())
+    let out = String::from_utf8_lossy(&out);
+    Ok(if path.is_some() {
+        parse_file_log(&out).into_iter().skip(drop).collect()
+    } else {
+        out.split(END).filter_map(parse_commit).collect()
+    })
+}
+
+/// One commit's line of the log format above, without its END.
+fn parse_commit(rec: &str) -> Option<Commit> {
+    let f: Vec<&str> = rec.trim_start_matches(['\n', '\0']).split(SEP).collect();
+    (f.len() == 6).then(|| Commit {
+        hash: f[0].into(),
+        parents: f[1].split_whitespace().map(String::from).collect(),
+        author: f[2].into(),
+        email: f[3].into(),
+        time: f[4].parse().unwrap_or(0),
+        subject: f[5].into(),
+        file: None,
+    })
+}
+
+/// `git log --name-status -z`: each commit's line, ended by END, then `\0\n`, its status and its
+/// path (two paths for a rename or a copy), each ended by `\0`. A merge comes with none.
+fn parse_file_log(out: &str) -> Vec<Commit> {
+    let mut commits: Vec<Commit> = Vec::new();
+    let mut tokens = out.split('\0');
+    while let Some(tok) = tokens.next() {
+        let tok = tok.trim_start_matches('\n');
+        if let Some(rec) = tok.strip_suffix(END) {
+            commits.extend(parse_commit(rec));
+            continue;
+        }
+        let (Some(commit), Some(status)) = (commits.last_mut(), tok.chars().next()) else {
+            continue;
+        };
+        if commit.file.is_some() {
+            continue;
+        }
+        let orig_path = matches!(status, 'R' | 'C')
+            .then(|| tokens.next().map(String::from))
+            .flatten();
+        if let Some(path) = tokens.next() {
+            commit.file = Some(CommitFile {
+                status,
+                path: path.into(),
+                orig_path,
+            });
+        }
+    }
+    commits
 }
 
 #[derive(Debug, Serialize)]

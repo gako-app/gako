@@ -12,13 +12,15 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// A repo's history: the commit log (loading more as it scrolls) and the selected commit's details.
-// Clicking a file in a commit opens its diff against the commit's first parent.
+// A repo's history, or one file's: the commit log (loading more as it scrolls) and the selected
+// commit's details. Clicking a file in a commit opens its diff against the commit's first parent. A
+// file's history lists the commits that changed it, back through its renames; the file comes first
+// in each commit's details, and a double click on a commit opens its diff straight away.
 
 import { basename, dirname, fill, h, relativeTime } from './dom';
 import { formatDateTime } from './dates';
 import type { Git } from './git';
-import type { Commit, CommitDetails, DiffTarget, Repo } from './model';
+import type { Commit, CommitDetails, CommitFile, DiffTarget, Repo } from './model';
 
 const PAGE = 200;
 
@@ -28,6 +30,10 @@ export class HistoryPanel {
   private commits = h('div', { class: 'commits' });
   private details = h('div', { class: 'commit-details' });
   private repo: Repo | null = null;
+  /** The file whose history this is (relative to the repo, with /), or null for the whole repo's. */
+  private path: string | null = null;
+  /** In a file's history, the file as each commit loaded changed it. */
+  private followed = new Map<string, CommitFile>();
   private loaded = 0;
   private done = false;
   private loading = false;
@@ -37,7 +43,8 @@ export class HistoryPanel {
 
   constructor(
     private git: Git,
-    private openDiff: (target: DiffTarget, repo: Repo) => void,
+    /** Opens a file's diff in a commit; `path` is the file whose history it was opened from. */
+    private openDiff: (target: DiffTarget, repo: Repo, path: string | null) => void,
     private repoName: (r: Repo) => string,
   ) {
     this.el.append(this.header, h('div', { class: 'history-body' }, this.commits, this.details));
@@ -47,17 +54,24 @@ export class HistoryPanel {
     });
   }
 
-  async show(repo: Repo): Promise<void> {
-    if (this.repo?.root !== repo.root) {
+  /** Shows the repo's history, or with `path` the history of that file in it. */
+  async show(repo: Repo, path: string | null = null): Promise<void> {
+    if (this.repo?.root !== repo.root || this.path !== path) {
       this.repo = repo;
+      this.path = path;
+      this.followed.clear();
       this.loaded = 0;
       this.done = false;
       this.selected = null;
       this.commits.replaceChildren();
-      this.details.replaceChildren(h('div', { class: 'empty dim' }, 'Select a commit.'));
+      this.details.replaceChildren(h('div', { class: 'empty dim' },
+        path ? 'Select a commit, or double-click one to see how it changed this file.' : 'Select a commit.'));
     }
-    this.header.replaceChildren(h('div', { class: 'diff-title' }, h('span', { class: 'diff-name' }, this.repoName(repo)),
-      h('span', { class: 'dim' }, ' history')));
+    const title = path
+      ? [h('span', { class: 'dim' }, `${this.repoName(repo)}/${dirname(path) ? dirname(path) + '/' : ''}`),
+        h('span', { class: 'diff-name' }, basename(path))]
+      : [h('span', { class: 'diff-name' }, this.repoName(repo))];
+    this.header.replaceChildren(h('div', { class: 'diff-title' }, ...title, h('span', { class: 'dim' }, ' history')));
     if (this.loaded === 0) await this.more();
     const hash = this.reveal;
     this.reveal = null;
@@ -78,29 +92,40 @@ export class HistoryPanel {
   async refresh(repo: Repo): Promise<void> {
     if (this.repo?.root !== repo.root) return;
     this.repo = null;
-    await this.show(repo);
+    await this.show(repo, this.path);
   }
 
   private async more(): Promise<void> {
     if (!this.repo || this.done || this.loading) return;
     this.loading = true;
     const repo = this.repo;
+    const path = this.path;
     try {
-      const page = await this.git.log(repo.root, this.loaded, PAGE);
-      if (repo !== this.repo) return;
+      const page = await this.git.log(repo.root, this.loaded, PAGE, path ?? undefined);
+      if (repo !== this.repo || path !== this.path) return;
       this.loaded += page.length;
       this.done = page.length < PAGE;
+      for (const c of page) if (c.file) this.followed.set(c.hash, c.file);
       this.commits.append(...page.map((c) => this.row(c)));
-      if (this.loaded === 0) this.commits.append(h('div', { class: 'empty dim' }, 'No commits yet.'));
+      if (this.loaded === 0) {
+        this.commits.append(h('div', { class: 'empty dim' }, path ? 'No commits have changed this file.' : 'No commits yet.'));
+      }
     } finally {
       this.loading = false;
     }
   }
 
   private row(c: Commit): HTMLElement {
-    const el = h('div', { class: 'commit', 'data-hash': c.hash, onclick: () => this.select(c.hash, el) },
-      h('div', { class: 'subject' }, c.subject),
-      h('div', { class: 'meta dim' }, `${c.hash.slice(0, 7)} · ${c.author} · ${relativeTime(c.time)}`));
+    const f = c.file;
+    const repo = this.repo;
+    // In a file's history, where the file was then, when it had another name.
+    const was = f && this.path && f.path !== this.path ? ` · as ${f.path}` : '';
+    const el = h('div', {
+      class: 'commit', 'data-hash': c.hash, onclick: () => this.select(c.hash, el),
+      ondblclick: f && repo ? () => this.openDiff(this.target(repo, c.hash, c.parents[0], f), repo, this.path) : undefined,
+    },
+    h('div', { class: 'subject' }, c.subject),
+    h('div', { class: 'meta dim' }, `${c.hash.slice(0, 7)} · ${c.author} · ${relativeTime(c.time)}${was}`));
     if (c.hash === this.selected) el.classList.add('selected');
     return el;
   }
@@ -116,9 +141,28 @@ export class HistoryPanel {
     this.renderDetails(repo, d);
   }
 
+  /** A file's diff in a commit, against the commit's first parent. */
+  private target(repo: Repo, hash: string, parent: string | undefined, f: CommitFile): DiffTarget {
+    return {
+      repo: repo.root, kind: 'commit', path: f.path, hash,
+      left: f.status === 'A' || !parent ? null : { rev: parent, path: f.origPath ?? f.path },
+      right: f.status === 'D' ? null : { rev: hash, path: f.path },
+    };
+  }
+
   private renderDetails(repo: Repo, d: CommitDetails): void {
     const [subject, ...body] = d.message.split('\n');
     const parent = d.parents[0];
+    // In a file's history, the file as the log found it in this commit, listed apart and first.
+    const own = this.path ? this.followed.get(d.hash) : undefined;
+    const mine = own ? d.files.find((f) => f.path === own.path) : undefined;
+    const others = mine ? d.files.filter((f) => f !== mine) : d.files;
+    const fileRow = (f: CommitFile) => h('div', {
+      class: `file st-${f.status}${f === mine ? ' selected' : ''}`, title: f.origPath ? `${f.origPath} → ${f.path}` : f.path,
+      onclick: () => this.openDiff(this.target(repo, d.hash, parent, f), repo, this.path),
+    }, h('span', { class: 'letter' }, f.status), h('span', { class: 'fname' }, basename(f.path)),
+    h('span', { class: 'fdir dim' }, dirname(f.path)));
+    const count = (n: number, what: string) => `${n} ${what}${n === 1 ? '' : 's'} changed`;
     fill(this.details,
       h('div', { class: 'subject big' }, subject),
       body.join('\n').trim() ? h('pre', { class: 'body' }, body.join('\n').trim()) : null,
@@ -126,16 +170,10 @@ export class HistoryPanel {
         `${d.hash.slice(0, 10)} · ${d.author} <${d.email}> · ${formatDateTime(d.time)}`,
         d.committer !== d.author ? ` · committed by ${d.committer}` : '',
         d.parents.length > 1 ? ` · merge of ${d.parents.map((p) => p.slice(0, 7)).join(', ')} (files against the first parent)` : ''),
-      h('div', { class: 'group' }, `${d.files.length} file${d.files.length === 1 ? '' : 's'} changed`),
-      d.files.map((f) => h('div', {
-        class: `file st-${f.status}`, title: f.path,
-        onclick: () => this.openDiff({
-          repo: repo.root, kind: 'commit', path: f.path, hash: d.hash,
-          left: f.status === 'A' || !parent ? null : { rev: parent, path: f.origPath ?? f.path },
-          right: f.status === 'D' ? null : { rev: d.hash, path: f.path },
-        }, repo),
-      }, h('span', { class: 'letter' }, f.status), h('span', { class: 'fname' }, basename(f.path)),
-      h('span', { class: 'fdir dim' }, dirname(f.path)))),
+      mine ? [h('div', { class: 'group' }, 'This file'), fileRow(mine)] : null,
+      mine && !others.length ? null
+        : h('div', { class: 'group' }, mine ? count(others.length, 'other file') : count(d.files.length, 'file')),
+      others.map(fileRow),
     );
   }
 }

@@ -72,6 +72,8 @@ export class Viewer {
     private baseline: (path: string) => Promise<string | null>,
     /** What opens a changed file's diff; null if it has none to show. */
     private diffOf: (path: string) => (() => void) | null,
+    /** What opens a file's history; null if it has none (it's not in a repo, or it's new). */
+    private historyOf: (path: string) => (() => void) | null,
     /** Opens another file (a link in a Markdown file). */
     open: (path: string) => void,
     /** The repository a file is in. */
@@ -292,11 +294,13 @@ export class Viewer {
   private renderActions(): void {
     const path = this.path;
     const diff = path ? this.diffOf(path) : null;
+    const history = path ? this.historyOf(path) : null;
     const markdown = !!path && isMarkdown(path) && (this.previewing || !this.host.hidden);
     fill(this.actions,
       markdown && this.previewing ? iconButton('source', 'Show source', () => this.setSource(true), { class: 'framed' }) : null,
       markdown && !this.previewing ? iconButton('preview', 'Show preview', () => this.setSource(false), { class: 'framed' }) : null,
       diff ? iconButton('diff', 'Show diff', diff, { class: 'framed' }) : null,
+      history ? iconButton('history', 'Show the file\'s history', history, { class: 'framed' }) : null,
       this.editors.button(() => (!path ? null : this.previewing ? { path, line: this.md.topLine(), column: 1 } : spotIn(this.editor, path))));
   }
 

@@ -16,8 +16,8 @@ The Files view shows the base folder as a tree, loaded folder by folder as you e
 - Expanded folders reload by themselves when their contents change, from the same file watching
   that keeps the Git view current.
 - ↑ and ↓ move, → opens a folder and ← closes it, Enter opens a file.
-- The context menu opens a file in any editor Gako found (the one you pick becomes the default) and
-  copies its path, absolute or relative.
+- The context menu opens a file in any editor Gako found (the one you pick becomes the default),
+  shows its history (see [git.md](git.md#history)), and copies its path, absolute or relative.
 
 ## The viewer
 
@@ -51,6 +51,8 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
   committed yet reads "Not committed yet". There are no blame annotations in the editor itself,
   and the `blame` setting turns it off. See [git.md](git.md#blame).
 - **Open in editor** opens the file at the cursor's line, or at the top of the view.
+- **The history button** lists the commits that changed the file, back through its renames. See
+  [git.md](git.md#history).
 - **Find** (⌘F, Ctrl+F) searches the file in front, or either side of a diff, with Monaco's find
   widget. Pressed outside the editor (in the sidebar, say), it opens on the file in front, or on a
   diff's side after the change (before it, for a deleted file). The widget has match case, whole

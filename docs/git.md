@@ -126,6 +126,20 @@ Each repository's history button opens its commit log, loading more as it scroll
 commit shows its message, author, date and changed files, each opening the commit's diff for that
 file.
 
+A **file's history** lists only the commits that changed it, from `git log --follow`, so it goes on
+past a rename under the file's earlier names (a commit from before one says the name it had then).
+It opens in a tab of its own from the history button in the viewer and in a diff ("Show the file's
+history"), and from **Show history** in the Files view's context menu. Picking a commit shows its
+details with the file first, under "This file"; a double click on a commit opens the file's diff in
+it straight away, and its "Back" returns to the file's history. A file that's new and not committed
+yet has no history to show, and one renamed but not committed yet shows its old name's. In a diff
+opened from a repository's history, the history button shows the file's history under the name it
+had in that commit.
+
+Git counts `--skip` before `--follow` leaves commits out, so for a file's history Gako asks for
+the pages before too (`--max-count`) and drops them itself: a later page costs a little more than
+the first.
+
 ## Blame
 
 The status bar's blame for the cursor's line comes from `git blame --porcelain` of the file at the

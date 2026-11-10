@@ -36,8 +36,10 @@ export class Git {
     return this.t.request('gitFile', { repo, rev, path, raw });
   }
 
-  log(repo: string, skip: number, limit: number): Promise<Commit[]> {
-    return this.t.request('gitLog', { repo, skip, limit });
+  /** The commits from HEAD, newest first; with `path`, those that changed that file, following it
+   * through renames. */
+  log(repo: string, skip: number, limit: number, path?: string): Promise<Commit[]> {
+    return this.t.request('gitLog', { repo, skip, limit, path: path ?? null });
   }
 
   /** Who last changed each line of a file at a revision ('worktree', 'index' or a commit); null

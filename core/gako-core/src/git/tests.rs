@@ -162,7 +162,7 @@ async fn contents_log_and_commit_details() {
         .unwrap();
     assert!(big.truncated && big.base64.is_none());
 
-    let commits = log(&g, &dir, 0, 10).await.unwrap();
+    let commits = log(&g, &dir, None, 0, 10).await.unwrap();
     assert_eq!(commits.len(), 1);
     assert_eq!(commits[0].subject, "First");
     let head = String::from_utf8(g.run(&dir, &["rev-parse", "HEAD"]).await.unwrap()).unwrap();
@@ -172,6 +172,68 @@ async fn contents_log_and_commit_details() {
     assert_eq!(
         (details.files[0].status, details.files[0].path.as_str()),
         ('A', "a.txt")
+    );
+}
+
+#[tokio::test]
+async fn a_files_history_follows_renames() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = crate::files::canonical(&t.path()).unwrap();
+    init(&dir);
+    std::fs::write(dir.join("a.txt"), "one\ntwo\nthree\nfour\n").unwrap();
+    std::fs::write(dir.join("other.txt"), "x\n").unwrap();
+    sh_git(&dir, &["add", "."]);
+    sh_git(&dir, &["commit", "-q", "-m", "add"]);
+    std::fs::write(dir.join("a.txt"), "one\ntwo\nthree\nfour\nfive\n").unwrap();
+    sh_git(&dir, &["commit", "-q", "-am", "edit"]);
+    std::fs::write(dir.join("other.txt"), "y\n").unwrap();
+    sh_git(&dir, &["commit", "-q", "-am", "elsewhere"]);
+    sh_git(&dir, &["mv", "a.txt", ":b c.txt"]);
+    sh_git(&dir, &["commit", "-q", "-m", "rename"]);
+    let g = git();
+    let commits = log(&g, &dir, Some(":b c.txt"), 0, 10).await.unwrap();
+    let seen: Vec<_> = commits
+        .iter()
+        .map(|c| {
+            let f = c.file.as_ref().unwrap();
+            (
+                c.subject.as_str(),
+                f.status,
+                f.path.as_str(),
+                f.orig_path.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        [
+            ("rename", 'R', ":b c.txt", Some("a.txt")),
+            ("edit", 'M', "a.txt", None),
+            ("add", 'A', "a.txt", None),
+        ]
+    );
+    // Pages after the first: git's --skip miscounts with --follow ("elsewhere" is in the walk).
+    for (skip, subjects) in [(1, vec!["edit"]), (2, vec!["add"]), (3, vec![])] {
+        let page = log(&g, &dir, Some(":b c.txt"), skip, 1).await.unwrap();
+        assert_eq!(
+            page.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(),
+            subjects
+        );
+    }
+    // A file with no commits has no history, and the whole log carries no file.
+    std::fs::write(dir.join("new.txt"), "n\n").unwrap();
+    assert!(
+        log(&g, &dir, Some("new.txt"), 0, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        log(&g, &dir, None, 0, 10)
+            .await
+            .unwrap()
+            .iter()
+            .all(|c| c.file.is_none())
     );
 }
 

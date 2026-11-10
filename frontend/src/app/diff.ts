@@ -64,6 +64,8 @@ export interface DiffActions {
   back?: () => void;
   /** Throws away the changes shown (after asking). */
   revert?: () => void;
+  /** Shows the history of the file shown. */
+  history?: () => void;
   /** The working-tree file shown on the right, which can be opened in the viewer or an editor. */
   file?: string;
   repoName: string;
@@ -279,6 +281,7 @@ export class DiffPanel {
       h('div', { class: 'diff-actions' },
         a.file ? iconButton('file', 'Open file, at this line', () => this.openFile(this.spot(a.file!)), { class: 'framed' }) : null,
         a.file ? this.editors.button(() => this.spot(a.file!)) : null,
+        a.history ? iconButton('history', 'Show the file\'s history', a.history, { class: 'framed' }) : null,
         a.revert ? iconButton('revert', 'Revert changes', a.revert, { class: 'framed' }) : null,
         diffMedia(t) ? null : this.modeSwitch(),
         iconButton('prev', 'Previous changed file (↑ in the sidebar)', () => a.prev?.(), { class: 'framed', disabled: !a.prev }),

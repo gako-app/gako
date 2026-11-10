@@ -57,9 +57,10 @@ const OTHER_TERMS = 'gako.otherTerminals';
 type Persist =
   | { diff: string }
   | { file: string }
-  | { history: string }
+  | { history: string; path?: string }
   | { settings: true }
-  | { commit: { root: string; target: DiffTarget } };
+  /** `history`: the file whose history the diff was opened from, which "Back" returns to. */
+  | { commit: { root: string; target: DiffTarget; history?: string } };
 
 /** The file or repository a tab shows (null: the settings, which belong to no folder). */
 function persistPath(p: Persist): string | null {
@@ -157,7 +158,7 @@ class App {
     this.editors = new Editors(t, (m) => this.toast(m));
     this.diff = new DiffPanel(this.git, this.editors, (spot) => this.openFile(spot.path, { line: spot.line ?? 1, columns: [], column: spot.column }));
     this.explorer = new Explorer(t, this.editors, (path, pin) => this.openFile(path, undefined, pin), (m) => this.toast(m), (path) => this.relative(path),
-      (path) => this.diffOf(path));
+      (path) => this.diffOf(path), (path) => this.historyOf(path));
     this.sidebar.explorer = this.explorer;
     this.search = new SearchView(t, (path, reveal, pin) => this.openFile(path, reveal, pin));
     this.sidebar.search = this.search;
@@ -178,6 +179,7 @@ class App {
       (path) => this.relative(path),
       (path) => this.baseline(path),
       (path) => this.diffOf(path),
+      (path) => this.historyOf(path),
       (path) => this.openFile(path),
       (path) => this.repoOf(path)?.root ?? null,
     );
@@ -185,7 +187,7 @@ class App {
       pickFolder,
       editorSaved: () => this.editors.forget().catch((e) => this.toast(String(e.message ?? e))),
     });
-    this.history = new HistoryPanel(this.git, (target, repo) => this.openCommitDiff(target, repo), (r) => this.name(r));
+    this.history = new HistoryPanel(this.git, (target, repo, path) => this.openCommitDiff(target, repo, path), (r) => this.name(r));
     this.viewer.attachNavigation(this.nav);
     this.blame = new BlameTracker(this.git, () => this.renderStatusbar());
     // The file in the viewer, as it is in the working tree.
@@ -536,6 +538,7 @@ class App {
     const show = () => this.diff.show(item.target, {
       repoName: this.name(r),
       file: worktree ? this.join(r.root, worktree) : undefined,
+      history: this.historyOf(this.join(r.root, item.entry.path)) ?? undefined,
       revert: item.target.kind === 'conflict' ? undefined : () => this.revertItem(item),
       prev: prev ? () => this.sidebar.step(-1) : undefined,
       next: next ? () => this.sidebar.step(1) : undefined,
@@ -587,40 +590,60 @@ class App {
     ]);
   }
 
-  private openCommitDiff(target: DiffTarget, repo: Repo): void {
-    this.docs.open(this.commitSpec(target, repo));
+  /** `from`: the file whose history the diff is opened from, which "Back" returns to. */
+  private openCommitDiff(target: DiffTarget, repo: Repo, from: string | null = null): void {
+    this.docs.open(this.commitSpec(target, repo, from));
   }
 
-  private commitSpec(target: DiffTarget, repo: Repo): DocSpec {
+  private commitSpec(target: DiffTarget, repo: Repo, from: string | null): DocSpec {
     return {
       key: `commit:${repo.root}\x1f${target.hash}\x1f${target.path}`,
       kind: 'diff',
       title: basename(target.path),
       detail: '',
       tooltip: `${this.name(repo)}/${target.path} in commit ${target.hash?.slice(0, 7)}`,
-      show: (saved, front) => this.present('diff',
-        () => this.diff.show(target, { repoName: this.name(repo), back: () => this.showHistory(repo) }, false, saved), front),
-      persist: { commit: { root: repo.root, target } } satisfies Persist,
+      show: (saved, front) => this.present('diff', () => this.diff.show(target, {
+        repoName: this.name(repo),
+        back: () => this.showHistory(repo, from),
+        // The file's history from HEAD, under the name it had in this commit; opened from a file's
+        // history, "Back" goes there instead.
+        history: from ? undefined : () => this.showHistory(repo, target.path),
+      }, false, saved), front),
+      persist: { commit: { root: repo.root, target, ...(from ? { history: from } : {}) } } satisfies Persist,
     };
   }
 
-  private showHistory(r: Repo): void {
-    this.docs.open(this.historySpec(r));
+  /** The repo's history, or with `path` (relative to the repo) the history of that file. */
+  private showHistory(r: Repo, path: string | null = null): void {
+    this.docs.open(this.historySpec(r, path));
   }
 
-  private historySpec(r: Repo): DocSpec {
+  private historySpec(r: Repo, path: string | null = null): DocSpec {
     return {
-      key: `history:${r.root}`,
+      key: path ? `history:${r.root}\x1f${path}` : `history:${r.root}`,
       kind: 'history',
-      title: 'History',
-      detail: this.name(r),
-      tooltip: `The commits of ${this.name(r)}`,
+      title: path ? basename(path) : 'History',
+      detail: path ? 'History' : this.name(r),
+      tooltip: path ? `The commits that changed ${this.name(r)}/${path}` : `The commits of ${this.name(r)}`,
       show: (_saved, front) => {
         this.historyRepo = r;
-        this.present('history', () => this.history.show(r), front);
+        this.present('history', () => this.history.show(r, path), front);
       },
-      persist: { history: r.root } satisfies Persist,
+      persist: (path ? { history: r.root, path } : { history: r.root }) satisfies Persist,
     };
+  }
+
+  /** What opens the history of a file in a repo; null when it has none (it isn't a file in a
+   * repo, or it's new and not committed yet). A file renamed and not committed yet has its old
+   * name's history. */
+  private historyOf(path: string): (() => void) | null {
+    const r = this.repoOf(path);
+    if (!r || path === r.root) return null;
+    const rel = path.slice(r.root.length + 1).replaceAll('\\', '/');
+    const e = r.status?.entries.find((x) => x.path === rel);
+    if (e?.untracked || e?.index === 'added') return null;
+    const from = e?.index === 'renamed' && e.origPath ? e.origPath : rel;
+    return () => this.showHistory(r, from);
   }
 
   /** The settings screen, in a tab of its own. */
@@ -741,10 +764,10 @@ class App {
     if ('settings' in p) return this.settingsSpec();
     if ('history' in p) {
       const r = repo(p.history);
-      return r ? this.historySpec(r) : null;
+      return r ? this.historySpec(r, p.path ?? null) : null;
     }
     const r = repo(p.commit.root);
-    return r ? this.commitSpec(p.commit.target, r) : null;
+    return r ? this.commitSpec(p.commit.target, r, p.commit.history ?? null) : null;
   }
 
   /** Resolved by the first full scan of the open workspace, when every repo's status is known. */

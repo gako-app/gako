@@ -68,6 +68,8 @@ export class Explorer {
     private relative: (path: string) => string,
     /** What opens a changed file's diff; null if it has none to show. */
     private diffOf: (path: string) => (() => void) | null,
+    /** What opens a file's history; null if it has none to show. */
+    private historyOf: (path: string) => (() => void) | null,
   ) {
     t.onEvent((ev) => {
       if (ev.t !== 'filesChanged') return;
@@ -161,9 +163,11 @@ export class Explorer {
     // With no editor found, the one item explains why when it's used.
     if (editors.length === 0) editors.push({ label: this.editors.label(), run: () => this.editors.open(spot) });
     const copy = (text: string) => navigator.clipboard.writeText(text).catch((err) => this.onError(String(err.message ?? err)));
+    const history = entry.kind === 'file' ? this.historyOf(entry.path) : null;
     showMenu({ x: e.clientX, y: e.clientY }, [
       ...editors,
       'separator',
+      ...(history ? [{ label: 'Show history', run: history }, 'separator' as const] : []),
       { label: 'Copy path', run: () => copy(entry.path) },
       { label: 'Copy relative path', run: () => copy(this.relative(entry.path)) },
     ]);
