@@ -29,6 +29,8 @@ export interface BlameSource {
 
 export interface BlameLine {
   repo: string;
+  /** The file blamed, at the revision shown. */
+  source: BlameSource;
   commit: BlameCommit;
   /** Not committed yet: the line has changes in the working tree or the index. */
   uncommitted: boolean;
@@ -91,7 +93,7 @@ export class BlameTracker {
       if (this.want !== want || !this.on) return;
       const i = b?.lines[line - 1];
       const commit = i === undefined ? undefined : b!.commits[i];
-      this.set(commit ? { repo: source.repo, commit, uncommitted: /^0+$/.test(commit.hash) } : null);
+      this.set(commit ? { repo: source.repo, source, commit, uncommitted: /^0+$/.test(commit.hash) } : null);
     });
   }
 

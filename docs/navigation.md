@@ -47,7 +47,7 @@ A file opens in Monaco, read-only, with syntax highlighting for every language M
 - **Blame:** the status bar names who last changed the line under the cursor and when ("Ana
   Silva, 3 days ago"), as VS Code's status bar does, with the commit's subject, hash and date in
   its tooltip. In a diff it's the side the cursor is in, at that side's revision. A click opens the
-  repository's history on that commit (keeping the file's or diff's tab). A line with changes not
+  file's history on that commit (keeping the file's or diff's tab). A line with changes not
   committed yet reads "Not committed yet". There are no blame annotations in the editor itself,
   and the `blame` setting turns it off. See [git.md](git.md#blame).
 - **Open in editor** opens the file at the cursor's line, or at the top of the view.

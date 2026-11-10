@@ -152,6 +152,10 @@ line up. An untracked or newly added file, a repository with no commits, an imag
 file, rendered Markdown or the empty side of a diff shows no blame. The `blame` setting turns it
 off.
 
+A click on the blame opens the file's history with the line's commit selected. The file goes by
+the name it has in the revision blamed: in the working tree or the index, its name there (its old
+name if it's renamed and not committed yet); at a commit, the name it had in that commit.
+
 ## Keeping in sync
 
 - **Fetch** (`git fetch --prune`) refreshes a repository's view of its remote. **Fetch all** does

@@ -20,7 +20,7 @@ import { DiffPanel } from './diff';
 import { basename, delay, fill, freeze, h, relativeTime, within } from './dom';
 import { Git, type Opened } from './git';
 import { HistoryPanel } from './history';
-import { type BlameSource, BlameTracker } from './blame';
+import { type BlameLine, type BlameSource, BlameTracker } from './blame';
 import { configureDates, formatDateTime, setSystemDates } from './dates';
 import type { DiffTarget, Repo, RepoInfo, Settings, Status } from './model';
 import { type Item, Sidebar } from './sidebar';
@@ -639,11 +639,16 @@ class App {
   private historyOf(path: string): (() => void) | null {
     const r = this.repoOf(path);
     if (!r || path === r.root) return null;
-    const rel = path.slice(r.root.length + 1).replaceAll('\\', '/');
+    const from = this.historyPath(r, path.slice(r.root.length + 1).replaceAll('\\', '/'));
+    return from ? () => this.showHistory(r, from) : null;
+  }
+
+  /** The name a file in the working tree (relative to the repo) has its history under: its old
+   * name when it's renamed and not committed yet; null when it's new and has none. */
+  private historyPath(r: Repo, rel: string): string | null {
     const e = r.status?.entries.find((x) => x.path === rel);
     if (e?.untracked || e?.index === 'added') return null;
-    const from = e?.index === 'renamed' && e.origPath ? e.origPath : rel;
-    return () => this.showHistory(r, from);
+    return e?.index === 'renamed' && e.origPath ? e.origPath : rel;
   }
 
   /** The settings screen, in a tab of its own. */
@@ -982,7 +987,7 @@ class App {
   }
 
   /** Who last changed the line under the viewer's cursor, as VS Code shows it; a click shows the
-   * commit in its repo's history. */
+   * commit in the file's history. */
   private blameItem(): HTMLElement | null {
     const b = this.mode === 'file' || this.mode === 'diff' ? this.blame?.current : null;
     if (!b) return null;
@@ -991,18 +996,22 @@ class App {
     const date = formatDateTime(c.time);
     return h('button', {
       class: 'status-button blame',
-      'data-tip': `${c.subject}\n${c.hash.slice(0, 7)} · ${c.author} <${c.email}> · ${date}\nClick to show the commit in the history.`,
-      onclick: () => this.showBlameCommit(b.repo, c.hash),
+      'data-tip': `${c.subject}\n${c.hash.slice(0, 7)} · ${c.author} <${c.email}> · ${date}\nClick to show the commit in the file's history.`,
+      onclick: () => this.showBlameCommit(b),
     }, icon('commit'), h('span', { class: 'status-text' }, `${c.author}, ${relativeTime(c.time)}`));
   }
 
-  private showBlameCommit(root: string, hash: string): void {
-    const r = this.repos.find((x) => x.root === root);
+  private showBlameCommit(b: BlameLine): void {
+    const r = this.repos.find((x) => x.root === b.repo);
     if (!r) return;
+    const s = b.source;
+    // In the working tree or the index, the file goes by the name it has a history under; at a
+    // commit, by the name it had then, as the history button of a commit's diff does.
+    const path = s.rev === 'worktree' || s.rev === 'index' ? this.historyPath(r, s.path) : s.path;
     // The file's tab stays, rather than give its place to the history as a preview tab would.
     this.docs.pinActive();
-    this.history.revealNext(hash);
-    this.showHistory(r);
+    this.history.revealNext(b.commit.hash);
+    this.showHistory(r, path);
   }
 
   private lostBanner: HTMLElement | null = null;

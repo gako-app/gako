@@ -12,6 +12,11 @@ All notable changes to Gako are listed here, newest first. The format follows
   history button in the viewer and in diffs, or **Show history** in the Files view's context menu.
   Picking a commit lists the file first; a double click opens its diff in that commit.
 
+### Changed
+
+- A click on the blame in the status bar opens the file's history on that commit, not the whole
+  repository's.
+
 ### Fixed
 
 - Short of room, the status bar shortens the folder's path first, then the blame, and no longer
