@@ -21,7 +21,8 @@ its own commit box, and its maintainers have declined to hide repositories witho
 - **Finds every repository** under a base folder and shows the ones with changes, each with its
   branch, its sync state with the upstream, and its changed files. Clean repositories collapse into
   one group. See [git.md](git.md).
-- **Shows changes** as read-only diffs, with each repository's history and commit details.
+- **Shows changes** as read-only diffs, with the history of each repository, folder and file,
+  commit details, and any version of a file, whole or against the working tree.
 - **Runs agents in terminals:** Claude Code, Codex, OpenCode, Pi or any other program, in the base
   folder or one of its repositories, and tells you which are working, which have finished and which
   are waiting for you. See [terminals.md](terminals.md).

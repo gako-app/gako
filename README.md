@@ -23,7 +23,8 @@ the way of your editor.
   working, which have finished while you were away, and which are waiting for your approval, and
   when Gako starts again, each agent comes back on its conversation.
 - **Review without an editor's weight.** Read-only diffs and files with syntax highlighting,
-  Markdown rendered with its changes marked, each repository's history, who last changed the line
+  Markdown rendered with its changes marked, the history of a repository, a folder or a file
+  (followed through renames, with any version compared to the file now), who last changed the line
   you're on, search scoped to the repositories you choose, and go to definition across all of them.
 - **Your editor for editing.** Gako never edits code. "Open in editor" opens the file at the right
   line in VS Code, Zed, Cursor or the editor you configure.
