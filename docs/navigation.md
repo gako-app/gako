@@ -17,7 +17,8 @@ The Files view shows the base folder as a tree, loaded folder by folder as you e
   that keeps the Git view current.
 - ↑ and ↓ move, → opens a folder and ← closes it, Enter opens a file.
 - The context menu opens a file in any editor Gako found (the one you pick becomes the default),
-  shows its history (see [git.md](git.md#history)), and copies its path, absolute or relative.
+  shows a file's or a folder's history (see [git.md](git.md#history)), and copies its path,
+  absolute or relative.
 
 ## The viewer
 

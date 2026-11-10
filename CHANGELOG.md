@@ -14,6 +14,8 @@ All notable changes to Gako are listed here, newest first. The format follows
 - **Compare with the current file**, in a file's history: the file as a commit left it against the
   working tree, to see what changed since.
 - The whole file as a commit left it, in the viewer, from a file's history or a commit's diff.
+- A folder's history: the commits that changed anything in a folder, from **Show history** in the
+  Files view's context menu, with the folder's files first in each commit.
 
 ### Changed
 

@@ -151,6 +151,12 @@ diff, where it opens at the line the cursor is on. It has no change markers, not
 and a Markdown file shows as source, since its images and links would lead to the working tree.
 "Open in editor" isn't offered: an editor would open the working tree's file.
 
+A **folder's history** lists the commits that changed anything in it, from **Show history** in
+the Files view's context menu on a folder (on a repository's own folder, it's the repository's
+history). Picking a commit lists the folder's files first, under "In this folder", then the
+others; a diff opened from there goes "Back" to the folder's history and has the file's own history
+button. Git follows no renames of a folder, so the list stops where the folder got its name.
+
 Git counts `--skip` before `--follow` leaves commits out, so for a file's history Gako asks for
 the pages before too (`--max-count`) and drops them itself: a later page costs a little more than
 the first.

@@ -238,6 +238,42 @@ async fn a_files_history_follows_renames() {
 }
 
 #[tokio::test]
+async fn a_folders_history_has_the_commits_that_changed_anything_in_it() {
+    let t = tempfile::tempdir().unwrap();
+    let dir = crate::files::canonical(&t.path()).unwrap();
+    init(&dir);
+    std::fs::create_dir_all(dir.join("src/http")).unwrap();
+    std::fs::write(dir.join("src/http/a.go"), "a\n").unwrap();
+    std::fs::write(dir.join("top.txt"), "t\n").unwrap();
+    sh_git(&dir, &["add", "."]);
+    sh_git(&dir, &["commit", "-q", "-m", "first"]);
+    std::fs::write(dir.join("top.txt"), "u\n").unwrap();
+    sh_git(&dir, &["commit", "-q", "-am", "outside"]);
+    std::fs::write(dir.join("src/http/b.go"), "b\n").unwrap();
+    sh_git(&dir, &["add", "."]);
+    sh_git(&dir, &["commit", "-q", "-m", "second"]);
+    std::fs::write(dir.join("src/http/a.go"), "aa\n").unwrap();
+    sh_git(&dir, &["commit", "-q", "-am", "third"]);
+    let g = git();
+    let subjects = |c: Vec<Commit>| {
+        assert!(c.iter().all(|c| c.file.is_none()));
+        c.into_iter().map(|c| c.subject).collect::<Vec<_>>()
+    };
+    let all = log(&g, &dir, Some("src/"), 0, 10).await.unwrap();
+    assert_eq!(subjects(all), ["third", "second", "first"]);
+    // Pages count only the folder's commits.
+    let page = log(&g, &dir, Some("src/http/"), 1, 1).await.unwrap();
+    assert_eq!(subjects(page), ["second"]);
+    // A file named like the folder isn't the folder.
+    assert!(
+        log(&g, &dir, Some("top.txt/"), 0, 10)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn merge_conflict_and_rename() {
     let t = tempfile::tempdir().unwrap();
     let dir = crate::files::canonical(&t.path()).unwrap();

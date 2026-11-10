@@ -12,11 +12,12 @@
 // You should have received a copy of the GNU Affero General Public License along with this program.
 // If not, see <https://www.gnu.org/licenses/>.
 
-// A repo's history, or one file's: the commit log (loading more as it scrolls) and the selected
+// A repo's history, or one file's or folder's: the commit log (loading more as it scrolls) and the selected
 // commit's details. Clicking a file in a commit opens its diff against the commit's first parent. A
 // file's history lists the commits that changed it, back through its renames; the file comes first
 // in each commit's details, and a double click on a commit opens its diff straight away. The file
-// as a commit left it can be shown whole, or compared with the working tree.
+// as a commit left it can be shown whole, or compared with the working tree. A folder's history lists
+// the commits that changed anything in it, its files first in each commit's details.
 
 import { basename, dirname, fill, h, relativeTime } from './dom';
 import { formatDateTime } from './dates';
@@ -26,13 +27,17 @@ import type { Commit, CommitDetails, CommitFile, DiffTarget, Repo } from './mode
 
 const PAGE = 200;
 
+/** Whether a history's path is a folder's: those end in /. */
+const folder = (path: string) => path.endsWith('/');
+
 export class HistoryPanel {
   readonly el = h('section', { class: 'history' });
   private header = h('header', { class: 'diff-header' });
   private commits = h('div', { class: 'commits' });
   private details = h('div', { class: 'commit-details' });
   private repo: Repo | null = null;
-  /** The file whose history this is (relative to the repo, with /), or null for the whole repo's. */
+  /** The file whose history this is (relative to the repo, with /), the folder's (ending in /),
+   * or null for the whole repo's. */
   private path: string | null = null;
   /** In a file's history, the file as each commit loaded changed it. */
   private followed = new Map<string, CommitFile>();
@@ -72,11 +77,13 @@ export class HistoryPanel {
       this.selected = null;
       this.commits.replaceChildren();
       this.details.replaceChildren(h('div', { class: 'empty dim' },
-        path ? 'Select a commit, or double-click one to see how it changed this file.' : 'Select a commit.'));
+        path && !folder(path) ? 'Select a commit, or double-click one to see how it changed this file.' : 'Select a commit.'));
     }
-    const title = path
-      ? [h('span', { class: 'dim' }, `${this.repoName(repo)}/${dirname(path) ? dirname(path) + '/' : ''}`),
-        h('span', { class: 'diff-name' }, basename(path))]
+    // A folder's name ends in /, as the Files view writes none but a folder's this way.
+    const shown = path && folder(path) ? path.slice(0, -1) : path;
+    const title = shown
+      ? [h('span', { class: 'dim' }, `${this.repoName(repo)}/${dirname(shown) ? dirname(shown) + '/' : ''}`),
+        h('span', { class: 'diff-name' }, basename(shown) + (shown !== path ? '/' : ''))]
       : [h('span', { class: 'diff-name' }, this.repoName(repo))];
     this.header.replaceChildren(h('div', { class: 'diff-title' }, ...title, h('span', { class: 'dim' }, ' history')));
     if (this.loaded === 0) await this.more();
@@ -115,7 +122,8 @@ export class HistoryPanel {
       for (const c of page) if (c.file) this.followed.set(c.hash, c.file);
       this.commits.append(...page.map((c) => this.row(c)));
       if (this.loaded === 0) {
-        this.commits.append(h('div', { class: 'empty dim' }, path ? 'No commits have changed this file.' : 'No commits yet.'));
+        this.commits.append(h('div', { class: 'empty dim' },
+          !path ? 'No commits yet.' : folder(path) ? 'No commits have changed this folder.' : 'No commits have changed this file.'));
       }
     } finally {
       this.loading = false;
@@ -163,7 +171,10 @@ export class HistoryPanel {
     // In a file's history, the file as the log found it in this commit, listed apart and first.
     const own = this.path ? this.followed.get(d.hash) : undefined;
     const mine = own ? d.files.find((f) => f.path === own.path) : undefined;
-    const others = mine ? d.files.filter((f) => f !== mine) : d.files;
+    // In a folder's history, the files in it (or moved out of it), listed apart and first.
+    const dir = this.path && folder(this.path) ? this.path : null;
+    const inside = dir ? d.files.filter((f) => f.path.startsWith(dir) || f.origPath?.startsWith(dir)) : [];
+    const others = mine ? d.files.filter((f) => f !== mine) : dir ? d.files.filter((f) => !inside.includes(f)) : d.files;
     const fileRow = (f: CommitFile) => h('div', {
       class: `file st-${f.status}${f === mine ? ' selected' : ''}`, title: f.origPath ? `${f.origPath} → ${f.path}` : f.path,
       onclick: () => this.openDiff(this.target(repo, d.hash, parent, f), repo, this.path),
@@ -184,8 +195,9 @@ export class HistoryPanel {
         d.committer !== d.author ? ` · committed by ${d.committer}` : '',
         d.parents.length > 1 ? ` · merge of ${d.parents.map((p) => p.slice(0, 7)).join(', ')} (files against the first parent)` : ''),
       mine ? [h('div', { class: 'group' }, 'This file'), fileRow(mine)] : null,
-      mine && !others.length ? null
-        : h('div', { class: 'group' }, mine ? count(others.length, 'other file') : count(d.files.length, 'file')),
+      inside.length ? [h('div', { class: 'group' }, `In this folder: ${count(inside.length, 'file')}`), inside.map(fileRow)] : null,
+      (mine || inside.length) && !others.length ? null
+        : h('div', { class: 'group' }, mine || inside.length ? count(others.length, 'other file') : count(d.files.length, 'file')),
       others.map(fileRow),
     );
   }

@@ -414,7 +414,9 @@ const SEP: char = '\x1f';
 const END: char = '\x1e';
 
 /// The commit log from HEAD, newest first; empty on an unborn branch. With a path, only the
-/// commits that changed that file, following it back through renames (`git log --follow`).
+/// commits that changed that file, following it back through renames (`git log --follow`), or with
+/// a path ending in `/`, the commits that changed anything in that folder (git follows no renames
+/// of a folder).
 pub async fn log(
     git: &Git,
     repo: &Path,
@@ -423,17 +425,18 @@ pub async fn log(
     limit: usize,
 ) -> Result<Vec<Commit>> {
     let format = format!("--format=%H{SEP}%P{SEP}%an{SEP}%ae{SEP}%at{SEP}%s{END}");
+    let file = path.filter(|p| !p.ends_with('/'));
     // --skip counts the commits --follow leaves out too, so a later page of a file's history
     // would come back short or empty: there the commits skipped are read and dropped here.
-    let (git_skip, drop) = if path.is_some() { (0, skip) } else { (skip, 0) };
+    let (git_skip, drop) = if file.is_some() { (0, skip) } else { (skip, 0) };
     let skip_arg = format!("--skip={git_skip}");
     let limit = format!("--max-count={}", drop + limit);
     let mut args = vec!["log", &format, &skip_arg, &limit];
-    if path.is_some() {
+    if file.is_some() {
         // -z: paths as they are, not quoted; --follow finds the file under its earlier names.
         args.extend(["--follow", "--name-status", "-z"]);
     }
-    // Literal: a name like `:x` or `*.rs` is that file, not a pattern.
+    // Literal: a name like `:x` or `*.rs` is that file (or folder), not a pattern.
     let pathspec = path.map(|p| format!(":(literal){p}"));
     args.extend(["HEAD", "--"]);
     args.extend(pathspec.as_deref());
@@ -445,7 +448,7 @@ pub async fn log(
         Err(e) => return Err(e),
     };
     let out = String::from_utf8_lossy(&out);
-    Ok(if path.is_some() {
+    Ok(if file.is_some() {
         parse_file_log(&out).into_iter().skip(drop).collect()
     } else {
         out.split(END).filter_map(parse_commit).collect()

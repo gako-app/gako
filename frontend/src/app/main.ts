@@ -161,7 +161,7 @@ class App {
     this.editors = new Editors(t, (m) => this.toast(m));
     this.diff = new DiffPanel(this.git, this.editors, (spot) => this.openFile(spot.path, { line: spot.line ?? 1, columns: [], column: spot.column }));
     this.explorer = new Explorer(t, this.editors, (path, pin) => this.openFile(path, undefined, pin), (m) => this.toast(m), (path) => this.relative(path),
-      (path) => this.diffOf(path), (path) => this.historyOf(path));
+      (path) => this.diffOf(path), (path, folder) => this.historyOf(path, folder));
     this.sidebar.explorer = this.explorer;
     this.search = new SearchView(t, (path, reveal, pin) => this.openFile(path, reveal, pin));
     this.sidebar.search = this.search;
@@ -639,10 +639,11 @@ class App {
       repoName: this.name(repo),
       back: () => this.showHistory(repo, from),
       // The file's history from HEAD, under the name it had in this commit; opened from a file's
-      // history, "Back" goes there instead.
-      history: from ? undefined : () => this.showHistory(repo, target.path),
-      // Opened from a file's history, where the file's name now is known; not for its deletion.
-      compare: !compare && from && target.right && target.hash
+      // history, "Back" goes there instead (from a folder's, it goes to the folder's).
+      history: from && !from.endsWith('/') ? undefined : () => this.showHistory(repo, target.path),
+      // Opened from a file's history (not a folder's, ending in /), where the file's name now is
+      // known; not for its deletion.
+      compare: !compare && from && !from.endsWith('/') && target.right && target.hash
         ? () => this.compareWithCurrent(repo, target.hash!, target.right!.path, from)
         : undefined,
       // The working tree's file, on the right of a compare.
@@ -665,7 +666,7 @@ class App {
       repo: r.root, hash, path,
       back: () => this.showHistory(r, from),
       // As from a commit's diff: only where the file's name now is known.
-      compare: from ? () => this.compareWithCurrent(r, hash, path, from) : undefined,
+      compare: from && !from.endsWith('/') ? () => this.compareWithCurrent(r, hash, path, from) : undefined,
     };
     const reveal: Reveal | undefined = line ? { line, columns: [], column: 1 } : undefined;
     return {
@@ -703,11 +704,12 @@ class App {
     this.docs.open(this.historySpec(r, path));
   }
 
+  /** `path` ending in / is a folder's. */
   private historySpec(r: Repo, path: string | null = null): DocSpec {
     return {
       key: path ? `history:${r.root}\x1f${path}` : `history:${r.root}`,
       kind: 'history',
-      title: path ? basename(path) : 'History',
+      title: path ? basename(path.replace(/\/$/, '')) + (path.endsWith('/') ? '/' : '') : 'History',
       detail: path ? 'History' : this.name(r),
       tooltip: path ? `The commits that changed ${this.name(r)}/${path}` : `The commits of ${this.name(r)}`,
       show: (_saved, front) => {
@@ -718,13 +720,16 @@ class App {
     };
   }
 
-  /** What opens the history of a file in a repo; null when it has none (it isn't a file in a
-   * repo, or it's new and not committed yet). A file renamed and not committed yet has its old
-   * name's history. */
-  private historyOf(path: string): (() => void) | null {
+  /** What opens the history of a file in a repo, or with `folder` of a folder; null when it has
+   * none (it isn't in a repo, or it's a file new and not committed yet). A file renamed and not
+   * committed yet has its old name's history; a repo's own folder has the repo's. */
+  private historyOf(path: string, folder = false): (() => void) | null {
     const r = this.repoOf(path);
-    if (!r || path === r.root) return null;
-    const from = this.historyPath(r, path.slice(r.root.length + 1).replaceAll('\\', '/'));
+    if (!r) return null;
+    if (path === r.root) return folder ? () => this.showHistory(r) : null;
+    const rel = path.slice(r.root.length + 1).replaceAll('\\', '/');
+    if (folder) return () => this.showHistory(r, `${rel}/`);
+    const from = this.historyPath(r, rel);
     return from ? () => this.showHistory(r, from) : null;
   }
 
