@@ -6,6 +6,10 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.27.1] — 2026-11-17
+
+Security updates: Electron, and DOMPurify in the code viewer.
+
 ### Security
 
 - Electron 44.9.1, which no longer trusts the compromised eMudhra intermediate certificates.
@@ -376,7 +380,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/gako-app/gako/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/gako-app/gako/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/gako-app/gako/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/gako-app/gako/compare/v0.24.0...v0.25.0

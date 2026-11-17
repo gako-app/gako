@@ -34,7 +34,7 @@ the way of your editor.
 
 ## Status
 
-Version 0.27.0. Gako is used every day on macOS. It runs on Windows and
+Version 0.27.1. Gako is used every day on macOS. It runs on Windows and
 Linux, but they have had less use, and Windows hasn't been through the measurement suites yet.
 
 ## Install
