@@ -6,6 +6,14 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- Electron 44.9.1, which no longer trusts the compromised eMudhra intermediate certificates.
+  (44.11, the latest 44 release, draws terminal text at half size, so Gako stays on 44.9.1 for
+  now.)
+- DOMPurify 3.4.18 throughout, including the copy Monaco bundles, which was 3.4.15.
+- Vite 8.3.8, undici 7.30.2 and minimatch 11 in the build and packaging tools.
+
 ## [0.27.0] — 2026-11-17
 
 The history of a single file or folder, and groups of terminals in the agent bar.
