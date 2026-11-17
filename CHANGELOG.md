@@ -6,6 +6,10 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.27.0] — 2026-11-17
+
+The history of a single file or folder, and groups of terminals in the agent bar.
+
 ### Added
 
 - A file's history: the commits that changed a file, following it back through renames, from the
@@ -364,7 +368,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/gako-app/gako/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/gako-app/gako/compare/v0.25.0...v0.26.0
 [0.25.0]: https://github.com/gako-app/gako/compare/v0.24.0...v0.25.0
 [0.24.0]: https://github.com/gako-app/gako/compare/v0.23.0...v0.24.0
