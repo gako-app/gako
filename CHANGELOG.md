@@ -16,6 +16,9 @@ All notable changes to Gako are listed here, newest first. The format follows
 - The whole file as a commit left it, in the viewer, from a file's history or a commit's diff.
 - A folder's history: the commits that changed anything in a folder, from **Show history** in the
   Files view's context menu, with the folder's files first in each commit.
+- Groups in the agent bar: right-click an agent or shell and pick **Group with** to group terminals
+  from the same folder. A group has a name (**Group 1** to start with; double-click to rename), is
+  dragged up or down the bar as a whole, folds, and moves to **Other folders** with its terminals.
 
 ### Changed
 
@@ -24,6 +27,8 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ### Fixed
 
+- Dragging an entry in the agent bar to the very bottom, or a document tab to the very end, now
+  puts it there; entries of the same size couldn't take the last place.
 - Short of room, the status bar shortens the folder's path first, then the blame, and no longer
   cuts off the repository and symbol counts.
 

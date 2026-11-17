@@ -20,8 +20,9 @@ the way of your editor.
   list.
 - **Agents in real terminals.** Start Claude Code, Codex, OpenCode, Pi or any other program in any
   repository, or in a folder elsewhere for a side task. The agent bar shows which agents are
-  working, which have finished while you were away, and which are waiting for your approval, and
-  when Gako starts again, each agent comes back on its conversation.
+  working, which have finished while you were away, and which are waiting for your approval;
+  agents and shells working on the same thing can be grouped, and when Gako starts again, each
+  agent comes back on its conversation.
 - **Review without an editor's weight.** Read-only diffs and files with syntax highlighting,
   Markdown rendered with its changes marked, the history of a repository, a folder or a file
   (followed through renames, with any version compared to the file now), who last changed the line

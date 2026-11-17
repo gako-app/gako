@@ -37,9 +37,10 @@ export class Reorder {
     return !this.busy;
   }
 
-  /** Lets `item`, one of the list's children, be dragged; `drop` is told where it was dropped. */
-  attach(item: HTMLElement, drop: (to: number) => void): void {
-    item.addEventListener('pointerdown', (down: PointerEvent) => {
+  /** Lets `item`, one of the list's children, be dragged by `handle` (by default, the whole of it);
+   * `drop` is told where it was dropped. */
+  attach(item: HTMLElement, drop: (to: number) => void, handle: HTMLElement = item): void {
+    handle.addEventListener('pointerdown', (down: PointerEvent) => {
       if (down.button === 0 && !this.busy) this.press(item, down, drop);
     });
   }
@@ -89,7 +90,9 @@ export class Reorder {
       const d = Math.min(hi(rects[rects.length - 1]) - hi(r), Math.max(lo(rects[0]) - lo(r), at(e) - start));
       shiftBy(item, d);
       const middle = (lo(r) + hi(r)) / 2 + d;
-      to = rects.filter((q, i) => i !== from && (lo(q) + hi(q)) / 2 < middle).length;
+      // An entry is passed once the middle reaches its middle: dragged as far as it goes, an entry
+      // as big as the last or first takes its place.
+      to = rects.filter((q, i) => i !== from && (i < from ? (lo(q) + hi(q)) / 2 < middle : (lo(q) + hi(q)) / 2 <= middle)).length;
       items.forEach((el, i) => {
         if (i !== from) shiftBy(el, from < i && i <= to ? -room : to <= i && i < from ? room : 0);
       });

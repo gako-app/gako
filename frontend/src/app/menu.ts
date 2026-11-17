@@ -26,7 +26,12 @@ export interface MenuItem {
   run: () => void;
 }
 
-type Items = (MenuItem | 'separator')[];
+/** A label over the items after it (the agent bar's "Group with"). */
+export interface MenuHeading {
+  heading: string;
+}
+
+type Items = (MenuItem | MenuHeading | 'separator')[];
 
 let open: HTMLElement | null = null;
 
@@ -49,6 +54,7 @@ export function showMenu(at: HTMLElement | { x: number; y: number }, items: Item
   const list = h('div', { class: 'menu-list' });
   const draw = () => list.replaceChildren(...(typeof items === 'function' ? items() : items).map((item) => item === 'separator'
     ? h('div', { class: 'menu-separator' })
+    : 'heading' in item ? h('div', { class: 'menu-subtitle' }, item.heading)
     : h('button', {
       class: `menu-item ${item.checked ? 'selected' : ''} ${item.keep ? 'check' : ''}`, title: item.title,
       onclick: () => {

@@ -17,7 +17,9 @@
 // (single pane), or in a pane of its own beside them (dual pane, see panes.ts). In the dual layout
 // the pane keeps showing the terminal last picked, and the pane last clicked or typed in decides
 // what ⌘W and Ctrl+Tab act on. Entries can be dragged into a new order (reorder.ts), and a middle
-// click closes one as its × does.
+// click closes one as its × does. Entries in the same list can be grouped from their context menu
+// (groups.ts): a group is dragged as one, its entries within it, and it folds and is renamed from
+// its header.
 //
 // An agent that Gako knows how to resume (see agents.rs in the core) starts on a session with an ID
 // Gako picks, or tells Gako the one it picked (Codex); one that switches session inside the
@@ -46,6 +48,8 @@ import type { Settings } from './model';
 import { readTitle, titleHasState, titleTopic } from './agentstate';
 import { chevron, icon, iconButton } from './icons';
 import { Reorder } from './reorder';
+import { dissolveSmall, groupName, join, leave, moveUnit, unitsOf } from './groups';
+import { type MenuHeading, type MenuItem, showMenu } from './menu';
 
 export interface Program {
   name: string;
@@ -95,6 +99,15 @@ export interface Saved {
   program: Program;
   folder: Folder;
   session?: SessionRef;
+  /** The group it's in: `id` tells which of the terminals saved together share one. */
+  group?: { id: number; name: string; folded?: boolean };
+}
+
+/** Terminals grouped in the bar: their members are next to each other in it (see groups.ts). */
+interface Group {
+  id: number;
+  name: string;
+  folded: boolean;
 }
 
 type State = 'working' | 'waiting' | 'quiet' | 'exited' | 'failed';
@@ -120,6 +133,10 @@ interface Tab {
   /** Started by resuming its session, and when the program started. */
   resumed: boolean;
   startedAt: number;
+  group: Group | null;
+  /** The base folder it was started under, if it was: terminals left from the same one can be
+   * grouped under "Other folders", as they come back up together. */
+  home: string | null;
 }
 
 /** Output within this long counts as working. */
@@ -130,6 +147,8 @@ const BUSY_MIN_MS = 1500;
 /** An agent that fails this soon after it started resuming its session, untouched, couldn't
  * resume it. */
 const RESUME_FAILED_MS = 10_000;
+/** How long a click on a group's header waits for a second one (a rename) before folding it. */
+const FOLD_WAIT_MS = 250;
 const COLLAPSED = 'gako.agentsCollapsed';
 const OTHERS_FOLDED = 'gako.otherFoldersFolded';
 /** The folders last picked with "Other folder…", newest first. */
@@ -146,6 +165,14 @@ export class Terminals {
   private reorder = new Reorder(this.mainGroup, 'y', () => this.render());
   private otherReorder = new Reorder(this.otherGroup, 'y', () => this.render());
   private othersFolded = false;
+  /** Each group's list of members, by group and list (a group is in one list, unless the base
+   * folder changed under it), kept across redraws so a drag within it survives them. */
+  private groupBodies = new Map<string, { el: HTMLElement; reorder: Reorder }>();
+  private groupIds = 0;
+  /** The group whose name is being edited: the bar isn't redrawn meanwhile. */
+  private renaming: Group | null = null;
+  /** A click on a group's header, waiting to see if it's a double click (see headerClick()). */
+  private foldTimer: ReturnType<typeof setTimeout> | null = null;
   private recent: string[] = [];
   /** In the bar's order, which isn't the order of the lists shown: see ordered(). */
   private tabs: Tab[] = [];
@@ -271,7 +298,10 @@ export class Terminals {
   }
 
   private saved(t: Tab): Saved {
-    return { program: t.program, folder: t.folder, ...(t.session ? { session: t.session } : {}) };
+    return {
+      program: t.program, folder: t.folder, ...(t.session ? { session: t.session } : {}),
+      ...(t.group ? { group: { id: t.group.id, name: t.group.name, folded: t.group.folded } } : {}),
+    };
   }
 
   /** Starts the same programs again in the same folders, resuming agents' sessions; then shows the
@@ -280,10 +310,22 @@ export class Terminals {
   async restore(terms: Saved[], active: number): Promise<void> {
     const was = this.active;
     const restored: (Tab | undefined)[] = [];
-    for (const { program, folder, session } of terms) {
-      await this.open(this.current(program), folder, undefined, session ?? null);
+    const groups = new Map<number, Group>();
+    const folds = new Map<Group, boolean>();
+    for (const { program, folder, session, group } of terms) {
+      let g: Group | null = null;
+      if (group && typeof group.id === 'number' && typeof group.name === 'string') {
+        g = groups.get(group.id) ?? { id: ++this.groupIds, name: group.name, folded: false };
+        groups.set(group.id, g);
+        folds.set(g, !!group.folded);
+      }
+      await this.open(this.current(program), folder, undefined, session ?? null, g);
       restored.push(this.tabs.at(-1));
     }
+    // Folded only now: each terminal is shown as it starts, which would unfold its group.
+    for (const [g, folded] of folds) g.folded = folded;
+    // A group whose other members couldn't start, or had exited, is no more.
+    dissolveSmall(this.tabs);
     this.select(active < 0 && was && this.tabs.includes(was) ? was : restored[active] ?? null);
   }
 
@@ -372,9 +414,9 @@ export class Terminals {
     return { args: fill(known.session, id), session: { id, used: false }, resumed: false };
   }
 
-  /** Starts `program` in `folder`, in a new entry at the end of the bar or at `at`, on `session` if
-   * it's an agent's to resume. */
-  async open(program: Program, folder: Folder, at = this.tabs.length, session: SessionRef | null = null): Promise<void> {
+  /** Starts `program` in `folder`, in a new entry at the end of the bar or at `at` (in `group`), on
+   * `session` if it's an agent's to resume. */
+  async open(program: Program, folder: Folder, at = this.tabs.length, session: SessionRef | null = null, group: Group | null = null): Promise<void> {
     const s = this.settings;
     const start = this.sessionArgs(program, session);
     const term = new TerminalTab(this.t, this.log, this.host, {
@@ -393,8 +435,10 @@ export class Terminals {
     term.el.append(banner);
     const tab: Tab = {
       term, program, folder, banner, state: 'quiet', busySince: 0, unseen: false, titled: false, shownTitle: '', noticeAt: 0,
-      session: start.session, resumed: start.resumed, startedAt: performance.now(),
+      session: start.session, resumed: start.resumed, startedAt: performance.now(), group, home: null,
     };
+    const roots = this.folders();
+    if (roots.length && this.inBase(tab)) tab.home = roots[0].path;
     this.tabs.splice(at, 0, tab);
     // Shown before it starts, so the program starts at the size of the window.
     this.select(tab);
@@ -436,6 +480,7 @@ export class Terminals {
         return;
       }
       if (was !== tab) was?.term.hide();
+      this.unfold(tab);
       this.active = tab;
       this.termFocused = true;
       tab.unseen = false;
@@ -445,6 +490,7 @@ export class Terminals {
       return;
     }
     if (was && !tab) this.last = was;
+    this.unfold(tab);
     this.active?.term.hide();
     this.active = tab;
     this.review.hidden = tab !== null;
@@ -455,13 +501,21 @@ export class Terminals {
     this.onChange?.();
   }
 
-  private close(tab: Tab, force = false): void {
+  /** A terminal picked (Ctrl+Tab, say) in a folded group unfolds it. */
+  private unfold(tab: Tab | null): void {
+    if (tab?.group?.folded) tab.group.folded = false;
+  }
+
+  /** `replaced`: it's started again in its place (restarted), so its group stays even if it was
+   * left with one member meanwhile. */
+  private close(tab: Tab, force = false, replaced = false): void {
     if (!force && !tab.term.exit && !confirm(`${tab.program.name} is still running in ${folderName(tab.folder)}. Close it?`)) return;
     // The neighbour shown next is the one below it in the bar, or above.
     const shown = this.ordered();
     const i = shown.indexOf(tab);
     const next = shown[i + 1] ?? shown[i - 1] ?? null;
     this.tabs.splice(this.tabs.indexOf(tab), 1);
+    if (!replaced) dissolveSmall(this.tabs);
     tab.term.close();
     if (this.last === tab) this.last = null;
     if (this.active === tab && this.dual) {
@@ -477,8 +531,8 @@ export class Terminals {
   /** Starts an exited program again in its place in the bar, resuming its session. */
   private restart(tab: Tab): void {
     const at = this.tabs.indexOf(tab);
-    this.close(tab, true);
-    this.open(this.current(tab.program), tab.folder, at, tab.session);
+    this.close(tab, true, true);
+    this.open(this.current(tab.program), tab.folder, at, tab.session, tab.group);
   }
 
   /** An agent that failed at once after resuming its session, before anyone typed in it, couldn't
@@ -489,9 +543,9 @@ export class Terminals {
     const at = this.tabs.indexOf(tab);
     const was = this.active === tab ? null : this.active;
     const shown = this.active === tab;
-    this.close(tab, true);
+    this.close(tab, true, true);
     this.onError(`${tab.program.name} couldn't resume its conversation in ${folderName(tab.folder)}, so it started a new one.`);
-    this.open(this.current(tab.program), tab.folder, at).then(() => {
+    this.open(this.current(tab.program), tab.folder, at, null, tab.group).then(() => {
       if (!shown) this.select(was);
     });
     return true;
@@ -625,11 +679,16 @@ export class Terminals {
         h('button', { onclick: (e: Event) => this.menu(e.currentTarget as HTMLElement) }, icon('plus'), 'Start an agent')));
       return;
     }
-    if (!this.reorder.canDraw() || !this.otherReorder.canDraw()) return;
+    // Drawn again once the name is in, or a drag over.
+    if (this.renaming) return;
+    const reorders = [this.reorder, this.otherReorder, ...[...this.groupBodies.values()].map((b) => b.reorder)];
+    if (!reorders.every((r) => r.canDraw())) return;
     const main = this.tabs.filter((t) => this.inBase(t));
     const others = this.tabs.filter((t) => !this.inBase(t));
-    this.mainGroup.replaceChildren(...main.map((tab) => this.entry(tab, true)));
-    this.otherGroup.replaceChildren(...others.map((tab) => this.entry(tab, false)));
+    const used = new Set<string>();
+    this.mainGroup.replaceChildren(...this.units(main, true, used));
+    this.otherGroup.replaceChildren(...this.units(others, false, used));
+    for (const key of this.groupBodies.keys()) if (!used.has(key)) this.groupBodies.delete(key);
     this.list.replaceChildren(this.mainGroup, others.length ? h('div', { class: `agent-others ${this.othersFolded ? 'folded' : ''}` },
       h('button', { class: 'group-toggle', onclick: () => this.foldOthers(!this.othersFolded) },
         chevron(!this.othersFolded), 'Other folders', h('span', { class: 'count' }, String(others.length))),
@@ -642,6 +701,196 @@ export class Terminals {
     this.render();
   }
 
+  /** One list's entries (`inBase`: the base folder's), each lone one or group dragged within it as
+   * a unit; `used` collects the groups' keys drawn. */
+  private units(list: Tab[], inBase: boolean, used: Set<string>): HTMLElement[] {
+    const reorder = inBase ? this.reorder : this.otherReorder;
+    const units = unitsOf<Group, Tab>(list);
+    return units.map((unit) => {
+      const el = unit[0].group ? this.groupBlock(unit[0].group, unit, inBase, used) : this.entry(unit[0], inBase);
+      reorder.attach(el, (to) => this.moved(units, unit, to), el.querySelector<HTMLElement>(':scope > .agent-grp-header') ?? el);
+      return el;
+    });
+  }
+
+  /** A group: its header (dragged to move it, clicked to fold it, double-clicked to rename it), then its
+   * members, dragged within it. With the bar collapsed, only a frame around the members. */
+  private groupBlock(group: Group, members: Tab[], inBase: boolean, used: Set<string>): HTMLElement {
+    const key = `${group.id}:${inBase}`;
+    used.add(key);
+    let body = this.groupBodies.get(key);
+    if (!body) {
+      const el = h('div', { class: 'agent-grp-body' });
+      body = { el, reorder: new Reorder(el, 'y', () => this.render()) };
+      this.groupBodies.set(key, body);
+    }
+    const singles = members.map((t) => [t]);
+    const { reorder } = body;
+    body.el.replaceChildren(...members.map((tab, i) => {
+      const el = this.entry(tab, inBase);
+      reorder.attach(el, (to) => this.moved(singles, singles[i], to));
+      return el;
+    }));
+    const folded = group.folded && !this.collapsed;
+    const unseen = members.some((t) => t.unseen);
+    const header = h('div', {
+      class: `agent-grp-header ${folded && members.includes(this.active!) ? 'active' : ''} ${folded && unseen ? 'unseen' : ''}`,
+      'data-tip': `${group.name}: ${members.length} terminals. Click to fold, double-click to rename.`,
+      onclick: (e: MouseEvent) => this.headerClick(e, group),
+      oncontextmenu: (e: MouseEvent) => this.groupMenu(e, group),
+    },
+    h('button', { class: 'agent-grp-fold', onclick: (e: Event) => { e.stopPropagation(); this.fold(group, !group.folded); } }, chevron(!group.folded)),
+    h('span', { class: 'agent-grp-name' }, group.name),
+    // Folded, it still shows how its terminals are doing.
+    folded ? h('span', { class: 'agent-grp-dots' }, ...members.map((t) => h('span', { class: `dot ${t.state}` }))) : null,
+    h('span', { class: 'count' }, String(members.length)),
+    folded && unseen ? h('span', { class: 'unseen-mark' }) : null);
+    return h('div', { class: `agent-grp ${folded ? 'folded' : ''}`, 'data-group': String(group.id) }, header, body.el);
+  }
+
+  /** Moves `unit` to `to` among `units` (it was dragged there). */
+  private moved(units: Tab[][], unit: Tab[], to: number): void {
+    if (!unit.every((t) => this.tabs.includes(t))) return;
+    moveUnit(this.tabs, units, unit, to);
+    this.render();
+    this.onChange?.();
+  }
+
+  /** A click on a group's header folds or unfolds it; a double click renames it instead. The fold
+   * waits a moment for a second click. The header is drawn again after a fold, so it's the click's
+   * count that tells a double click, not a dblclick event (which needs the same element twice). */
+  private headerClick(e: MouseEvent, group: Group): void {
+    if (this.renaming) return;
+    if (e.detail >= 2) {
+      if (this.foldTimer !== null) {
+        clearTimeout(this.foldTimer);
+        this.foldTimer = null;
+      } else if (e.detail === 2) {
+        // The second click came after the wait: the first one's fold is undone.
+        this.fold(group, !group.folded);
+      }
+      if (e.detail === 2) this.rename(group);
+      return;
+    }
+    if (this.foldTimer !== null) clearTimeout(this.foldTimer);
+    this.foldTimer = setTimeout(() => {
+      this.foldTimer = null;
+      this.fold(group, !group.folded);
+    }, FOLD_WAIT_MS);
+  }
+
+  private fold(group: Group, folded: boolean): void {
+    group.folded = folded;
+    this.render();
+    this.onChange?.();
+  }
+
+  /** Whether `a` and `b` can be in a group: in the same list, and, under "Other folders", coming
+   * back up together (from the same base folder, or in the same folder). */
+  private canGroup(a: Tab, b: Tab): boolean {
+    const inBase = this.inBase(a);
+    if (inBase !== this.inBase(b)) return false;
+    return inBase || a.folder.path === b.folder.path || (a.home !== null && a.home === b.home);
+  }
+
+  /** Groups were changed: one left with a single member is no more. */
+  private regrouped(): void {
+    dissolveSmall(this.tabs);
+    this.render();
+    this.onChange?.();
+  }
+
+  private entryMenu(e: MouseEvent, tab: Tab): void {
+    e.preventDefault();
+    const shown = this.ordered();
+    const groups = [...new Set(shown.map((t) => t.group))]
+      .filter((g): g is Group => !!g && g !== tab.group && this.canGroup(tab, shown.find((t) => t.group === g)!));
+    const loners = tab.group ? [] : shown.filter((t) => t !== tab && !t.group && this.canGroup(tab, t));
+    const toGroup = (g: Group): MenuItem => ({ label: g.name, run: () => {
+      join(this.tabs, tab, g);
+      this.regrouped();
+    } });
+    const items: (MenuItem | MenuHeading | 'separator')[] = [];
+    // Entries that would read the same (two shells in one folder) are told apart by their place in
+    // the bar.
+    const label = (t: Tab) => `${t.program.name} · ${titleTopic(t.term.title) || folderName(t.folder)}`;
+    const labels = loners.map(label);
+    if (groups.length || loners.length) {
+      items.push({ heading: tab.group ? 'Move to' : 'Group with' }, ...groups.map(toGroup), ...loners.map((t, i): MenuItem => ({
+        label: labels.indexOf(labels[i]) !== labels.lastIndexOf(labels[i]) ? `${labels[i]} (${shown.indexOf(t) + 1})` : labels[i],
+        title: `${t.program.name} in ${t.folder.path}`,
+        run: () => {
+          const g: Group = { id: ++this.groupIds, name: this.newGroupName(), folded: false };
+          tab.group = g;
+          join(this.tabs, t, g);
+          this.regrouped();
+        },
+      })), 'separator');
+    }
+    if (tab.group) items.push({ label: 'Remove from group', run: () => { leave(this.tabs, tab); this.regrouped(); } }, 'separator');
+    items.push({ label: 'Close', run: () => this.close(tab) });
+    showMenu({ x: e.clientX, y: e.clientY }, items);
+  }
+
+  private groupMenu(e: MouseEvent, group: Group): void {
+    e.preventDefault();
+    showMenu({ x: e.clientX, y: e.clientY }, [
+      { label: 'Rename', run: () => this.rename(group) },
+      { label: 'Ungroup', run: () => {
+        for (const t of this.tabs) if (t.group === group) t.group = null;
+        this.regrouped();
+      } },
+      'separator',
+      { label: 'Close all', run: () => this.closeGroup(group) },
+    ]);
+  }
+
+  private newGroupName(): string {
+    return groupName(this.tabs.flatMap((t) => (t.group ? [t.group.name] : [])));
+  }
+
+  /** Closes a group's terminals, asking first if any is still running. */
+  private closeGroup(group: Group): void {
+    const members = this.tabs.filter((t) => t.group === group);
+    const running = members.filter((t) => !t.term.exit).length;
+    if (running && !confirm(`${running === 1 ? 'A terminal' : `${running} terminals`} in ${group.name} ${running === 1 ? 'is' : 'are'} still running. Close ${members.length === 1 ? 'it' : 'them all'}?`)) return;
+    for (const t of members) this.close(t, true);
+  }
+
+  /** Edits a group's name in its header: Enter or clicking away keeps it, Escape leaves it as it
+   * was. */
+  private rename(group: Group): void {
+    if (this.renaming) return;
+    this.render();
+    const name = this.list.querySelector<HTMLElement>(`.agent-grp[data-group="${group.id}"] .agent-grp-name`);
+    if (!name) return;
+    this.renaming = group;
+    let done = false;
+    const finish = (keep: boolean) => {
+      if (done) return;
+      done = true;
+      const value = input.value.trim();
+      if (keep && value) group.name = value;
+      this.renaming = null;
+      this.render();
+      if (keep && value) this.onChange?.();
+    };
+    const input = h('input', {
+      class: 'agent-grp-input', value: group.name, spellcheck: 'false',
+      onkeydown: (e: KeyboardEvent) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') finish(true);
+        else if (e.key === 'Escape') finish(false);
+      },
+      onblur: () => finish(true),
+      // Pressing in the field mustn't start a drag of the group.
+      onpointerdown: (e: Event) => e.stopPropagation(),
+    }) as HTMLInputElement;
+    name.replaceWith(input);
+    input.focus();
+    input.select();
+  }
+
   /** `inBase`: the entry is under the base folder; one elsewhere names its folder beside the program. */
   private entry(tab: Tab, inBase: boolean): HTMLElement {
     const topic = titleTopic(tab.term.title);
@@ -650,6 +899,7 @@ export class Terminals {
       'data-tip': `${tab.program.name} in ${tab.folder.path}: ${this.stateText(tab)}${tab.term.title ? `\n${tab.term.title}` : ''}`,
       onclick: () => this.select(tab),
       onauxclick: (e: MouseEvent) => { if (e.button === 1) this.close(tab); },
+      oncontextmenu: (e: MouseEvent) => this.entryMenu(e, tab),
     },
     h('span', { class: `dot ${tab.state}` }),
     this.collapsed
@@ -664,22 +914,7 @@ export class Terminals {
     tab.unseen ? h('span', { class: 'unseen-mark' }) : null,
     !this.collapsed && tab.term.exit ? iconButton('restart', `Restart ${tab.program.name}`, () => this.restart(tab), { class: 'restart' }) : null,
     this.collapsed ? null : h('span', { class: 'close', 'data-tip': 'Close', onclick: (e: Event) => { e.stopPropagation(); this.close(tab); } }, icon('close')));
-    (inBase ? this.reorder : this.otherReorder).attach(el, (to) => this.move(tab, to));
     return el;
-  }
-
-  /** Moves an entry to `to` within its list (it was dragged there). */
-  private move(tab: Tab, to: number): void {
-    const i = this.tabs.indexOf(tab);
-    if (i < 0) return;
-    const inBase = this.inBase(tab);
-    const rest = this.tabs.filter((t) => t !== tab && this.inBase(t) === inBase);
-    this.tabs.splice(i, 1);
-    // Before the entry it now precedes in its list, or after the list's last.
-    const at = to < rest.length ? this.tabs.indexOf(rest[to]) : rest.length ? this.tabs.indexOf(rest[rest.length - 1]) + 1 : this.tabs.length;
-    this.tabs.splice(at, 0, tab);
-    this.render();
-    this.onChange?.();
   }
 
   /** Puts a picked folder first among the recent ones. */

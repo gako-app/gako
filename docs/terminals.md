@@ -41,6 +41,29 @@ tab in front. Off macOS, Ctrl+W does too, except inside a terminal, where it sta
 Terminal. A terminal can't tell Ctrl+Shift+W from Ctrl+W, so no program loses a key to it.
 Ctrl+Tab steps through terminals when one is in front.
 
+### Groups
+
+Terminals working on the same thing (a coder, a reviewer and a shell, say) can be grouped. Right-click
+an entry and pick another under **Group with** to make a group of the two, named **Group 1** (the
+lowest number free), or an existing group to join it. A grouped entry's menu has **Move to** (another
+group) and **Remove from group**. A group is framed in the bar under a header with its name and how
+many terminals it holds:
+
+- dragging the header moves the whole group up or down the bar, among the other groups and entries;
+  its entries are dragged within it;
+- a click on the header folds it, leaving the header with a dot per terminal showing its state (and the blue
+  mark if one finished unseen); a terminal picked from a folded group, with Ctrl+Tab say, unfolds it;
+- double-clicking the header, or **Rename** in its context menu, edits the name: Enter or clicking
+  away keeps it, Escape doesn't. The menu also has **Ungroup** and **Close all** (asking first if
+  any is still running).
+
+A group left with a single terminal (the others closed or removed) is no more. Only terminals in
+the same list can be grouped: any of the base folder's (its repositories included), and under
+**Other folders** those that come back up together, from the same earlier base folder or in the same
+folder. So a group moves to **Other folders** as a whole when another base folder is opened, and
+back. Groups are kept with the session, names and folds included. With the bar collapsed, a frame
+sets each group apart.
+
 ### Other folders
 
 Terminals running outside the base folder and its repositories (`extraFolders` included) are
