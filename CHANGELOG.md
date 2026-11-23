@@ -6,6 +6,10 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.27.2] — 2026-11-23
+
+A fix for resuming Pi after switching conversation inside it.
+
 ### Fixed
 
 - Pi comes back on the conversation you switched to inside it (`/resume`, `/new`, `/fork`,
@@ -386,7 +390,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.27.2...HEAD
+[0.27.2]: https://github.com/gako-app/gako/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/gako-app/gako/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/gako-app/gako/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/gako-app/gako/compare/v0.25.0...v0.26.0
