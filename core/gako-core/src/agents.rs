@@ -26,12 +26,15 @@
 //! it when the terminal reopens (the frontend does that; see docs/terminals.md). Claude Code, Pi
 //! and OpenCode take an ID to start with, and an agent in the settings can say how it does
 //! (`session`, `resume`). An agent can switch to another session inside the terminal (Claude
-//! Code's /resume and /clear), and Codex picks its own ID, so for those two Gako follows the
-//! session the agent says it's on, handed to the terminal in a sequence of Gako's own (OSC 6973):
-//! Claude Code runs a SessionStart hook, `gako-core claude-session`, whenever a session starts
-//! or changes; Codex runs a `notify` program after every turn, with the thread's ID, and Gako
-//! passes one (`-c notify=…`), `gako-core codex-notify`, which then runs the user's own `notify`
-//! program, if their Codex settings name one. The `agentResume` setting turns this off.
+//! Code's /resume and /clear, Pi's /resume and /new), and Codex picks its own ID, so for those
+//! three Gako follows the session the agent says it's on, handed to the terminal in a sequence of
+//! Gako's own (OSC 6973): Claude Code runs a SessionStart hook, `gako-core claude-session`,
+//! whenever a session starts or changes; Codex runs a `notify` program after every turn, with the
+//! thread's ID, and Gako passes one (`-c notify=…`), `gako-core codex-notify`, which then runs the
+//! user's own `notify` program, if their Codex settings name one; Pi has no hooks, only
+//! extensions, so Gako passes it one for that run (`-e`), pi-session.ts, which it writes out to the
+//! user's cache folder. OpenCode isn't followed: its TUI tells nobody which session it shows. The
+//! `agentResume` setting turns this off.
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -76,7 +79,7 @@ pub fn builtin(cmd: &[String]) -> Option<Sessions> {
             true,
         ),
         // Both create a session that doesn't exist yet. OpenCode's IDs start with "ses".
-        "pi" => (args(&["--session-id", "{id}"]), None, false),
+        "pi" => (args(&["--session-id", "{id}"]), None, true),
         "opencode" => (args(&["--session", "ses_{id}"]), None, false),
         "codex" => (None, args(&["resume", "{id}"]), true),
         _ => return None,
@@ -138,13 +141,56 @@ pub fn sessions(agent: &Agent) -> Option<Sessions> {
 }
 
 /// The command to run for `cmd`: Claude Code with Gako's hooks, for approvals (`hooks`) and to
-/// follow its session (`resume`), and Codex with its `notify` program, to follow its session.
+/// follow its session (`resume`), Codex with its `notify` program and Pi with Gako's extension, to
+/// follow theirs.
 pub fn adjust(cmd: Vec<String>, hooks: bool, resume: bool) -> Vec<String> {
     match program_name(&cmd).as_deref() {
         Some("claude") if hooks || resume => claude_hooks(cmd, hooks, resume),
         Some("codex") if resume => codex_notify(cmd, codex_user_notify()),
+        Some("pi") if resume => match pi_extension() {
+            Some(path) => pi_with_extension(cmd, &path),
+            None => cmd,
+        },
         _ => cmd,
     }
+}
+
+/// Gako's extension for Pi (see the module's notes).
+const PI_EXTENSION: &str = include_str!("pi-session.ts");
+
+/// Writes Gako's extension for Pi out to the user's cache folder, unless it's there already as it
+/// should be, and returns its path. None: it couldn't be written, and Pi isn't followed.
+fn pi_extension() -> Option<PathBuf> {
+    let name = if cfg!(any(target_os = "macos", windows)) {
+        "Gako"
+    } else {
+        "gako"
+    };
+    let dir = dirs::cache_dir()?.join(name);
+    let path = dir.join("pi-session.ts");
+    if std::fs::read_to_string(&path).is_ok_and(|text| text == PI_EXTENSION) {
+        return Some(path);
+    }
+    // Written beside it and renamed, so a Pi starting meanwhile never loads half a file.
+    std::fs::create_dir_all(&dir).ok()?;
+    let partial = dir.join(format!("pi-session.{}.tmp", std::process::id()));
+    std::fs::write(&partial, PI_EXTENSION).ok()?;
+    if std::fs::rename(&partial, &path).is_err() {
+        let _ = std::fs::remove_file(&partial);
+        return None;
+    }
+    Some(path)
+}
+
+/// Pi loading the extension at `path` for this run, besides any of its own.
+fn pi_with_extension(cmd: Vec<String>, path: &Path) -> Vec<String> {
+    let mut out = vec![
+        cmd[0].clone(),
+        "-e".into(),
+        path.to_string_lossy().into_owned(),
+    ];
+    out.extend(cmd.into_iter().skip(1));
+    out
 }
 
 fn claude_hooks(cmd: Vec<String>, notify: bool, session: bool) -> Vec<String> {
@@ -421,6 +467,17 @@ mod tests {
     }
 
     #[test]
+    fn pi_gets_the_extension_first() {
+        let path = Path::new("/cache/Gako/pi-session.ts");
+        let cmd = pi_with_extension(v(&["/bin/pi", "--model", "x"]), path);
+        assert_eq!(
+            cmd,
+            v(&["/bin/pi", "-e", "/cache/Gako/pi-session.ts", "--model", "x"])
+        );
+        assert_eq!(adjust(v(&["pi"]), true, false), v(&["pi"]));
+    }
+
+    #[test]
     fn the_users_codex_notify_is_read_from_its_settings() {
         let config = "model = \"o3\"\nnotify = [\"/apps/n\", 'turn-ended']\n[profiles.x]\nnotify = [\"no\"]\n";
         assert_eq!(read_notify(config), v(&["/apps/n", "turn-ended"]));
@@ -446,6 +503,9 @@ mod tests {
         assert_eq!(opencode.resume, None);
         let codex = sessions(&agent(&["codex"])).unwrap();
         assert!(codex.follows && codex.session.is_none());
+        let pi = sessions(&agent(&["pi"])).unwrap();
+        assert!(pi.follows && pi.resume.is_none());
+        assert!(!opencode.follows);
         assert_eq!(sessions(&agent(&["aider"])), None);
         assert_eq!(known().len(), 4);
     }

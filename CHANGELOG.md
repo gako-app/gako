@@ -6,6 +6,12 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Pi comes back on the conversation you switched to inside it (`/resume`, `/new`, `/fork`,
+  `/clone`), not the one Gako started it on. Gako starts Pi with a small extension of its own for
+  that run (`-e`), which it doesn't install. Conversations from another folder aren't followed.
+
 ## [0.27.1] — 2026-11-17
 
 Security updates: Electron, and DOMPurify in the code viewer.

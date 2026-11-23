@@ -153,11 +153,16 @@ Gako picks the ID, a UUID, and keeps it with the terminal. Codex picks its own, 
 it starts Codex with a `notify` program of its own (`-c notify=…`), which Codex runs after every
 turn with the conversation's ID, and which runs your own `notify` program from Codex's
 `config.toml` in turn, if you have one. Switching conversation inside the agent (Claude Code's
-`/resume` or `/clear`, or Codex's own) is followed too: Claude Code runs a SessionStart hook of
-Gako's whenever its conversation starts or changes, and Codex says which after every turn. On
-Windows, Gako can't learn the ID from the agent yet (the same limitation as
-[Claude Code's hook](#how-gako-knows)), so a Codex agent there comes back as a new conversation,
-and Claude Code on the one Gako started it on.
+`/resume` or `/clear`, Pi's `/resume`, `/new`, `/fork` or `/clone`, or Codex's own) is followed
+too: Claude Code runs a SessionStart hook of Gako's whenever its conversation starts or changes,
+and Codex says which after every turn. Pi has no hooks, only extensions, so Gako starts it with a
+small one of its own for that run (`-e`), which it keeps in your cache folder and doesn't install:
+it says which conversation Pi is on whenever it changes. A Pi conversation from another folder
+isn't followed, as Pi can't resume it by its ID in the terminal's folder; the terminal comes back
+on the one it was on before. OpenCode isn't followed: switching conversation inside it is lost,
+and it comes back on the one Gako started it on. On Windows, Gako can't learn the ID from Claude
+Code or Codex yet (the same limitation as [Claude Code's hook](#how-gako-knows)), so a Codex agent
+there comes back as a new conversation, and Claude Code on the one Gako started it on.
 
 There's something to resume once you've typed in the agent's terminal; one you never typed in comes
 back on a new conversation. An agent that fails (ends with an error) within ten seconds of

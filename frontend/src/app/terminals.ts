@@ -23,7 +23,7 @@
 //
 // An agent that Gako knows how to resume (see agents.rs in the core) starts on a session with an ID
 // Gako picks, or tells Gako the one it picked (Codex); one that switches session inside the
-// terminal (Claude Code's /resume) says so too, and is followed. Once the user has typed in it,
+// terminal (Claude Code's or Pi's /resume) says so too, and is followed. Once the user has typed in it,
 // reopening its terminal (a session restored, or Restart) resumes that session; one that fails at
 // once, untouched, couldn't, and is started again on a new session.
 //
@@ -67,7 +67,7 @@ export interface Sessions {
   /** Resumes it; null: `session` does. */
   resume: string[] | null;
   /** The program says which session it's on, and the terminal follows it: Codex, which picks its
-   * own ID, and Claude Code, which can switch session (/resume, /clear). */
+   * own ID, and Claude Code and Pi, which can switch session (/resume, /clear, /new). */
   follows: boolean;
 }
 

@@ -98,7 +98,7 @@ export class TerminalTab {
   /** The last desktop notification the program sent (OSC 9, 99 or 777), and when. */
   notice: { text: string; at: number } | null = null;
   /** The session the agent says it's on, for an agent that picks its own or can switch (Codex,
-   * Claude Code; see agents.rs in the core, which has them say so with OSC 6973). */
+   * Claude Code, Pi; see agents.rs in the core, which has them say so with OSC 6973). */
   sessionId: string | null = null;
   private notifications = new Notifications();
   exit: Exit | null = null;
