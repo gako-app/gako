@@ -15,9 +15,10 @@ the way of your editor.
 ## What it does
 
 - **Every repository in one view.** Gako finds the repositories under a folder and lists the ones
-  with changes, each with its branch, its sync state and its changed files. Clean repositories wait
-  in a group of their own. Fetch, pull, push, switch branch or revert a file without leaving the
-  list.
+  with changes, each with its branch, its sync state and its changed files. Worktrees sit under
+  their repository, even the ones agent tools make in folders of their own. Clean repositories
+  wait in a group of their own. Fetch, pull, push, switch branch or revert a file without leaving
+  the list.
 - **Agents in real terminals.** Start Claude Code, Codex, OpenCode, Pi or any other program in any
   repository, or in a folder elsewhere for a side task. The agent bar shows which agents are
   working, which have finished while you were away, and which are waiting for your approval;
