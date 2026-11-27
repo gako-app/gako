@@ -6,6 +6,10 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+## [0.28.0] — 2026-11-27
+
+Worktrees, wherever they are, listed under their main repository.
+
 ### Added
 
 - Worktrees outside the base folder, such as the ones agent tools make in folders of their own,
@@ -398,7 +402,8 @@ The first public release. Gako is used every day on macOS; Windows and Linux hav
   a terminal doesn't end the programs its program started.
 - Agents' conversations aren't resumed when Gako reopens their terminals.
 
-[Unreleased]: https://github.com/gako-app/gako/compare/v0.27.2...HEAD
+[Unreleased]: https://github.com/gako-app/gako/compare/v0.28.0...HEAD
+[0.28.0]: https://github.com/gako-app/gako/compare/v0.27.2...v0.28.0
 [0.27.2]: https://github.com/gako-app/gako/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/gako-app/gako/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/gako-app/gako/compare/v0.26.0...v0.27.0
