@@ -795,7 +795,7 @@ mod tests {
     async fn worktrees_outside_the_base() {
         let t = tempfile::tempdir().unwrap();
         let tmp = crate::files::canonical(t.path()).unwrap();
-        let (base, away) = (tmp.join("base"), tmp.join("away/wt"));
+        let (base, away) = (tmp.join("base"), tmp.join("away").join("wt"));
         let app = base.join("app");
         std::fs::create_dir_all(&app).unwrap();
         git(&app, &["init", "-q"]);
