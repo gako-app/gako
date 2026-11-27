@@ -45,6 +45,14 @@ pub struct Settings {
     pub untracked_limit: usize,
     /// Seconds before a `git` command is given up on.
     pub git_timeout_secs: u64,
+    /// List the worktrees of the repos found, wherever they are on disk.
+    pub outside_worktrees: bool,
+    /// The most worktrees outside the folders listed per repo, the most recently used first.
+    pub worktree_limit: usize,
+    /// Include the worktrees outside the folders in search, go-to-file and the symbol index.
+    pub search_outside_worktrees: bool,
+    /// List worktrees with no changes and nothing to pull or push (shown by the frontend).
+    pub clean_worktrees: bool,
     /// Programs offered for new terminal tabs, besides the shell.
     pub agents: Vec<Agent>,
     /// Rows kept per terminal tab.
@@ -117,6 +125,10 @@ impl Default for Settings {
             debounce_ms: 150,
             untracked_limit: 2000,
             git_timeout_secs: 30,
+            outside_worktrees: true,
+            worktree_limit: 20,
+            search_outside_worktrees: true,
+            clean_worktrees: true,
             agents: vec![
                 Agent {
                     name: "Claude Code".into(),

@@ -689,7 +689,7 @@ async fn file_request(
     // Resolving paths touches the file system, which can be slow (a network or cloud folder).
     let ws2 = ws.clone();
     let path =
-        tokio::task::spawn_blocking(move || crate::files::inside(&ws2.roots(), &path)).await??;
+        tokio::task::spawn_blocking(move || crate::files::inside(&ws2.readable(), &path)).await??;
     match method {
         "filesList" => {
             let listing = tokio::task::spawn_blocking(move || crate::files::list(&path)).await??;

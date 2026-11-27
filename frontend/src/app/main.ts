@@ -47,7 +47,7 @@ import { Updates } from './updates';
 
 const LAST_BASE = 'gako.lastBase';
 /** Settings the open folder was opened with: a change opens it again. */
-const REPO_SETTINGS: (keyof Settings)[] = ['scanDepth', 'scanIgnore', 'extraFolders', 'maxGitProcesses', 'debounceMs', 'untrackedLimit', 'gitTimeoutSecs'];
+const REPO_SETTINGS: (keyof Settings)[] = ['scanDepth', 'scanIgnore', 'extraFolders', 'maxGitProcesses', 'debounceMs', 'untrackedLimit', 'gitTimeoutSecs', 'outsideWorktrees', 'worktreeLimit', 'searchOutsideWorktrees'];
 /** The open tabs and terminals, per base folder: `gako.session:<base>`. */
 const SESSION = 'gako.session:';
 /** The terminals in folders picked with "Other folder…": reopened whatever base folder is open. */
@@ -803,6 +803,10 @@ class App {
   private applyDisplay(settings: Settings): void {
     configureDates(settings);
     if (this.blame) this.blame.enabled = settings.blame !== false;
+    if (this.sidebar && this.sidebar.cleanWorktrees !== (settings.cleanWorktrees !== false)) {
+      this.sidebar.cleanWorktrees = settings.cleanWorktrees !== false;
+      this.sidebar.render();
+    }
     this.renderStatusbar();
   }
 

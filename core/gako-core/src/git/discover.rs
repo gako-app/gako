@@ -39,6 +39,9 @@ pub struct Repo {
     /// Where the repo's own files live: `.git`, or what a `.git` file points to.
     pub git_dir: PathBuf,
     pub kind: RepoKind,
+    /// A worktree's main repo (the root of the repo whose Git folder it shares), once `link` has
+    /// found it among the repos.
+    pub main: Option<PathBuf>,
 }
 
 /// The repo rooted at `dir`, if `dir` has a `.git` folder or file.
@@ -50,6 +53,7 @@ pub fn repo_at(dir: &Path) -> Option<Repo> {
             root: dir.to_path_buf(),
             git_dir: dot_git,
             kind: RepoKind::Normal,
+            main: None,
         });
     }
     let text = std::fs::read_to_string(&dot_git).ok()?;
@@ -72,7 +76,99 @@ pub fn repo_at(dir: &Path) -> Option<Repo> {
         root: dir.to_path_buf(),
         git_dir,
         kind,
+        main: None,
     })
+}
+
+/// The worktrees a repo's Git folder knows of, wherever they are, most recently used first. Each
+/// is read from `worktrees/<name>/gitdir`, which names the worktree's `.git` file (relative to that
+/// folder when `worktree.useRelativePaths` is set). Ones whose folder is gone, which
+/// `git worktree prune` would remove, are left out.
+pub fn linked_worktrees(git_dir: &Path) -> Vec<Repo> {
+    let Ok(entries) = std::fs::read_dir(git_dir.join("worktrees")) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(std::time::SystemTime, Repo)> = Vec::new();
+    for entry in entries.flatten() {
+        let admin = entry.path();
+        let Ok(text) = std::fs::read_to_string(admin.join("gitdir")) else {
+            continue;
+        };
+        let dot_git = admin.join(text.trim());
+        let Some(root) = dot_git.parent() else {
+            continue;
+        };
+        let root = crate::files::canonical(root).unwrap_or_else(|_| root.to_path_buf());
+        let Some(repo) = repo_at(&root) else { continue };
+        let admin = crate::files::canonical(&admin).unwrap_or(admin);
+        if repo.kind != RepoKind::Worktree || repo.git_dir != admin {
+            continue; // the folder now holds something else
+        }
+        // HEAD changes on a commit or a checkout, the index on most other work.
+        let used = ["HEAD", "index"]
+            .iter()
+            .filter_map(|f| {
+                std::fs::metadata(admin.join(f))
+                    .and_then(|m| m.modified())
+                    .ok()
+            })
+            .max()
+            .unwrap_or(std::time::UNIX_EPOCH);
+        found.push((used, repo));
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.root.cmp(&b.1.root)));
+    found.into_iter().map(|(_, r)| r).collect()
+}
+
+/// The Git folder a worktree shares with its main repo, from its `commondir` file.
+fn common_dir(git_dir: &Path) -> Option<PathBuf> {
+    let text = std::fs::read_to_string(git_dir.join("commondir")).ok()?;
+    let dir = git_dir.join(text.trim());
+    Some(crate::files::canonical(&dir).unwrap_or(dir))
+}
+
+/// Adds the worktrees of `repos` that lie outside `roots` (up to `limit` per repo, most recently
+/// used first), and sets each worktree's `main` to its main repo when that is in the list. Sorted
+/// by path.
+pub fn with_worktrees(mut repos: Vec<Repo>, roots: &[PathBuf], limit: Option<usize>) -> Vec<Repo> {
+    if let Some(limit) = limit {
+        let mut more = Vec::new();
+        for r in repos.iter().filter(|r| r.kind == RepoKind::Normal) {
+            more.extend(outside_worktrees(r, roots, limit));
+        }
+        for w in more {
+            if !repos.iter().any(|r| r.root == w.root) {
+                repos.push(w);
+            }
+        }
+        repos.sort_by(|a, b| a.root.cmp(&b.root));
+    }
+    let mains: Vec<(PathBuf, PathBuf)> = repos
+        .iter()
+        .filter(|r| r.kind == RepoKind::Normal)
+        .map(|r| {
+            let dir = crate::files::canonical(&r.git_dir).unwrap_or_else(|_| r.git_dir.clone());
+            (dir, r.root.clone())
+        })
+        .collect();
+    for r in repos.iter_mut().filter(|r| r.kind == RepoKind::Worktree) {
+        r.main = common_dir(&r.git_dir).and_then(|c| {
+            mains
+                .iter()
+                .find(|(d, _)| *d == c)
+                .map(|(_, root)| root.clone())
+        });
+    }
+    repos
+}
+
+/// A repo's worktrees outside `roots`, the `limit` most recently used.
+pub fn outside_worktrees(main: &Repo, roots: &[PathBuf], limit: usize) -> Vec<Repo> {
+    linked_worktrees(&main.git_dir)
+        .into_iter()
+        .filter(|w| !roots.iter().any(|root| w.root.starts_with(root)))
+        .take(limit)
+        .collect()
 }
 
 /// Repos in `roots` and up to `depth` levels below them, sorted by path.
@@ -227,6 +323,50 @@ mod tests {
                 .git_dir
                 .ends_with("services/auth/.git/worktrees/wt")
         );
+        let repos = with_worktrees(repos, std::slice::from_ref(&base), Some(10));
+        assert_eq!(repos.len(), 4, "the worktree inside isn't added twice");
+        assert_eq!(repos[3].main.as_deref(), Some(&*base.join("services/auth")));
+        assert_eq!(repos[0].main, None);
+    }
+
+    #[test]
+    fn worktrees_outside_the_roots() {
+        let t = tempfile::tempdir().unwrap();
+        let tmp = crate::files::canonical(&t.path()).unwrap();
+        let base = tmp.join("base");
+        let away = tmp.join("away");
+        init(&base.join("app"));
+        std::fs::create_dir_all(&away).unwrap();
+        let app = base.join("app");
+        for name in ["one", "two", "three"] {
+            let path = away.join(name).to_string_lossy().into_owned();
+            git(&app, &["worktree", "add", "-q", &path, "-b", name]);
+        }
+        // One whose folder is gone, as an agent tool might leave it.
+        std::fs::remove_dir_all(away.join("three")).unwrap();
+        let roots = [base.clone()];
+        let found = discover(&roots, 2, &[]);
+        assert_eq!(found.len(), 1);
+
+        let repos = with_worktrees(found.clone(), &roots, Some(10));
+        let roots_found: Vec<_> = repos.iter().map(|r| r.root.clone()).collect();
+        assert_eq!(
+            roots_found,
+            vec![away.join("one"), away.join("two"), app.clone()]
+        );
+        assert!(repos[..2].iter().all(|r| r.kind == RepoKind::Worktree));
+        assert!(repos[..2].iter().all(|r| r.main.as_deref() == Some(&*app)));
+
+        // The limit keeps the most recently used.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(away.join("one/f.txt"), "y").unwrap();
+        git(&away.join("one"), &["add", "."]);
+        let limited = with_worktrees(found.clone(), &roots, Some(1));
+        let roots_found: Vec<_> = limited.iter().map(|r| r.root.clone()).collect();
+        assert_eq!(roots_found, vec![away.join("one"), app]);
+
+        // Off: nothing is added, but worktrees inside still find their main repo.
+        assert_eq!(with_worktrees(found, &roots, None).len(), 1);
     }
 
     #[test]

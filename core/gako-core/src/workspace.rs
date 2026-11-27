@@ -62,6 +62,11 @@ pub struct RepoInfo {
     /// The root relative to the base folder ("" for the base repo itself).
     pub rel: String,
     pub kind: RepoKind,
+    /// A worktree's main repo, by its root, when that is listed too.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub main: Option<String>,
+    /// A worktree outside the base and extra folders, found through its main repo.
+    pub outside: bool,
 }
 
 #[derive(Default)]
@@ -84,6 +89,8 @@ struct Inner {
     symbols: Option<Arc<std::sync::RwLock<crate::symbols::Index>>>,
     repos: Vec<Repo>,
     states: Vec<RepoState>,
+    /// The roots of the worktrees listed that lie outside `roots()`.
+    outside: Vec<PathBuf>,
     watcher: Option<watch::Watcher>,
 }
 
@@ -124,6 +131,7 @@ impl Workspace {
                 symbols: None,
                 repos: Vec::new(),
                 states: Vec::new(),
+                outside: Vec::new(),
                 watcher: None,
             }),
             rediscovering: Mutex::new(()),
@@ -152,17 +160,30 @@ impl Workspace {
         roots
     }
 
+    /// `roots()` and the worktrees outside them: every folder whose files the workspace may read.
+    pub fn readable(&self) -> Vec<PathBuf> {
+        let mut v = self.roots();
+        v.extend(self.inner.lock().unwrap().outside.iter().cloned());
+        v
+    }
+
+    /// The most worktrees outside the folders listed per repo, or `None` when they aren't looked for.
+    fn worktree_limit(&self) -> Option<usize> {
+        self.settings
+            .outside_worktrees
+            .then_some(self.settings.worktree_limit)
+    }
+
     pub fn repos(&self) -> Vec<RepoInfo> {
-        self.inner
-            .lock()
-            .unwrap()
+        let inner = self.inner.lock().unwrap();
+        inner
             .repos
             .iter()
-            .map(|r| self.info(r))
+            .map(|r| self.info(r, &inner.outside))
             .collect()
     }
 
-    fn info(&self, r: &Repo) -> RepoInfo {
+    fn info(&self, r: &Repo, outside: &[PathBuf]) -> RepoInfo {
         let rel = r
             .root
             .strip_prefix(&self.base)
@@ -171,6 +192,8 @@ impl Workspace {
             root: r.root.to_string_lossy().into_owned(),
             rel: rel.unwrap_or_else(|_| r.root.to_string_lossy().into_owned()),
             kind: r.kind,
+            main: r.main.as_ref().map(|m| m.to_string_lossy().into_owned()),
+            outside: outside.contains(&r.root),
         }
     }
 
@@ -190,7 +213,14 @@ impl Workspace {
         let roots = self.roots();
         let repos =
             git::discover::discover(&roots, self.settings.scan_depth, &self.settings.scan_ignore);
+        let repos = git::discover::with_worktrees(repos, &roots, self.worktree_limit());
+        let outside: Vec<PathBuf> = repos
+            .iter()
+            .filter(|r| !roots.iter().any(|root| r.root.starts_with(root)))
+            .map(|r| r.root.clone())
+            .collect();
         let mut watched = roots.clone();
+        watched.extend(outside.iter().cloned());
         for r in &repos {
             if !roots.iter().any(|root| r.git_dir.starts_with(root)) {
                 watched.push(r.git_dir.clone());
@@ -230,6 +260,7 @@ impl Workspace {
                     }
                 }
             }
+            inner.outside = outside;
             inner.watcher = Some(watcher); // dropping the old one stops it
             new
         };
@@ -293,7 +324,7 @@ impl Workspace {
             }
             v
         };
-        let roots = self.roots();
+        let roots = self.readable();
         let paths: Vec<PathBuf> = all_paths
             .iter()
             .filter(|p| !self.in_ignored_folder(&roots, p))
@@ -341,6 +372,9 @@ impl Workspace {
                 changes.rediscover
             );
         }
+        if !changes.rediscover {
+            self.check_worktrees(paths);
+        }
         if changes.rediscover {
             // Walking the folders and starting a new watcher take a while on a big workspace:
             // not on an async worker. New repos are refreshed by the rediscovery itself.
@@ -355,6 +389,59 @@ impl Workspace {
             let ws = self.clone();
             tokio::spawn(async move { ws.refresh(&root).await });
         }
+    }
+
+    /// A worktree is added or removed in its main repo's Git folder (`worktrees/<name>`), maybe far
+    /// from any folder the walk looks in: when one of `paths` is there, finds again whether a main
+    /// repo's worktrees outside the folders are still the ones listed, and rediscovers if not.
+    fn check_worktrees(self: &Arc<Self>, paths: &[PathBuf]) {
+        let Some(limit) = self.worktree_limit() else {
+            return;
+        };
+        let (mains, listed) = {
+            let inner = self.inner.lock().unwrap();
+            let mains: Vec<Repo> = inner
+                .repos
+                .iter()
+                .filter(|r| r.kind == RepoKind::Normal)
+                .filter(|r| {
+                    let wt = r.git_dir.join("worktrees");
+                    paths.iter().any(|p| p.starts_with(&wt) || *p == r.git_dir)
+                })
+                .cloned()
+                .collect();
+            if mains.is_empty() {
+                return;
+            }
+            let listed: Vec<(PathBuf, PathBuf)> = inner
+                .repos
+                .iter()
+                .filter(|r| inner.outside.contains(&r.root))
+                .filter_map(|r| Some((r.main.clone()?, r.root.clone())))
+                .collect();
+            (mains, listed)
+        };
+        let ws = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let roots = ws.roots();
+            let stale = mains.iter().any(|m| {
+                let mut now: Vec<PathBuf> = git::discover::outside_worktrees(m, &roots, limit)
+                    .into_iter()
+                    .map(|w| w.root)
+                    .collect();
+                let mut before: Vec<PathBuf> = listed
+                    .iter()
+                    .filter(|(main, _)| *main == m.root)
+                    .map(|(_, root)| root.clone())
+                    .collect();
+                now.sort();
+                before.sort();
+                now != before
+            });
+            if stale && let Err(e) = ws.rediscover(false) {
+                eprintln!("gako-core: rediscovering repos: {e:#}");
+            }
+        });
     }
 
     /// Refreshes one repo's status; pushes it if it changed. If a refresh is already running, it
@@ -507,14 +594,11 @@ impl Workspace {
     /// A search scope: every repo and folder (`all`), or chosen repos (`repos`).
     /// Repos inside a searched folder are skipped there: they're searched as themselves, or not at all.
     pub fn scope(&self, kind: &str, chosen: &[String]) -> crate::search::Scope {
-        let repos: Vec<PathBuf> = self
-            .inner
-            .lock()
-            .unwrap()
-            .repos
-            .iter()
-            .map(|r| r.root.clone())
-            .collect();
+        let (repos, outside): (Vec<PathBuf>, Vec<PathBuf>) = {
+            let inner = self.inner.lock().unwrap();
+            let repos = inner.repos.iter().map(|r| r.root.clone()).collect();
+            (repos, inner.outside.clone())
+        };
         let roots: Vec<PathBuf> = match kind {
             "repos" => repos
                 .iter()
@@ -523,7 +607,14 @@ impl Workspace {
                 .collect(),
             _ => {
                 let mut v = self.roots();
-                let more: Vec<PathBuf> = repos.iter().filter(|r| !v.contains(r)).cloned().collect();
+                // `searchOutsideWorktrees` off: worktrees outside the folders are searched only
+                // when chosen, since an agent tool can leave dozens of copies of a repo behind.
+                let skip_outside = !self.settings.search_outside_worktrees;
+                let more: Vec<PathBuf> = repos
+                    .iter()
+                    .filter(|r| !v.contains(r) && !(skip_outside && outside.contains(r)))
+                    .cloned()
+                    .collect();
                 v.extend(more);
                 v
             }
@@ -679,5 +770,71 @@ mod tests {
         assert!(!ws.in_ignored_folder(&roots, &extra.join("lib/src/y.js")));
         // Outside every root: not this workspace's business.
         assert!(!ws.in_ignored_folder(&roots, Path::new("/elsewhere/node_modules/z.js")));
+    }
+
+    fn git(dir: &Path, args: &[&str]) {
+        let out = std::process::Command::new("git")
+            .args(["-c", "init.defaultBranch=main", "-c", "user.name=t"])
+            .args(["-c", "user.email=t@t", "-c", "commit.gpgsign=false"])
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
+            .output()
+            .expect("git");
+        assert!(out.status.success(), "git {args:?}");
+    }
+
+    /// A worktree outside the base folder is listed, readable and searched; with
+    /// `searchOutsideWorktrees` off it's searched only when chosen, and with `outsideWorktrees`
+    /// off it isn't found at all.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn worktrees_outside_the_base() {
+        let t = tempfile::tempdir().unwrap();
+        let tmp = crate::files::canonical(t.path()).unwrap();
+        let (base, away) = (tmp.join("base"), tmp.join("away/wt"));
+        let app = base.join("app");
+        std::fs::create_dir_all(&app).unwrap();
+        git(&app, &["init", "-q"]);
+        std::fs::write(app.join("f.txt"), "x").unwrap();
+        git(&app, &["add", "."]);
+        git(&app, &["commit", "-q", "-m", "init"]);
+        git(
+            &app,
+            &["worktree", "add", "-q", &away.to_string_lossy(), "-b", "wt"],
+        );
+
+        let open = |settings: Settings| {
+            let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+            Workspace::open(base.clone(), settings, tx).unwrap()
+        };
+        let ws = open(Settings::default());
+        let wt = ws
+            .repos()
+            .into_iter()
+            .find(|r| r.root == away.to_string_lossy());
+        let wt = wt.expect("the outside worktree is listed");
+        assert!(wt.outside);
+        assert_eq!(wt.main.as_deref(), Some(&*app.to_string_lossy()));
+        assert!(crate::files::inside(&ws.readable(), &away.join("f.txt")).is_ok());
+        assert!(ws.scope("all", &[]).roots.contains(&away));
+
+        let ws = open(Settings {
+            search_outside_worktrees: false,
+            ..Settings::default()
+        });
+        assert!(!ws.scope("all", &[]).roots.contains(&away));
+        let chosen = [away.to_string_lossy().into_owned()];
+        assert_eq!(ws.scope("repos", &chosen).roots, vec![away.clone()]);
+
+        let ws = open(Settings {
+            outside_worktrees: false,
+            ..Settings::default()
+        });
+        assert_eq!(ws.repos().len(), 1);
+        assert!(crate::files::inside(&ws.readable(), &away.join("f.txt")).is_err());
     }
 }

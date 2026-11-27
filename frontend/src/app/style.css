@@ -104,7 +104,7 @@ button.link:hover:not(:disabled) { background: none; text-decoration: underline;
 .spacer { flex: 1; }
 .error { color: var(--deleted); padding: 4px 8px; white-space: pre-wrap; }
 .warn { color: var(--modified); }
-.badge { font-size: 10px; font-weight: 600; padding: 1px 7px; margin-left: 6px; border-radius: 9px; background: rgb(226 192 141 / 0.14); color: var(--modified); }
+.badge { font-size: 10px; font-weight: 600; padding: 1px 7px; margin-left: 6px; border-radius: 9px; background: rgb(226 192 141 / 0.14); color: var(--modified); white-space: nowrap; flex: none; }
 .count { display: inline-block; min-width: 8px; font-size: 11px; font-weight: 500; line-height: 16px; text-align: center; color: var(--dim); background: rgb(255 255 255 / 0.07); border-radius: 8px; padding: 0 5px; margin-left: 6px; }
 
 #app { position: relative; display: grid; grid-template-columns: 44px auto minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr) 28px; height: 100%; }
@@ -181,6 +181,16 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
 .group-toggle:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .clean-repo { display: flex; align-items: center; gap: 4px; height: 26px; margin: 0 6px; padding: 0 6px 0 24px; border-radius: var(--radius); white-space: nowrap; overflow: hidden; }
 .clean-repo:hover { background: var(--hover); }
+/* A worktree's icon, after its name. */
+.kind-icon { display: inline-flex; align-items: center; flex: none; margin-left: 4px; color: var(--modified); }
+.kind-icon .svg-icon { width: 13px; height: 13px; }
+/* A worktree under its main repo. */
+.repo.nested { margin-top: 0; }
+.repo.nested .repo-header { padding-left: 20px; }
+.repo.nested .group { padding-left: 44px; }
+.repo.nested .file { padding-left: 38px; }
+.repo.nested .more { padding-left: 44px; }
+.clean-repo.nested { padding-left: 40px; }
 .empty { padding: 16px; }
 /* Something the user asked for is under way (the branch list). */
 body.waiting, body.waiting * { cursor: progress !important; }

@@ -25,6 +25,7 @@ import type { SearchView } from './search';
 import type { DiffTarget, Entry, Repo } from './model';
 import { changeCount, diffTarget, LETTER } from './model';
 import { chevron, fileIcon, icon, iconButton, type IconName } from './icons';
+import { arrange, worktreeName, type Placed } from './worktrees';
 
 export type View = 'repos' | 'files' | 'search';
 
@@ -121,6 +122,8 @@ export class Sidebar {
   selected: string | null = null;
   repos: Repo[] = [];
   baseName = '';
+  /** Whether worktrees with nothing to show are listed (the `cleanWorktrees` setting). */
+  cleanWorktrees = true;
   /** What the repositories are waiting for: the core finding them, or their first status scans.
    * Null once that's done. */
   phase: 'finding' | 'scanning' | null = null;
@@ -233,8 +236,7 @@ export class Sidebar {
   render(): void {
     // Out of sync with its upstream counts as changed: commits to pull or push stay in sight.
     const listed = (r: Repo) => !!r.error || (!!r.status && (changeCount(r.status) > 0 || sync(r) !== 'even'));
-    const changed = this.repos.filter(listed);
-    const clean = this.repos.filter((r) => r.status && !listed(r));
+    const { changed, clean } = arrange(this.repos, listed, (r) => !!r.status, this.cleanWorktrees);
     this.renderRail();
     const fetching = this.batch?.action === 'fetch';
     const tip = fetching ? 'Fetching every repository…' : 'Fetch all: every repository that tracks a remote branch, to see which are behind';
@@ -259,6 +261,23 @@ export class Sidebar {
 
   private name(r: Repo): string {
     return r.rel || this.baseName;
+  }
+
+  /** A repo's name where it's placed: a worktree under its main repo by its folder's name, one away
+   * from it after the main repo's name. */
+  private placedName(p: Placed<Repo>): string {
+    const main = p.repo.main ? this.repos.find((m) => m.root === p.repo.main) : undefined;
+    if (!main || !(p.nested || p.apart)) return this.name(p.repo);
+    const name = worktreeName(p.repo.root, main.root);
+    return p.apart ? `${this.name(main)} › ${name}` : name;
+  }
+
+  /** A worktree's icon, whose tooltip says where it is; a submodule's badge. */
+  private kindBadge(r: Repo): HTMLElement | null {
+    if (r.kind === 'submodule') return h('span', { class: 'badge' }, r.kind);
+    if (r.kind !== 'worktree') return null;
+    const tip = r.outside ? `Worktree, outside the folders Gako looks in:\n${r.root}` : `Worktree:\n${r.root}`;
+    return h('span', { class: 'kind-icon', 'data-tip': tip, 'aria-label': 'Worktree' }, icon('worktree'));
   }
 
   /** The branch, which switches to another one when clicked. */
@@ -396,21 +415,22 @@ export class Sidebar {
     this.render();
   }
 
-  private renderRepos(changed: Repo[], clean: Repo[]): void {
+  private renderRepos(changed: Placed<Repo>[], clean: Placed<Repo>[]): void {
     const wanted: HTMLElement[] = [];
-    for (const r of changed) {
-      const sec = this.section(r);
-      this.fillSection(sec, r);
+    for (const p of changed) {
+      const sec = this.section(p.repo);
+      sec.el.classList.toggle('nested', p.nested);
+      this.fillSection(sec, p);
       wanted.push(sec.el);
     }
     if (clean.length) {
       wanted.push(h('div', { class: 'clean' },
         h('button', { class: 'group-toggle', onclick: () => this.toggleClean() },
           chevron(this.cleanOpen), 'Clean repositories', h('span', { class: 'count' }, String(clean.length))),
-        this.cleanOpen ? clean.map((r) => h('div', { class: 'clean-repo', 'data-tip': r.root },
-          h('span', { class: 'repo-name' }, this.name(r)), ' ', this.branch(r),
+        this.cleanOpen ? clean.map((p) => h('div', { class: `clean-repo ${p.nested ? 'nested' : ''}`, 'data-tip': p.repo.root },
+          h('span', { class: 'repo-name' }, this.placedName(p)), this.kindBadge(p.repo), ' ', this.branch(p.repo),
           h('span', { class: 'spacer' }),
-          this.repoActions(r))) : null));
+          this.repoActions(p.repo))) : null));
     }
     if (!this.phase) {
       if (!changed.length && !clean.length) wanted.push(h('div', { class: 'empty dim' }, 'No repositories found.'));
@@ -439,7 +459,8 @@ export class Sidebar {
     return sec;
   }
 
-  private fillSection(sec: Section, r: Repo): void {
+  private fillSection(sec: Section, p: Placed<Repo>): void {
+    const r = p.repo;
     const s = r.status;
     const open = !this.collapsed.has(r.root);
     const n = s ? changeCount(s) : 0;
@@ -449,8 +470,8 @@ export class Sidebar {
         ? h('button', { class: 'twisty', 'data-tip': open ? 'Collapse' : 'Expand', onclick: () => { open ? this.collapsed.add(r.root) : this.collapsed.delete(r.root); this.render(); } },
           chevron(open))
         : h('span', { class: 'twisty' }),
-      h('span', { class: 'repo-name', 'data-tip': r.root }, this.name(r)),
-      r.kind !== 'normal' ? h('span', { class: 'badge' }, r.kind) : null,
+      h('span', { class: 'repo-name', 'data-tip': r.root }, this.placedName(p)),
+      this.kindBadge(r),
       ' ', this.branch(r),
       h('span', { class: 'spacer' }),
       this.repoActions(r),

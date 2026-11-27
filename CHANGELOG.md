@@ -6,6 +6,14 @@ All notable changes to Gako are listed here, newest first. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Worktrees outside the base folder, such as the ones agent tools make in folders of their own,
+  are listed under their main repository with their changes and diffs. Every worktree now sits
+  under its main repository; a changed one brings its main repository's header along. New
+  settings: `outsideWorktrees`, `worktreeLimit`, `searchOutsideWorktrees` and `cleanWorktrees`.
+  See docs/git.md.
+
 ## [0.27.2] — 2026-11-23
 
 A fix for resuming Pi after switching conversation inside it.

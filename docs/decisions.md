@@ -270,6 +270,25 @@ nothing but Gako's version, and the `updates` setting turns it off.
 
 **Cost:** updating is still done by hand: download, replace the app, start it again.
 
+## Worktrees found through their main repository
+
+**Decision:** for each repository it finds, Gako reads the worktrees its Git folder knows of
+(`.git/worktrees/*/gitdir`) and lists them under it, wherever they are on disk, up to
+`worktreeLimit` each. Those outside the base and extra folders are watched and readable, as if
+they were extra folders, and are searched and indexed like them.
+
+**Why:** agent tools put the worktrees they make in folders of their own, often under the home
+folder, so a walk of the base folder never finds the work they do. Reading Git's own record is
+cheap (no `git` process) and its changes reach the watcher already, since the main repository's
+Git folder is watched. They're searched because they hold the agents' work, which is what you
+review.
+
+**Cost:** Gako reads and watches folders you didn't name, though only checkouts of repositories you
+opened; on Linux each one costs inotify watches. An agent tool can leave dozens of copies of a
+repository behind, each of which repeats every search hit and every symbol, and adds to the
+index's memory; `searchOutsideWorktrees` keeps them out of search, and `outsideWorktrees` turns
+the whole thing off.
+
 ## Budgets measured against VS Code
 
 **Decision:** performance budgets are set relative to VS Code on the same machine, chiefly memory:

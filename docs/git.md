@@ -14,6 +14,8 @@ When a base folder opens, the core walks it for repositories:
   usually ignored by the base repository, and finding them is the point.
 - Folders in `extraFolders` are walked the same way, for repositories that live outside the base
   folder.
+- Each repository's worktrees are found through it, wherever they are on disk: see
+  [Worktrees](#worktrees).
 - The base folder may be a repository itself. Its status never lists the repositories nested in it
   as untracked folders, whether its `.gitignore` excludes them or not.
 
@@ -22,6 +24,35 @@ symbol index that follow, so the window says what it is waiting for rather than 
 line over the repositories reads "Finding repositories…", then "Scanning repositories… 12 of 27"
 with a bar, and the status bar shows "Indexing symbols…" until the index is ready. The line fades
 in after 0.4 s, so a quick open doesn't flash it.
+
+## Worktrees
+
+Agent tools often run each task in a worktree of its own, in a folder outside the project
+(Codex, Cursor and Conductor keep theirs in folders under your home folder). Gako finds them
+through their main repository: Git records each worktree in the repository's Git folder
+(`.git/worktrees/<name>/gitdir`), and Gako reads that record for every repository it finds.
+
+- Worktrees are listed under their main repository, indented and named by their folder (or the
+  last two parts of its path, when the folder has the main repository's name, as agent tools name
+  theirs). Each has a worktree icon after its name, whose tooltip says whether it's outside the base
+  and extra folders, and where it is.
+- A worktree with changes brings its main repository's header along, even when the main
+  repository is clean, so a family stays together. A worktree with nothing to show goes into
+  "Clean repositories", under its main repository when that is there too, or named after it
+  ("app › a1b2/app") when the main repository is listed above with changes.
+- Worktrees whose folder is gone (the ones `git worktree prune` would remove) aren't listed.
+- Creating or removing a worktree shows up at once, wherever it is: the main repository's Git
+  folder is watched already, and Gako checks its list of worktrees again when that changes. A
+  worktree outside the folders is watched like an extra folder, and its files can be read for diffs
+  and the file viewer.
+- Worktrees outside the folders are part of search, go-to-file and the symbol index, like the
+  rest. When a tool leaves dozens of copies of a repository behind, each repeats every hit:
+  `searchOutsideWorktrees` leaves them out, and a worktree is then searched only when chosen as the
+  search's repository.
+
+`outsideWorktrees` turns this off, `worktreeLimit` caps how many outside worktrees are listed per
+repository (20 by default, the most recently used first), `searchOutsideWorktrees` keeps them out
+of search, and `cleanWorktrees` hides the worktrees with no changes and nothing to pull or push. See [settings.md](settings.md#repositories).
 
 ## Status
 

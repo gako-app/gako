@@ -65,7 +65,13 @@ pub fn watch(
         }
     })?;
     for p in paths {
-        debouncer.watch(p, RecursiveMode::Recursive)?;
+        // A folder removed since it was found (a worktree an agent tool cleaned up) is no reason
+        // to watch nothing: its removal brings a rediscovery anyway.
+        if let Err(e) = debouncer.watch(p, RecursiveMode::Recursive)
+            && p.exists()
+        {
+            return Err(e.into());
+        }
     }
     Ok(Watcher {
         _debouncer: debouncer,
@@ -129,6 +135,7 @@ mod tests {
             root: root.into(),
             git_dir: git_dir.into(),
             kind: RepoKind::Normal,
+            main: None,
         }
     }
 

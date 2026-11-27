@@ -25,11 +25,11 @@ Gako watches the file, so a change applies as soon as you save it:
 
 - **At once:** the fonts, in the files, diffs and terminals already open; `terminalCopyOnSelect`; the agents offered for
   new terminals; the editor; `agentHooks`, for agents started from then on; `updates`; `blame`;
-  `dateFormat` and `timeFormat`, in what's drawn from then on (a commit already shown in the
+  `cleanWorktrees`; `dateFormat` and `timeFormat`, in what's drawn from then on (a commit already shown in the
   history keeps its date as it was written until it's shown again).
 - **By opening the folder again**, which Gako does for you, keeping what's open: the repository
   settings (`scanDepth`, `scanIgnore`, `extraFolders`, `maxGitProcesses`, `debounceMs`,
-  `untrackedLimit`, `gitTimeoutSecs`).
+  `untrackedLimit`, `gitTimeoutSecs`, `outsideWorktrees`, `worktreeLimit`, `searchOutsideWorktrees`).
 - **In terminals opened from then on:** `terminalScrollback`, `terminalRenderer` and
   `terminalMaxCombining`.
 - **The next time Gako starts:** `base`.
@@ -70,6 +70,10 @@ per-folder settings files.
 | `debounceMs` | `150` | How long a repository must be quiet after a change before its status is refreshed, in milliseconds. |
 | `untrackedLimit` | `2000` | Untracked files listed per repository; the rest are counted. |
 | `gitTimeoutSecs` | `30` | Seconds before a `git` command is given up on. |
+| `outsideWorktrees` | `true` | List the worktrees of the repositories found wherever they are, such as the ones agent tools make in folders of their own, under their main repository. See [git.md](git.md#worktrees). |
+| `worktreeLimit` | `20` | The most worktrees outside the folders listed for one repository, the most recently used first. |
+| `searchOutsideWorktrees` | `true` | Include the worktrees outside the folders in search, go-to-file and the symbol index. Off, a worktree is searched only when chosen as the repository to search. |
+| `cleanWorktrees` | `true` | List worktrees with no changes and nothing to pull or push. Off, only the ones with something to show are listed. |
 
 The defaults suit 10–30 repositories, one or two levels deep. For a larger layout, raise
 `scanDepth` and `maxGitProcesses`; see [git.md](git.md).

@@ -45,6 +45,10 @@ export interface RepoInfo {
   root: string;
   rel: string;
   kind: 'normal' | 'worktree' | 'submodule';
+  /** A worktree's main repo, by its root, when that is listed too. */
+  main?: string;
+  /** A worktree outside the base and extra folders, found through its main repo. */
+  outside: boolean;
 }
 
 export interface Repo extends RepoInfo {
@@ -162,6 +166,10 @@ export interface Settings {
   debounceMs: number;
   untrackedLimit: number;
   gitTimeoutSecs: number;
+  outsideWorktrees: boolean;
+  worktreeLimit: number;
+  searchOutsideWorktrees: boolean;
+  cleanWorktrees: boolean;
   agents: { name: string; command: string[]; session?: string[] | boolean; resume?: string[] }[];
   terminalScrollback: number;
   terminalRenderer: string;
